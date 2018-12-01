@@ -1,0 +1,5 @@
+[package]
+
+name = "real-time-data-base"
+version = "0.0.1"
+authors = [ "Mateus Freira <mateus.freira@gmail.com>" ]
