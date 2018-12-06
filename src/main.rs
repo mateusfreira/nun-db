@@ -121,6 +121,7 @@ fn main() -> Result<()>{
                 Ok(socket) => {
                     let addr = socket.peer_addr().unwrap();
                     let (tx, rx) = futures::sync::mpsc::unbounded();
+                    //Use channel 
 					/*let socket_writer = rx.fold(writer, |writer, msg| {
 						let amt = io::write_all(writer, msg.into_bytes());
 						let amt = amt.map(|(writer, _)| writer);
