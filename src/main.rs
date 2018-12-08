@@ -20,7 +20,7 @@ struct Database {
 }
 
 struct Watchers {
-	map: Mutex<HashMap<String, Sender<String>>>,
+	map: Mutex<HashMap<String, Vec<Sender<String>>>>,
 }
 
 
@@ -52,8 +52,17 @@ fn handle_client(stream: TcpStream, db: Arc<Database>, watchers:Arc<Watchers>) {
                                     None => "<Empty>",
                                 };
 
-                                watchers.map.lock().unwrap().insert(key.clone(), sender.clone());
-                                println!("<WATCH> {}  {}", key, value)
+                                let mut watchers = watchers.map.lock().unwrap();
+                                let mut senders:Vec<Sender<String>> = match watchers.get(&key) {
+                                    Some(mut watchers_vec) =>  {
+                                        watchers_vec.clone()
+                                    }, 
+                                    _ => Vec::new()
+                                };
+                                senders.push(sender.clone());
+                                watchers.insert(key.clone(), senders.clone());
+                                println!("<WATCH> {}  {}", key, value);
+                                println!("<WATCH> watchers {}", senders.len())
                             }
                             Some("get") => {
                                 let key = match command.next() {
@@ -90,9 +99,13 @@ fn handle_client(stream: TcpStream, db: Arc<Database>, watchers:Arc<Watchers>) {
                                     },
                                 };
                                 db.insert(key.clone().to_string(), value.clone().to_string());
+                                println!("Will watch");
                                 match watchers.map.lock().unwrap().get(key.clone()) {
-                                Some(sender) => {
-                                    sender.send(value.clone());
+                                Some(senders) => {
+                                    for sender in senders {
+                                        println!("Sinding to another client");
+                                        sender.send(value.clone());
+                                    }
                                 }
                                  _ => {}
                                 }
