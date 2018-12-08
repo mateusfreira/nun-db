@@ -1,4 +1,5 @@
 extern crate futures;
+mod lib;
 
 use std::net::{TcpListener, TcpStream};
 use std::io::{BufReader, BufRead, BufWriter, Write};
@@ -13,26 +14,7 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
-struct Database {
-	map: Mutex<HashMap<String, String>>,
-}
-
-struct Watchers {
-	map: Mutex<HashMap<String, Vec<Sender<String>>>>,
-}
-
-enum Request {
-    Get { key: String },
-    Set { key: String, value: String },
-    Watch { key: String },
-}
-
-enum Response {
-    Value { key: String, value: String },
-    Ok {} ,
-    Set { key: String, value: String},
-    Error { msg: String },
-}
+use lib::{*};
 
 fn process_request (input: &str, watchers:Arc<Watchers>, sender:Sender<String>, db:Arc<Database>) -> Response {
     let request = match Request::parse(input){
@@ -76,7 +58,6 @@ fn process_request (input: &str, watchers:Arc<Watchers>, sender:Sender<String>, 
             }
             Response::Set{ key: key.clone(), value: value.to_string() }
         }
-        _ => Response::Error { msg: "Not parser".to_string()}
     }
 }
 
@@ -144,52 +125,4 @@ fn main() -> Result<(), String>{
         }
     };
     Ok(())
-}
-
-
-
-impl Request {
-     fn parse(input: &str) -> Result<Request, String> {
-        let mut command  = input.splitn(3, " ");
-        let parsed_command  = match command.next() {
-            Some("watch") => {
-                let key = match command.next() {
-                    Some(key) => key.replace("\n", ""),
-                    None => {
-                        return Err(format!("watch must contain a key")) 
-                    }
-                };
-                Ok(Request::Watch{ key })
-            },
-            Some("get") => {
-                let key = match command.next() {
-                    Some(key) => key.replace("\n", ""),
-                    None => {
-                        return Err(format!("get must contain a key")) 
-                    }
-                };
-                Ok(Request::Get{ key })
-            },
-            Some("set") =>  {
-                let key = match command.next() {
-                    Some(key) => key,
-                    None => {
-                        println!("SET must be followed by a key");
-                        ""
-                    },
-                };
-                let value = match command.next() {
-                    Some(value) => value.replace("\n", ""),
-                    None => {
-                        println!("SET needs a value");
-                        "".to_string()
-                    },
-                };
-                Ok(Request::Set { key: key.to_string(), value: value.to_string() })
-            },
-            Some(cmd) => Err(format!("unknown command: {}", cmd)),
-            _ => Err(format!("no command sent")),
-        };
-        parsed_command
-     }
 }
