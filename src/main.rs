@@ -38,7 +38,7 @@ fn process_request (input: &str, watchers:Arc<Watchers>, sender:Sender<String>, 
                 Some(value) => value,
                 None => "<Empty>",
             };
-            sender.send(value.to_string());
+            sender.send(format_args!("value {}\n", value.to_string()).to_string());
             Response::Value{ key: key.clone(), value: value.to_string() }
         },
         Request::Set { key, value  } => {
@@ -49,7 +49,7 @@ fn process_request (input: &str, watchers:Arc<Watchers>, sender:Sender<String>, 
             Some(senders) => {
                 for sender in senders {
                     println!("Sinding to another client");
-                    sender.send(value.clone());
+                    sender.send(format_args!("changed {} {}\n", key.to_string(), value.to_string()).to_string());
                 }
             }
              _ => {}
@@ -86,7 +86,6 @@ fn handle_client(stream: TcpStream, db: Arc<Database>, watchers:Arc<Watchers>) {
                 },
                 _ => process_message(&receiver, writer)
             }
-           
     }
 }
 
