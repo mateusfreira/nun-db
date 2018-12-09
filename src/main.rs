@@ -1,17 +1,15 @@
 extern crate futures;
 mod lib;
 
-use std::net::{TcpListener, TcpStream};
 use std::io::{BufReader, BufRead, BufWriter, Write};
+use std::net::{TcpListener, TcpStream};
 
-use futures::Future;
-
+use std::thread;
 
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver};
-
-use std::thread;
 use std::sync::{Arc, Mutex};
+
 use std::collections::HashMap;
 
 use lib::{*};
@@ -92,7 +90,7 @@ fn handle_client(stream: TcpStream, db: Arc<Database>, watchers:Arc<Watchers>) {
     }
 }
 
-fn main() -> Result<(), String>{
+fn main() -> Result<(), String> {
     let mut initial_db = HashMap::new();
     initial_db.insert("foo".to_string(), "bar".to_string());
     let mut initial_watchers = HashMap::new();

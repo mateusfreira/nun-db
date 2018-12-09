@@ -74,3 +74,91 @@ impl Request {
         parsed_command
      }
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn should_parse_get() -> Result<(), String> {
+		match Request::parse("get foo") {
+            Ok(Request::Get{ key }) => {
+                if(key == "foo") {
+			        Ok(())
+                } else {
+                    Err(String::from("the key should be foo"))
+                }
+            },
+            _ => {
+                Err(String::from("get foo sould be parsed to Get command"))
+            }
+        } 
+    }
+
+    #[test]
+    fn should_parse_get_ending_with_end_line() -> Result<(), String> {
+		match Request::parse("get foo\n") {
+            Ok(Request::Get{ key }) => {
+                if(key == "foo") {
+			        Ok(())
+                } else {
+                    Err(String::from("the key should be foo"))
+                }
+            },
+            _ => {
+                Err(String::from("get foo sould be parsed to Get command"))
+            }
+        } 
+    }
+
+
+
+    #[test]
+    fn should_parse_set_ending_with_end_line() -> Result<(), String> {
+		match Request::parse("set foo 1\n") {
+            Ok(Request::Set{ key, value}) => {
+                if(key == "foo" && value == "1") {
+			        Ok(())
+                } else {
+                    Err(String::from("the key should be foo and the value should be 1"))
+                }
+            },
+            _ => {
+                Err(String::from("get foo sould be parsed to Set command"))
+            }
+        } 
+    }
+ 
+    #[test]
+    fn should_parse_watch_ending_with_end_line() -> Result<(), String> {
+		match Request::parse("watch foo\n") {
+            Ok(Request::Watch{ key }) => {
+                if(key == "foo") {
+			        Ok(())
+                } else {
+                    Err(String::from("the key should be foo"))
+                }
+            },
+            _ => {
+                Err(String::from("get foo sould be parsed to watch command"))
+            }
+        } 
+    }
+
+    #[test]
+    fn should_return_error_if_no_command_is_send() -> Result<(), String> {
+		match Request::parse("a\n") {
+            Err(msg) => {
+                if( msg == "unknown command: a\n") {
+                    Ok(())
+                } else {
+                    Err(String::from("message it wrong"))
+                }
+            },
+            _ => {
+                Err(String::from("get foo sould be parsed to watch command"))
+            }
+        } 
+    }
+}
