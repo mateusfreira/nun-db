@@ -1,5 +1,11 @@
 extern crate futures;
+extern crate ws;
+extern crate env_logger;
+
+
 mod lib;
+
+use ws::{listen, CloseCode, Handler, Message};
 
 use std::io::{BufReader, BufRead, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
@@ -80,7 +86,6 @@ fn handle_client(stream: TcpStream, db: Arc<Database>, watchers:Arc<Watchers>) {
             stream.set_nonblocking(true).unwrap();
             match read_line {
                 Ok(_) => {
-                    let mut command  = buf.splitn(3, " ");
                     process_request(&buf, watchers.clone(), sender.clone(), db.clone());
                     println!("Command print: {}", buf);
                 },
@@ -88,20 +93,7 @@ fn handle_client(stream: TcpStream, db: Arc<Database>, watchers:Arc<Watchers>) {
             }
     }
 }
-
-fn main() -> Result<(), String> {
-    let mut initial_db = HashMap::new();
-    initial_db.insert("foo".to_string(), "bar".to_string());
-    let mut initial_watchers = HashMap::new();
-
-    let db = Arc::new(Database {
-        map: Mutex::new(initial_db),
-    });
-
-    let watchers = Arc::new(Watchers {
-        map: Mutex::new(initial_watchers),
-    });
-    
+fn start_tcp_client( watchers:Arc<Watchers>, db: Arc<Database>) {
     match TcpListener::bind("127.0.0.1:9001") {
         Ok(listener) => {
             for stream in listener.incoming() {
@@ -121,5 +113,72 @@ fn main() -> Result<(), String> {
             println!("Bind error");
         }
     };
+}
+// Server WebSocket handler
+    struct Server {
+        out: ws::Sender,
+        sender:Sender<String>,
+        watchers:Arc<Watchers>, 
+        db: Arc<Database>,
+    }
+
+    impl Handler for Server {
+        fn on_open(&mut self, _: ws::Handshake) -> ws::Result<()> {
+            let (sender, receiver): (Sender<String>, Receiver<String>) = channel();
+            self.sender = sender;
+            let sender = self.out.clone();
+            thread::spawn(move ||{
+                loop {
+                    match receiver.try_recv() {
+                        Ok(message) => {
+                            sender.send(message).unwrap();
+                        },
+                        _ => ()
+                    }
+                }
+            });
+            Ok(())
+        }
+        fn on_message(&mut self, msg: Message) -> ws::Result<()> {
+            println!("Server got message '{}'. ", msg);
+            //self.out.send(msg)';
+            let message = msg.as_text().unwrap();
+            process_request(&message, self.watchers.clone(), self.sender.clone(), self.db.clone());
+            println!("Server got message 1 '{}'. ", message);
+            Ok(()) 
+        }
+
+        fn on_close(&mut self, code: CloseCode, reason: &str) {
+            println!("WebSocket closing for ({:?}) {}", code, reason);
+            println!("Shutting down server after first connection closes.");
+            self.out.shutdown().unwrap();
+        }
+    }
+
+fn start_web_socket_client(watchers:Arc<Watchers>, db: Arc<Database>)  {
+   let (sender, _): (Sender<String>, Receiver<String>) = channel();
+   let server = thread::spawn(move || listen("127.0.0.1:3012", |out| Server { out, db: db.clone(), watchers: watchers.clone(), sender: sender.clone()}).unwrap());
+   let _ = server.join();
+}
+
+fn main() -> Result<(), String> {
+    env_logger::init();
+    let mut initial_db = HashMap::new();
+    initial_db.insert("foo".to_string(), "bar".to_string());
+    let initial_watchers = HashMap::new();
+
+    let db = Arc::new(Database {
+        map: Mutex::new(initial_db),
+    });
+
+    let watchers = Arc::new(Watchers {
+        map: Mutex::new(initial_watchers),
+    });
+    let  watchers_socket = watchers.clone();
+    let  db_socket = db.clone();
+    thread::spawn(|| {
+        start_web_socket_client(watchers_socket, db_socket)
+    });
+    start_tcp_client(watchers.clone(), db.clone());
     Ok(())
 }
