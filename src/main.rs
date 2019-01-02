@@ -157,7 +157,9 @@ fn start_tcp_client( watchers:Arc<Watchers>, db: Arc<Database>) {
 
 fn start_web_socket_client(watchers:Arc<Watchers>, db: Arc<Database>)  {
    let (sender, _): (Sender<String>, Receiver<String>) = channel();
-   let server = thread::spawn(move || listen("127.0.0.1:3012", |out| Server { out, db: db.clone(), watchers: watchers.clone(), sender: sender.clone()}).unwrap());
+   let server = thread::spawn(move || listen("0.0.0.0:3012", |out| Server { out, db: db.clone(), watchers: watchers.clone(), sender: sender.clone()}).unwrap());
+
+    println!("WebSocket started ");
    let _ = server.join();
 }
 
