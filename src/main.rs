@@ -11,6 +11,7 @@ use std::io::{BufReader, BufRead, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 
 use std::thread;
+use std::time;
 
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver};
@@ -71,7 +72,7 @@ fn process_message(receiver: & Receiver<String>, writer: &mut BufWriter<& TcpStr
             writer.write_fmt(format_args!("{}", message)).unwrap();
             writer.flush();
         },
-        _ => ()
+        _ => thread::sleep(time::Duration::from_millis(10))
     }
 }
 
@@ -133,7 +134,7 @@ fn start_tcp_client( watchers:Arc<Watchers>, db: Arc<Database>) {
                         Ok(message) => {
                             sender.send(message).unwrap();
                         },
-                        _ => ()
+                        _ => thread::sleep(time::Duration::from_millis(10))
                     }
                 }
             });
@@ -150,8 +151,8 @@ fn start_tcp_client( watchers:Arc<Watchers>, db: Arc<Database>) {
 
         fn on_close(&mut self, code: CloseCode, reason: &str) {
             println!("WebSocket closing for ({:?}) {}", code, reason);
-            println!("Shutting down server after first connection closes.");
-            self.out.shutdown().unwrap();
+            //println!("Shutting down server after first connection closes.");
+            //self.out.shutdown().unwrap();
         }
     }
 
@@ -178,7 +179,7 @@ fn main() -> Result<(), String> {
     });
     let  watchers_socket = watchers.clone();
     let  db_socket = db.clone();
-    thread::spawn(|| {
+    let wsThread = thread::spawn(|| {
         start_web_socket_client(watchers_socket, db_socket)
     });
     start_tcp_client(watchers.clone(), db.clone());
