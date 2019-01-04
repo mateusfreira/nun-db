@@ -72,7 +72,7 @@ fn process_message(receiver: & Receiver<String>, writer: &mut BufWriter<& TcpStr
             writer.write_fmt(format_args!("{}", message)).unwrap();
             writer.flush();
         },
-        _ => thread::sleep(time::Duration::from_millis(10))
+        _ => thread::sleep(time::Duration::from_millis(2))
     }
 }
 
@@ -134,7 +134,7 @@ fn start_tcp_client( watchers:Arc<Watchers>, db: Arc<Database>) {
                         Ok(message) => {
                             sender.send(message).unwrap();
                         },
-                        _ => thread::sleep(time::Duration::from_millis(10))
+                        _ => thread::sleep(time::Duration::from_millis(2))
                     }
                 }
             });
