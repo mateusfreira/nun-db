@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 use lib::{*};
+const TO_CLOSE:&'static str = "##CLOSE##";
 
 fn process_request (input: &str, watchers:Arc<Watchers>, sender:Sender<String>, db:Arc<Database>) -> Response {
     let request = match Request::parse(input){
@@ -128,11 +129,18 @@ fn start_tcp_client( watchers:Arc<Watchers>, db: Arc<Database>) {
             let (sender, receiver): (Sender<String>, Receiver<String>) = channel();
             self.sender = sender;
             let sender = self.out.clone();
-            thread::spawn(move ||{
+            let readTread = thread::spawn(move ||{
                 loop {
                     match receiver.try_recv() {
                         Ok(message) => {
-                            sender.send(message).unwrap();
+                            match message.as_ref() {
+                                TO_CLOSE => {
+                                    break;
+                                }
+                                _ => {
+                                    sender.send(message).unwrap();
+                                }
+                            }
                         },
                         _ => thread::sleep(time::Duration::from_millis(2))
                     }
@@ -151,14 +159,24 @@ fn start_tcp_client( watchers:Arc<Watchers>, db: Arc<Database>) {
 
         fn on_close(&mut self, code: CloseCode, reason: &str) {
             println!("WebSocket closing for ({:?}) {}", code, reason);
+            self.sender.send(TO_CLOSE.to_string()).unwrap();//Closes the read thread
             //println!("Shutting down server after first connection closes.");
             //self.out.shutdown().unwrap();
         }
     }
 
 fn start_web_socket_client(watchers:Arc<Watchers>, db: Arc<Database>)  {
-   let (sender, _): (Sender<String>, Receiver<String>) = channel();
-   let server = thread::spawn(move || listen("0.0.0.0:3012", |out| Server { out, db: db.clone(), watchers: watchers.clone(), sender: sender.clone()}).unwrap());
+   let server = thread::spawn(move ||{ 
+                                let (sender, _): (Sender<String>, Receiver<String>) = channel();
+                                ws::Builder::new()
+                                .with_settings(ws::Settings {
+                                    max_connections: 10000,
+                                    ..ws::Settings::default()
+                                })
+                                .build(move |out| Server { out, db: db.clone(), watchers: watchers.clone(), sender: sender.clone()})
+                                .unwrap()
+                                .listen("0.0.0.0:3012", ).unwrap()
+                            });
 
     println!("WebSocket started ");
    let _ = server.join();

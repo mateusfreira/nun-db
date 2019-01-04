@@ -1,2 +1,2 @@
-- [ ] Add websocket interface
-
+ -[ ] Persitence as Change log + Snap shot
+ -[ ] Read https://www.microsoft.com/en-us/research/uploads/prod/2018/03/faster-sigmod18.pdf
