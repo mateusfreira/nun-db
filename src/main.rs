@@ -131,10 +131,11 @@ fn start_tcp_client( watchers:Arc<Watchers>, db: Arc<Database>) {
             let sender = self.out.clone();
             let readTread = thread::spawn(move ||{
                 loop {
-                    match receiver.try_recv() {
+                    match receiver.recv() {
                         Ok(message) => {
                             match message.as_ref() {
                                 TO_CLOSE => {
+                                    println!("Closing server connection");
                                     break;
                                 }
                                 _ => {
@@ -150,7 +151,6 @@ fn start_tcp_client( watchers:Arc<Watchers>, db: Arc<Database>) {
         }
         fn on_message(&mut self, msg: Message) -> ws::Result<()> {
             println!("Server got message '{}'. ", msg);
-            //self.out.send(msg)';
             let message = msg.as_text().unwrap();
             process_request(&message, self.watchers.clone(), self.sender.clone(), self.db.clone());
             println!("Server got message 1 '{}'. ", message);
