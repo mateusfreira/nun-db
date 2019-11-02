@@ -34,19 +34,22 @@ const TO_CLOSE: &'static str = "##CLOSE##";
 const FILE_NAME: &'static str = "freiardb.data";
 const SNAPSHOT_TIME: i64 = 30000;
 
-fn store_data_to_disck(db: Arc<Database>) {
+// send the given database to the disc
+fn storage_data_disk(db: Arc<Database>) {
     let db = db.map.lock().unwrap();
     let mut file = File::create(FILE_NAME).unwrap();
     bincode::serialize_into(&mut file, &db.clone()).unwrap();
 }
 
+
+// calls storage_data_disk each $SNAPSHOT_TIME seconds
 fn start_snap_shot_timer(timer: timer::Timer, db: Arc<Database>) {
     println!("Will start_snap_shot_timer");
     let (_tx, rx): (Sender<String>, Receiver<String>) = channel();
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
             println!("Will snapshot the database");
-            store_data_to_disck(db.clone());
+            storage_data_disk(db.clone());
         })
     };
     rx.recv().unwrap(); // Thread will run for ever

@@ -131,7 +131,7 @@ mod tests {
                     Err(String::from("the key should be foo"))
                 }
             }
-            _ => Err(String::from("get foo sould be parsed to Get command")),
+            _ => Err(String::from("get foo should be parsed to Get command")),
         }
     }
 
@@ -147,7 +147,7 @@ mod tests {
                     ))
                 }
             }
-            _ => Err(String::from("get foo sould be parsed to Set command")),
+            _ => Err(String::from("get foo should be parsed to Set command")),
         }
     }
 
@@ -161,7 +161,7 @@ mod tests {
                     Err(String::from("the key should be foo"))
                 }
             }
-            _ => Err(String::from("get foo sould be parsed to watch command")),
+            _ => Err(String::from("get foo should be parsed to watch command")),
         }
     }
 
@@ -175,7 +175,7 @@ mod tests {
                     Err(String::from("message it wrong"))
                 }
             }
-            _ => Err(String::from("get foo sould be parsed to watch command")),
+            _ => Err(String::from("get foo should be parsed to watch command")),
         }
     }
 }
