@@ -1,5 +1,5 @@
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
+use std::sync::{Mutex};
 
 use std::collections::HashMap;
 
@@ -23,10 +23,6 @@ pub enum Response {
     Ok {},
     Set { key: String, value: String },
     Error { msg: String },
-}
-
-pub struct SenderBox {
-    pub sender: Mutex<Sender<String>>,
 }
 
 impl Request {

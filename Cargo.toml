@@ -3,10 +3,14 @@
 name = "freira-db"
 version = "0.0.1"
 authors = [ "Mateus Freira <mateus.freira@gmail.com>" ]
-cargo-features = ["rename-dependency"]
 
 [dependencies]
 tokio = "0.1.13"
 futures = "0.1.25"
 ws = "*"
 env_logger = "*"
+rustc-serialize = "*"
+bincode = "*"
+serde = "*"
+timer = "*"
+chrono = "*"
