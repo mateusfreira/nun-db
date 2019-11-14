@@ -98,7 +98,7 @@ mod tests {
     fn should_parse_auth() -> Result<(), String> {
         match Request::parse("auth foo bar") {
             Ok(Request::Auth { user, password }) => {
-                if (user == "foo" && password == "bar") {
+                if user == "foo" && password == "bar" {
                     Ok(())
                 } else {
                     Err(String::from("user should be foo and password bar"))
@@ -111,7 +111,7 @@ mod tests {
     fn should_parse_get() -> Result<(), String> {
         match Request::parse("get foo") {
             Ok(Request::Get { key }) => {
-                if (key == "foo") {
+                if key == "foo" {
                     Ok(())
                 } else {
                     Err(String::from("the key should be foo"))
@@ -125,7 +125,7 @@ mod tests {
     fn should_parse_get_ending_with_end_line() -> Result<(), String> {
         match Request::parse("get foo\n") {
             Ok(Request::Get { key }) => {
-                if (key == "foo") {
+                if key == "foo" {
                     Ok(())
                 } else {
                     Err(String::from("the key should be foo"))
@@ -139,7 +139,7 @@ mod tests {
     fn should_parse_set_ending_with_end_line() -> Result<(), String> {
         match Request::parse("set foo 1\n") {
             Ok(Request::Set { key, value }) => {
-                if (key == "foo" && value == "1") {
+                if key == "foo" && value == "1" {
                     Ok(())
                 } else {
                     Err(String::from(
@@ -155,7 +155,7 @@ mod tests {
     fn should_parse_watch_ending_with_end_line() -> Result<(), String> {
         match Request::parse("watch foo\n") {
             Ok(Request::Watch { key }) => {
-                if (key == "foo") {
+                if key == "foo" {
                     Ok(())
                 } else {
                     Err(String::from("the key should be foo"))
@@ -169,7 +169,7 @@ mod tests {
     fn should_return_error_if_no_command_is_send() -> Result<(), String> {
         match Request::parse("a\n") {
             Err(msg) => {
-                if (msg == "unknown command: a\n") {
+                if msg == "unknown command: a\n" {
                     Ok(())
                 } else {
                     Err(String::from("message it wrong"))
