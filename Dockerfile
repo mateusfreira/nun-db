@@ -1,6 +1,6 @@
 FROM rust:1.38.0
 
-WORKDIR /usr/src/friar-db
+WORKDIR /usr/src/freira-db
 COPY ./ .
 
 RUN cargo install
