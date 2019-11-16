@@ -31,7 +31,7 @@ use std::collections::HashMap;
 use lib::*;
 
 const TO_CLOSE: &'static str = "##CLOSE##";
-const FILE_NAME: &'static str = "freiardb.data";
+const FILE_NAME: &'static str = "freira-db.data";
 const SNAPSHOT_TIME: i64 = 30000;
 
 // send the given database to the disc
