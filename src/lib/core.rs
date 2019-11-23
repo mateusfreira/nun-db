@@ -1,8 +1,8 @@
-use std::mem;
 use std::env;
-use std::sync::mpsc::Sender;
+use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc};
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 use bo::*;
 use db_ops::*;

@@ -1,15 +1,15 @@
+use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::Arc;
 use std::thread;
 use std::time;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::{ Sender, Receiver };
-use std::sync::atomic::{AtomicBool};
-use std::sync::{Arc};
-use std::net::{TcpListener, TcpStream};
-use std::io::{BufRead, BufReader, BufWriter, Write};
 
 use bo::*;
-use db_ops::*;
 use core::*;
+use db_ops::*;
 
 pub fn start_tcp_client(watchers: Arc<Watchers>, dbs: Arc<Databases>) {
     match TcpListener::bind("127.0.0.1:9001") {
@@ -44,18 +44,27 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>, watchers: Arc<Watchers>
         match read_line {
             Ok(_) => {
                 println!("Command print: {}", buf);
-                match process_request(
-                    &buf,
-                    watchers.clone(),
-                    sender.clone(),
-                    db.clone(),
-                    dbs.clone(),
-                    auth.clone(),
-                ) {
-                    Response::Error { msg } => {
-                        println!("Error: {}", msg);
-                    },
-                    _ => println!("Success processed")
+                println!("Command Size: {}", buf.len());
+                match buf.as_ref() {
+                    "" => {
+                        println!("killing scket client, because of disconection");
+                        break;
+                    }
+                    _ => {
+                        match process_request(
+                            &buf,
+                            watchers.clone(),
+                            sender.clone(),
+                            db.clone(),
+                            dbs.clone(),
+                            auth.clone(),
+                        ) {
+                            Response::Error { msg } => {
+                                println!("Error: {}", msg);
+                            }
+                            _ => println!("Success processed"),
+                        }
+                    }
                 }
             }
             _ => process_message(&receiver, writer),

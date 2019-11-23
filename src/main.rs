@@ -9,19 +9,18 @@ extern crate ws;
 
 mod lib;
 
-use std::path::Path;
 use std::fs::File;
+use std::path::Path;
 
-
-use std::thread;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
+use std::thread;
 
 use std::collections::HashMap;
 
-use lib::*;
 use lib::bo::*;
+use lib::*;
 
 const FILE_NAME: &'static str = "freira-db.data";
 const SNAPSHOT_TIME: i64 = 30000;
@@ -46,8 +45,6 @@ fn start_snap_shot_timer(timer: timer::Timer, db: Arc<Database>) {
     rx.recv().unwrap(); // Thread will run for ever
 }
 
-
-
 fn main() -> Result<(), String> {
     env_logger::init();
     let timer = timer::Timer::new();
@@ -69,7 +66,8 @@ fn main() -> Result<(), String> {
     let watchers_socket = watchers.clone();
     let db_socket = dbs.clone();
     let db_snap = dbs.clone();
-    let _ws_thread = thread::spawn(|| lib::ws_ops::start_web_socket_client(watchers_socket, db_socket));
+    let _ws_thread =
+        thread::spawn(|| lib::ws_ops::start_web_socket_client(watchers_socket, db_socket));
     //let _snapshot_thread = thread::spawn(|| start_snap_shot_timer(timer, db_snap));
     lib::tcp_ops::start_tcp_client(watchers.clone(), dbs.clone());
     Ok(())

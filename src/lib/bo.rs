@@ -1,6 +1,6 @@
 use std::sync::mpsc::Sender;
+use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::{Arc};
 
 use std::collections::HashMap;
 
@@ -36,4 +36,3 @@ pub enum Response {
     Set { key: String, value: String },
     Error { msg: String },
 }
-

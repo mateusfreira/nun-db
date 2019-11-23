@@ -1,7 +1,7 @@
-use std::sync::mpsc::Sender;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
 use bo::*;
 
@@ -47,7 +47,12 @@ pub fn get_key_value(key: String, sender: Sender<String>, db: &Database) -> Resp
     }
 }
 
-pub fn set_key_value(key: String, value: String, watchers: Arc<Watchers>, db: &Database) -> Response {
+pub fn set_key_value(
+    key: String,
+    value: String,
+    watchers: Arc<Watchers>,
+    db: &Database,
+) -> Response {
     let mut db = db.map.lock().unwrap();
     db.insert(key.clone().to_string(), value.clone().to_string());
     match watchers.map.lock().unwrap().get(&key) {

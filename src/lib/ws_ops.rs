@@ -1,14 +1,14 @@
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::channel;
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::Arc;
 use std::thread;
-use std::sync::mpsc::{ Sender, Receiver };
-use std::sync::{Arc};
-use ws::{CloseCode, Handler, Message};
-use std::sync::atomic::{AtomicBool};
 use std::time;
+use ws::{CloseCode, Handler, Message};
 
 use bo::*;
-use db_ops::*;
 use core::*;
+use db_ops::*;
 
 const TO_CLOSE: &'static str = "##CLOSE##";
 
@@ -89,4 +89,3 @@ pub fn start_web_socket_client(watchers: Arc<Watchers>, dbs: Arc<Databases>) {
     println!("WebSocket started ");
     let _ = server.join();
 }
-
