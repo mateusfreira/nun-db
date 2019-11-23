@@ -1,6 +1,7 @@
 pub mod bo;
 pub mod core;
 pub mod db_ops;
+pub mod disk_ops;
 pub mod tcp_ops;
 pub mod ws_ops;
 

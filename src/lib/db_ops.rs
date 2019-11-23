@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use bo::*;
+use disk_ops::*;
 
 pub fn apply_to_database(
     dbs: Arc<Databases>,
@@ -76,12 +79,21 @@ pub fn set_key_value(
 }
 
 pub fn create_temp_db(name: String) -> Arc<Database> {
-    let initial_db = HashMap::new();
-    let tmpdb = Arc::new(Database {
-        map: Mutex::new(initial_db),
+    let mut initial_db = HashMap::new();
+    let db_file_name = file_name_from_db_name(name.clone());
+    if Path::new(&db_file_name).exists() {
+        // May I should move this out of here
+        let mut file = File::open(db_file_name).unwrap();
+        initial_db = bincode::deserialize_from(&mut file).unwrap();
+    }
+    return Arc::new(create_db_from_hash(name, initial_db));
+}
+
+pub fn create_db_from_hash(name: String, data: HashMap<String, String>) -> Database {
+    return Database {
+        map: Mutex::new(data),
         name: Mutex::new(name),
-    });
-    return tmpdb;
+    };
 }
 
 pub fn create_temp_selected_db(name: String) -> Arc<SelectedDatabase> {

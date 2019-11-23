@@ -1,5 +1,5 @@
 use std::sync::mpsc::Sender;
-use std::sync::Arc;
+
 use std::sync::Mutex;
 
 use std::collections::HashMap;

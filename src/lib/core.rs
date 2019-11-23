@@ -66,7 +66,7 @@ pub fn process_request(
                 set_key_value(key.clone(), value.clone(), watchers.clone(), _db)
             })
         }),
-        Request::UseDb { name, token } => apply_if_auth(auth, &|| {
+        Request::UseDb { name, token: _ } => apply_if_auth(auth, &|| {
             let mut db_name_state = db.name.lock().expect("Could not lock name mutex");
             let dbs = dbs.map.lock().unwrap();
             let respose: Response = match dbs.get(&name.to_string()) {
@@ -84,7 +84,7 @@ pub fn process_request(
             respose
         }),
 
-        Request::CreateDb { name, token } => apply_if_auth(auth, &|| {
+        Request::CreateDb { name, token: _ } => apply_if_auth(auth, &|| {
             let mut dbs = dbs.map.lock().unwrap();
             let empty_db_box = create_temp_db(name.clone());
             let empty_db = Arc::try_unwrap(empty_db_box);
