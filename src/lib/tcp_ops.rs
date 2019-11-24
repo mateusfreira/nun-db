@@ -11,15 +11,14 @@ use bo::*;
 use core::*;
 use db_ops::*;
 
-pub fn start_tcp_client(watchers: Arc<Watchers>, dbs: Arc<Databases>) {
+pub fn start_tcp_client(dbs: Arc<Databases>) {
     match TcpListener::bind("127.0.0.1:9001") {
         Ok(listener) => {
             for stream in listener.incoming() {
                 let dbs = dbs.clone();
-                let watchers = watchers.clone();
                 thread::spawn(move || match stream {
                     Ok(socket) => {
-                        handle_client(socket, dbs, watchers);
+                        handle_client(socket, dbs);
                     }
                     _ => (),
                 });
@@ -31,7 +30,7 @@ pub fn start_tcp_client(watchers: Arc<Watchers>, dbs: Arc<Databases>) {
     };
 }
 
-fn handle_client(stream: TcpStream, dbs: Arc<Databases>, watchers: Arc<Watchers>) {
+fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
     let mut reader = BufReader::new(&stream);
     let writer = &mut BufWriter::new(&stream);
     let (sender, receiver): (Sender<String>, Receiver<String>) = channel();
@@ -50,21 +49,12 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>, watchers: Arc<Watchers>
                         println!("killing scket client, because of disconection");
                         break;
                     }
-                    _ => {
-                        match process_request(
-                            &buf,
-                            &watchers,
-                            &sender,
-                            &db,
-                            &dbs,
-                            &auth,
-                        ) {
-                            Response::Error { msg } => {
-                                println!("Error: {}", msg);
-                            }
-                            _ => println!("Success processed"),
+                    _ => match process_request(&buf, &sender, &db, &dbs, &auth) {
+                        Response::Error { msg } => {
+                            println!("Error: {}", msg);
                         }
-                    }
+                        _ => println!("Success processed"),
+                    },
                 }
             }
             _ => process_message(&receiver, writer),

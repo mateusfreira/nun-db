@@ -11,6 +11,7 @@ pub struct SelectedDatabase {
 pub struct Database {
     pub map: Mutex<HashMap<String, String>>,
     pub name: Mutex<String>,
+    pub watchers: Watchers,
 }
 
 pub struct Databases {

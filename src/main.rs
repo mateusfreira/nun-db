@@ -9,34 +9,19 @@ extern crate ws;
 
 mod lib;
 
-use std::sync::{Arc, Mutex};
 use std::thread;
-
-use std::collections::HashMap;
-
-use lib::bo::*;
 use lib::*;
 
 fn main() -> Result<(), String> {
     env_logger::init();
-    let timer = timer::Timer::new();
-    let initial_dbs = HashMap::new();
-
-    let initial_watchers = HashMap::new();
-
-    let dbs = Arc::new(Databases {
-        map: Mutex::new(initial_dbs),
-    });
-
-    let watchers = Arc::new(Watchers {
-        map: Mutex::new(initial_watchers),
-    });
-    let watchers_socket = watchers.clone();
+    let dbs = lib::db_ops::create_init_dbs();
     let db_socket = dbs.clone();
     let db_snap = dbs.clone();
-    let _ws_thread =
-        thread::spawn(|| lib::ws_ops::start_web_socket_client(watchers_socket, db_socket));
+    // Netwotk threds
+    let _ws_thread = thread::spawn(|| lib::ws_ops::start_web_socket_client(db_socket));
+    lib::tcp_ops::start_tcp_client(dbs.clone());
+    // Disck thread
+    let timer = timer::Timer::new();
     let _snapshot_thread = thread::spawn(|| lib::disk_ops::start_snap_shot_timer(timer, db_snap));
-    lib::tcp_ops::start_tcp_client(watchers.clone(), dbs.clone());
     Ok(())
 }

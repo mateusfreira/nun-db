@@ -9,7 +9,6 @@ use db_ops::*;
 
 pub fn process_request(
     input: &str,
-    watchers: &Arc<Watchers>,
     sender: &Sender<String>,
     db: &Arc<SelectedDatabase>,
     dbs: &Arc<Databases>,
@@ -47,14 +46,16 @@ pub fn process_request(
             return Response::Ok {};
         }
         Request::Watch { key } => apply_if_auth(auth, &|| {
-            let mut watchers = watchers.map.lock().unwrap();
-            let mut senders: Vec<Sender<String>> = match watchers.get(&key) {
-                Some(watchers_vec) => watchers_vec.clone(),
-                _ => Vec::new(),
-            };
-            senders.push(sender.clone());
-            watchers.insert(key.clone(), senders);
-            Response::Ok {}
+            apply_to_database(&dbs, &db, &sender, &|_db| {
+                let mut watchers = _db.watchers.map.lock().unwrap();
+                let mut senders: Vec<Sender<String>> = match watchers.get(&key) {
+                    Some(watchers_vec) => watchers_vec.clone(),
+                    _ => Vec::new(),
+                };
+                senders.push(sender.clone());
+                watchers.insert(key.clone(), senders);
+                Response::Ok {}
+            })
         }),
         Request::Get { key } => apply_if_auth(auth, &|| {
             apply_to_database(&dbs, &db, &sender, &|_db| {
@@ -63,7 +64,7 @@ pub fn process_request(
         }),
         Request::Set { key, value } => apply_if_auth(auth, &|| {
             apply_to_database(&dbs, &db, &sender, &|_db| {
-                set_key_value(key.clone(), value.clone(), &watchers, _db)
+                set_key_value(key.clone(), value.clone(), _db)
             })
         }),
         Request::UseDb { name, token: _ } => apply_if_auth(&auth, &|| {
