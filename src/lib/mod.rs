@@ -1,29 +1,11 @@
-use std::sync::mpsc::Sender;
-use std::sync::{Mutex};
+pub mod bo;
+pub mod core;
+pub mod db_ops;
+pub mod disk_ops;
+pub mod tcp_ops;
+pub mod ws_ops;
 
-use std::collections::HashMap;
-
-pub struct Database {
-    pub map: Mutex<HashMap<String, String>>,
-}
-
-pub struct Watchers {
-    pub map: Mutex<HashMap<String, Vec<Sender<String>>>>,
-}
-
-pub enum Request {
-    Get { key: String },
-    Set { key: String, value: String },
-    Watch { key: String },
-    Auth { user: String, password: String },
-}
-
-pub enum Response {
-    Value { key: String, value: String },
-    Ok {},
-    Set { key: String, value: String },
-    Error { msg: String },
-}
+use bo::*;
 
 impl Request {
     pub fn parse(input: &str) -> Result<Request, String> {
@@ -80,7 +62,48 @@ impl Request {
                 };
                 Ok(Request::Auth {
                     user: user.to_string(),
-                    password: pwd.to_string(),
+                    password: pwd.to_string().replace("\n", ""),
+                })
+            }
+            Some("use-db") => {
+                let name = match command.next() {
+                    Some(key) => key,
+                    None => {
+                        println!("UseDb needs to provide an db name");
+                        ""
+                    }
+                };
+                let token = match command.next() {
+                    Some(key) => key.to_string(),
+                    None => {
+                        println!("UseDb needs and token");
+                        "".to_string()
+                    }
+                };
+                Ok(Request::UseDb {
+                    name: name.to_string(),
+                    token: token.to_string(),
+                })
+            }
+            Some("create-db") => {
+                let name = match command.next() {
+                    Some(key) => key,
+                    None => {
+                        println!("CreateDb needs to provide an db name");
+                        ""
+                    }
+                };
+                let token = match command.next() {
+                    Some(key) => key.to_string(),
+                    None => {
+                        println!("CreateDb needs and token");
+                        "".to_string()
+                    }
+                };
+
+                Ok(Request::CreateDb {
+                    name: name.to_string(),
+                    token: token.to_string(),
                 })
             }
             Some(cmd) => Err(format!("unknown command: {}", cmd)),
@@ -93,6 +116,34 @@ impl Request {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn should_parse_use_db() -> Result<(), String> {
+        match Request::parse("use-db foo some-key") {
+            Ok(Request::UseDb { token, name }) => {
+                if name == "foo" && token == "some-key" {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from("get foo sould be parsed to Get command")),
+        }
+    }
+
+    #[test]
+    fn should_parse_create_db() -> Result<(), String> {
+        match Request::parse("create-db foo some-key") {
+            Ok(Request::CreateDb { token, name }) => {
+                if name == "foo" && token == "some-key" {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from("get foo sould be parsed to Get command")),
+        }
+    }
 
     #[test]
     fn should_parse_auth() -> Result<(), String> {
