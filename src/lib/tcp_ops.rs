@@ -53,11 +53,11 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>, watchers: Arc<Watchers>
                     _ => {
                         match process_request(
                             &buf,
-                            watchers.clone(),
-                            sender.clone(),
-                            db.clone(),
-                            dbs.clone(),
-                            auth.clone(),
+                            &watchers,
+                            &sender,
+                            &db,
+                            &dbs,
+                            &auth,
                         ) {
                             Response::Error { msg } => {
                                 println!("Error: {}", msg);

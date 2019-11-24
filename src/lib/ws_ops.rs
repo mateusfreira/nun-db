@@ -50,11 +50,11 @@ impl Handler for Server {
         println!("Server got message 1 '{}'. ", message);
         process_request(
             &message,
-            self.watchers.clone(),
-            self.sender.clone(),
-            self.db.clone(),
-            self.dbs.clone(),
-            self.auth.clone(),
+            &self.watchers,
+            &self.sender,
+            &self.db,
+            &self.dbs,
+            &self.auth,
         );
         Ok(())
     }

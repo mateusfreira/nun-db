@@ -9,22 +9,26 @@ use bo::*;
 use disk_ops::*;
 
 pub fn apply_to_database(
-    dbs: Arc<Databases>,
-    selected_db: Arc<SelectedDatabase>,
+    dbs: &Arc<Databases>,
+    selected_db: &Arc<SelectedDatabase>,
+    sender: &Sender<String>,
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
     let db_name = selected_db.name.lock().unwrap();
     let dbs = dbs.map.lock().unwrap();
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => opp(db),
-        None => Response::Error {
+        None => {
+         sender.send(String::from("error no-db-selected\n")).unwrap();
+         return    Response::Error {
             msg: "No database found!".to_string(),
+            }
         },
     };
     return result;
 }
 
-pub fn apply_if_auth(auth: Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Response {
+pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Response {
     if auth.load(Ordering::SeqCst) {
         opp()
     } else {
@@ -34,7 +38,7 @@ pub fn apply_if_auth(auth: Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Respo
     }
 }
 
-pub fn get_key_value(key: String, sender: Sender<String>, db: &Database) -> Response {
+pub fn get_key_value(key: String, sender: &Sender<String>, db: &Database) -> Response {
     let db = db.map.lock().unwrap();
     let value = match db.get(&key.to_string()) {
         Some(value) => value,
@@ -53,11 +57,11 @@ pub fn get_key_value(key: String, sender: Sender<String>, db: &Database) -> Resp
 pub fn set_key_value(
     key: String,
     value: String,
-    watchers: Arc<Watchers>,
+    watchers: &Arc<Watchers>,
     db: &Database,
 ) -> Response {
     let mut db = db.map.lock().unwrap();
-    db.insert(key.clone().to_string(), value.clone().to_string());
+    db.insert(key.clone(), value.clone());
     match watchers.map.lock().unwrap().get(&key) {
         Some(senders) => {
             for sender in senders {
