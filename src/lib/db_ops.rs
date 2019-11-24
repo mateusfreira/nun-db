@@ -19,11 +19,11 @@ pub fn apply_to_database(
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => opp(db),
         None => {
-         sender.send(String::from("error no-db-selected\n")).unwrap();
-         return    Response::Error {
-            msg: "No database found!".to_string(),
-            }
-        },
+            sender.send(String::from("error no-db-selected\n")).unwrap();
+            return Response::Error {
+                msg: "No database found!".to_string(),
+            };
+        }
     };
     return result;
 }
@@ -54,15 +54,11 @@ pub fn get_key_value(key: String, sender: &Sender<String>, db: &Database) -> Res
     }
 }
 
-pub fn set_key_value(
-    key: String,
-    value: String,
-    watchers: &Arc<Watchers>,
-    db: &Database,
-) -> Response {
+pub fn set_key_value(key: String, value: String, db: &Database) -> Response {
+    let watchers = db.watchers.map.lock().unwrap();
     let mut db = db.map.lock().unwrap();
     db.insert(key.clone(), value.clone());
-    match watchers.map.lock().unwrap().get(&key) {
+    match watchers.get(&key) {
         Some(senders) => {
             for sender in senders {
                 println!("Sinding to another client");
@@ -97,6 +93,9 @@ pub fn create_db_from_hash(name: String, data: HashMap<String, String>) -> Datab
     return Database {
         map: Mutex::new(data),
         name: Mutex::new(name),
+        watchers: Watchers {
+            map: Mutex::new(HashMap::new()),
+        },
     };
 }
 
@@ -105,4 +104,11 @@ pub fn create_temp_selected_db(name: String) -> Arc<SelectedDatabase> {
         name: Mutex::new(name),
     });
     return tmpdb;
+}
+
+pub fn create_init_dbs() -> Arc<Databases> {
+    let initial_dbs = HashMap::new();
+    return Arc::new(Databases {
+        map: Mutex::new(initial_dbs),
+    });
 }

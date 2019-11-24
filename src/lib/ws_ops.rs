@@ -16,7 +16,6 @@ const TO_CLOSE: &'static str = "##CLOSE##";
 struct Server {
     out: ws::Sender,
     sender: Sender<String>,
-    watchers: Arc<Watchers>,
     dbs: Arc<Databases>,
     db: Arc<SelectedDatabase>,
     auth: Arc<AtomicBool>,
@@ -48,14 +47,7 @@ impl Handler for Server {
         println!("Server got message '{}'. ", msg);
         let message = msg.as_text().unwrap();
         println!("Server got message 1 '{}'. ", message);
-        process_request(
-            &message,
-            &self.watchers,
-            &self.sender,
-            &self.db,
-            &self.dbs,
-            &self.auth,
-        );
+        process_request(&message, &self.sender, &self.db, &self.dbs, &self.auth);
         Ok(())
     }
 
@@ -65,7 +57,7 @@ impl Handler for Server {
     }
 }
 
-pub fn start_web_socket_client(watchers: Arc<Watchers>, dbs: Arc<Databases>) {
+pub fn start_web_socket_client(dbs: Arc<Databases>) {
     let server = thread::spawn(move || {
         let (sender, _): (Sender<String>, Receiver<String>) = channel();
         ws::Builder::new()
@@ -77,7 +69,6 @@ pub fn start_web_socket_client(watchers: Arc<Watchers>, dbs: Arc<Databases>) {
                 out,
                 db: create_temp_selected_db("init".to_string()),
                 dbs: dbs.clone(),
-                watchers: watchers.clone(),
                 sender: sender.clone(),
                 auth: Arc::new(AtomicBool::new(false)),
             })
