@@ -99,7 +99,7 @@ pub fn process_request(
                 }
                 _ => {
                     println!("Could not create the database");
-                    match sender.send("create-db error\n".to_string()) {
+                    match sender.send("error create-db-error\n".to_string()) {
                         Ok(_n) => (),
                         Err(e) => println!("Request::Set sender.send Error: {}", e),
                     }

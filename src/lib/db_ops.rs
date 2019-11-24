@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Sender, Receiver, channel};
 use std::sync::{Arc, Mutex};
 
 use bo::*;
@@ -111,4 +111,23 @@ pub fn create_init_dbs() -> Arc<Databases> {
     return Arc::new(Databases {
         map: Mutex::new(initial_dbs),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn should_set_a_value()  {
+        let key = String::from("key");
+        let value = String::from("This is the value");
+        let hash = HashMap::new();
+        let db = create_db_from_hash(String::from("test"), hash);
+        set_key_value(key.clone(), value.clone(), &db); 
+
+        let (sender, receiver): (Sender<String>, Receiver<String>) = channel();
+
+        let _value_in_hash = get_key_value(key.clone(), &sender, &db);
+        let message = receiver.recv().unwrap();
+        assert_eq!(message.as_ref(), format_args!("value {}\n", value.to_string()).to_string());
+    }
 }
