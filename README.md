@@ -1,6 +1,6 @@
 # Freira DB 
 
-## Expirementation Repository (I do not recoment it for production YET)
+## Expirementation Repository (I do not recommend it for production YET)
 
 ## What is Freira DB
 
