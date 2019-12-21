@@ -3,7 +3,9 @@ use std::sync::mpsc::channel;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
+use thread_id;
 use std::time;
+use std::time::Instant;
 use ws::{CloseCode, Handler, Message};
 
 use bo::*;
@@ -44,10 +46,12 @@ impl Handler for Server {
     }
 
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
-        println!("Server got message '{}'. ", msg);
         let message = msg.as_text().unwrap();
-        println!("Server got message 1 '{}'. ", message);
+        println!("[{}] Server got message '{}'. ", thread_id::get(), message);
+        let start = Instant::now();
         process_request(&message, &self.sender, &self.db, &self.dbs, &self.auth);
+        let elapsed = start.elapsed();
+        println!("[{}] Server processed message '{}' in {:?}", thread_id::get(), message, elapsed);
         Ok(())
     }
 

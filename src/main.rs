@@ -6,6 +6,7 @@ extern crate rustc_serialize;
 extern crate serde;
 extern crate timer;
 extern crate ws;
+extern crate thread_id;
 
 mod lib;
 
@@ -18,12 +19,12 @@ fn main() -> Result<(), String> {
 
     let timer = timer::Timer::new();
     let db_snap = dbs.clone();
+    // Disck thread
     let _snapshot_thread = thread::spawn(|| lib::disk_ops::start_snap_shot_timer(timer, db_snap));
 
     let db_socket = dbs.clone();
     // Netwotk threds
     let _ws_thread = thread::spawn(|| lib::ws_ops::start_web_socket_client(db_socket));
     lib::tcp_ops::start_tcp_client(dbs.clone());
-    // Disck thread
     Ok(())
 }

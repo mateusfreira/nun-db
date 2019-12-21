@@ -40,7 +40,7 @@ pub fn process_request(
             };
             match sender.send(message) {
                 Ok(_n) => (),
-                Err(e) => println!("Request::Set sender.send Error: {}", e),
+                Err(e) => println!("Request::Auth sender.send Error: {}", e),
             }
 
             return Response::Ok {};
