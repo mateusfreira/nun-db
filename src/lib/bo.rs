@@ -1,4 +1,4 @@
-use std::sync::mpsc::Sender;
+use futures::channel::mpsc::Sender;
 
 use std::sync::Mutex;
 
@@ -26,6 +26,7 @@ pub enum Request {
     Get { key: String },
     Set { key: String, value: String },
     Watch { key: String },
+    UnWatch { key: String },
     Auth { user: String, password: String },
     CreateDb { token: String, name: String },
     UseDb { token: String, name: String },

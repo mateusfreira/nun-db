@@ -1,11 +1,10 @@
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::{Receiver, Sender};
+use futures::channel::mpsc::{Receiver, Sender, channel};
 use std::sync::Arc;
 use std::thread;
-use thread_id;
 use std::time;
 use std::time::Instant;
+use thread_id;
 use ws::{CloseCode, Handler, Message};
 
 use bo::*;
@@ -25,23 +24,32 @@ struct Server {
 
 impl Handler for Server {
     fn on_open(&mut self, _: ws::Handshake) -> ws::Result<()> {
-        let (sender, receiver): (Sender<String>, Receiver<String>) = channel();
+        let wsSender = self.out.clone();
+        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         self.sender = sender;
-        let sender = self.out.clone();
-        let _read_thread = thread::spawn(move || loop {
-            match receiver.recv() {
-                Ok(message) => match message.as_ref() {
-                    TO_CLOSE => {
-                        println!("Closing server connection");
-                        break;
+        let _read_thread = thread::spawn(move || { 
+
+            loop {
+            match receiver.try_next() {
+                Ok(message) => match message {
+                    Some(message) => {
+                        match message.as_ref() {
+                            TO_CLOSE => {
+                                println!("Closing server connection");
+                                break;
+                            }
+                            message => {
+                                wsSender.send(message).unwrap();
+                            }
+                        }
                     }
-                    _ => {
-                        sender.send(message).unwrap();
+                    None =>  {
+                        println!("ws_ops::_read_thread::");
                     }
                 },
                 _ => thread::sleep(time::Duration::from_millis(2)),
             }
-        });
+        }});
         Ok(())
     }
 
@@ -49,21 +57,26 @@ impl Handler for Server {
         let message = msg.as_text().unwrap();
         println!("[{}] Server got message '{}'. ", thread_id::get(), message);
         let start = Instant::now();
-        process_request(&message, &self.sender, &self.db, &self.dbs, &self.auth);
+        process_request(&message,&mut self.sender, &self.db, &self.dbs, &self.auth);
         let elapsed = start.elapsed();
-        println!("[{}] Server processed message '{}' in {:?}", thread_id::get(), message, elapsed);
+        println!(
+            "[{}] Server processed message '{}' in {:?}",
+            thread_id::get(),
+            message,
+            elapsed
+        );
         Ok(())
     }
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
         println!("WebSocket closing for ({:?}) {}", code, reason);
-        self.sender.send(TO_CLOSE.to_string()).unwrap(); //Closes the read thread
+        self.sender.try_send(TO_CLOSE.to_string()).unwrap(); //Closes the read thread
     }
 }
 
 pub fn start_web_socket_client(dbs: Arc<Databases>) {
     let server = thread::spawn(move || {
-        let (sender, _): (Sender<String>, Receiver<String>) = channel();
+        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
         ws::Builder::new()
             .with_settings(ws::Settings {
                 max_connections: 10000,

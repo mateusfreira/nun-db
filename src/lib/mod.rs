@@ -18,6 +18,13 @@ impl Request {
                 };
                 Ok(Request::Watch { key })
             }
+            Some("unwatch") => {
+                let key = match command.next() {
+                    Some(key) => key.replace("\n", ""),
+                    None => return Err(format!("unwatch must contain a key")),
+                };
+                Ok(Request::UnWatch { key })
+            }
             Some("get") => {
                 let key = match command.next() {
                     Some(key) => key.replace("\n", ""),

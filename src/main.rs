@@ -4,14 +4,14 @@ extern crate env_logger;
 extern crate futures;
 extern crate rustc_serialize;
 extern crate serde;
+extern crate thread_id;
 extern crate timer;
 extern crate ws;
-extern crate thread_id;
 
 mod lib;
 
-use std::thread;
 use lib::*;
+use std::thread;
 
 fn main() -> Result<(), String> {
     env_logger::init();

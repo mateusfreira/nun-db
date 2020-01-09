@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Sender, Receiver, channel};
+use futures::channel::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use bo::*;
@@ -11,7 +11,7 @@ use disk_ops::*;
 pub fn apply_to_database(
     dbs: &Arc<Databases>,
     selected_db: &Arc<SelectedDatabase>,
-    sender: &Sender<String>,
+    sender: Sender<String>,
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
     let db_name = selected_db.name.lock().unwrap();
@@ -19,7 +19,7 @@ pub fn apply_to_database(
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => opp(db),
         None => {
-            sender.send(String::from("error no-db-selected\n")).unwrap();
+            sender.clone().try_send(String::from("error no-db-selected\n")).unwrap();
             return Response::Error {
                 msg: "No database found!".to_string(),
             };
@@ -44,7 +44,7 @@ pub fn get_key_value(key: String, sender: &Sender<String>, db: &Database) -> Res
         Some(value) => value,
         None => "<Empty>",
     };
-    match sender.send(format_args!("value {}\n", value.to_string()).to_string()) {
+    match sender.clone().try_send(format_args!("value {}\n", value.to_string()).to_string()) {
         Ok(_n) => (),
         Err(e) => println!("Request::Get sender.send Error: {}", e),
     }
@@ -55,14 +55,14 @@ pub fn get_key_value(key: String, sender: &Sender<String>, db: &Database) -> Res
 }
 
 pub fn set_key_value(key: String, value: String, db: &Database) -> Response {
-    let watchers = db.watchers.map.lock().unwrap();
+    let mut watchers = db.watchers.map.lock().unwrap();
     let mut db = db.map.lock().unwrap();
     db.insert(key.clone(), value.clone());
-    match watchers.get(&key) {
+    match watchers.get_mut(&key) {
         Some(senders) => {
             for sender in senders {
-                println!("Sinding to another client");
-                match sender.send(
+                println!("Sending to another client");
+                match sender.try_send(
                     format_args!("changed {} {}\n", key.to_string(), value.to_string()).to_string(),
                 ) {
                     Ok(_n) => (),
@@ -117,17 +117,20 @@ pub fn create_init_dbs() -> Arc<Databases> {
 mod tests {
     use super::*;
     #[test]
-    fn should_set_a_value()  {
+    fn should_set_a_value() {
         let key = String::from("key");
         let value = String::from("This is the value");
         let hash = HashMap::new();
         let db = create_db_from_hash(String::from("test"), hash);
-        set_key_value(key.clone(), value.clone(), &db); 
+        set_key_value(key.clone(), value.clone(), &db);
 
         let (sender, receiver): (Sender<String>, Receiver<String>) = channel();
 
         let _value_in_hash = get_key_value(key.clone(), &sender, &db);
         let message = receiver.recv().unwrap();
-        assert_eq!(message.as_ref(), format_args!("value {}\n", value.to_string()).to_string());
+        assert_eq!(
+            message.as_ref(),
+            format_args!("value {}\n", value.to_string()).to_string()
+        );
     }
 }
