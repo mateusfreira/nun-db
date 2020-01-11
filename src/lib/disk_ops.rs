@@ -3,7 +3,6 @@ use std::fs::{create_dir_all, read_dir, File};
 use std::path::Path;
 use std::sync::Arc;
 
-use futures::channel::mpsc::{channel, Receiver, Sender};
 
 use bo::*;
 use db_ops::*;
@@ -71,7 +70,7 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
             panic!("Error creating the data dirs");
         }
     };
-    let (_tx, mut rx): (Sender<String>, Receiver<String>) = channel(100);// Visit this again
+    let (_tx, rx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();// Visit this again
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
             let dbs = dbs.map.lock().unwrap();
@@ -81,5 +80,5 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
             }
         })
     };
-    rx.try_next().unwrap(); // Thread will run for ever
+    rx.recv().unwrap(); // Thread will run for ever
 }

@@ -62,8 +62,8 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
 }
 fn process_message(receiver: &mut Receiver<String>, writer: &mut BufWriter<&TcpStream>) {
     match receiver.try_next() {
-        Ok(messageOpt) => {
-            match messageOpt {
+        Ok(message_opt) => {
+            match message_opt {
                 Some(message) => {
                     writer.write_fmt(format_args!("{}", message)).unwrap();
                     match writer.flush() {

@@ -59,15 +59,7 @@ pub fn process_request(
         }),
         Request::UnWatch { key } => apply_if_auth(auth, &|| {
             apply_to_database(&dbs, &db, sender.clone(), &|_db| {
-                let mut watchers = _db.watchers.map.lock().unwrap();
-                let mut senders: Vec<Sender<String>> = match watchers.get(&key) {
-                    Some(watchers_vec) => watchers_vec.clone(),
-                    _ => Vec::new(),
-                };
-                println!("Senders before unwatch {:?}", senders.len());
-                senders.retain(|x| x.same_receiver(&sender));
-                println!("Senders after unwatch {:?}", senders.len());
-                watchers.insert(key.clone(), senders);
+                unwatch_key_value(key.clone(), sender.clone(), _db);
                 Response::Ok {}
             })
         }),

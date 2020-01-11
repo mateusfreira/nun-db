@@ -78,6 +78,19 @@ pub fn set_key_value(key: String, value: String, db: &Database) -> Response {
     }
 }
 
+pub fn unwatch_key_value(key: String, sender: Sender<String>,db: &Database) -> Response {
+    let mut watchers = db.watchers.map.lock().unwrap();
+    let mut senders: Vec<Sender<String>> = match watchers.get(&key) {
+        Some(watchers_vec) => watchers_vec.clone(),
+        _ => Vec::new(),
+    };
+    println!("Senders before unwatch {:?}", senders.len());
+    senders.retain(|x| !x.same_receiver(&sender));
+    println!("Senders after unwatch {:?}", senders.len());
+    watchers.insert(key.clone(), senders);
+    Response::Ok {}
+}
+
 pub fn create_temp_db(name: String) -> Arc<Database> {
     let mut initial_db = HashMap::new();
     let db_file_name = file_name_from_db_name(name.clone());
@@ -116,6 +129,7 @@ pub fn create_init_dbs() -> Arc<Databases> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::channel::mpsc::{Sender, Receiver, channel};
     #[test]
     fn should_set_a_value() {
         let key = String::from("key");
@@ -124,10 +138,10 @@ mod tests {
         let db = create_db_from_hash(String::from("test"), hash);
         set_key_value(key.clone(), value.clone(), &db);
 
-        let (sender, receiver): (Sender<String>, Receiver<String>) = channel();
+        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
 
         let _value_in_hash = get_key_value(key.clone(), &sender, &db);
-        let message = receiver.recv().unwrap();
+        let message = receiver.try_next().unwrap().unwrap();
         assert_eq!(
             message.as_ref(),
             format_args!("value {}\n", value.to_string()).to_string()

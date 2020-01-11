@@ -24,7 +24,7 @@ struct Server {
 
 impl Handler for Server {
     fn on_open(&mut self, _: ws::Handshake) -> ws::Result<()> {
-        let wsSender = self.out.clone();
+        let ws_sender = self.out.clone();
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         self.sender = sender;
         let _read_thread = thread::spawn(move || { 
@@ -39,7 +39,7 @@ impl Handler for Server {
                                 break;
                             }
                             message => {
-                                wsSender.send(message).unwrap();
+                                ws_sender.send(message).unwrap();
                             }
                         }
                     }
