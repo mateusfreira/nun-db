@@ -44,7 +44,7 @@ impl Handler for Server {
                         }
                     }
                     None =>  {
-                        println!("ws_ops::_read_thread::");
+                        println!("ws_ops::_read_thread::error::None");
                     }
                 },
                 _ => thread::sleep(time::Duration::from_millis(2)),

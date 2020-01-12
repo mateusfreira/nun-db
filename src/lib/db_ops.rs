@@ -11,7 +11,7 @@ use disk_ops::*;
 pub fn apply_to_database(
     dbs: &Arc<Databases>,
     selected_db: &Arc<SelectedDatabase>,
-    sender: Sender<String>,
+    sender: &Sender<String>,
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
     let db_name = selected_db.name.lock().unwrap();
@@ -38,7 +38,7 @@ pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Resp
     }
 }
 
-pub fn get_key_value(key: String, sender: &Sender<String>, db: &Database) -> Response {
+pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Response {
     let db = db.map.lock().unwrap();
     let value = match db.get(&key.to_string()) {
         Some(value) => value,
@@ -78,15 +78,23 @@ pub fn set_key_value(key: String, value: String, db: &Database) -> Response {
     }
 }
 
-pub fn unwatch_key_value(key: String, sender: Sender<String>,db: &Database) -> Response {
-    let mut watchers = db.watchers.map.lock().unwrap();
-    let mut senders: Vec<Sender<String>> = match watchers.get(&key) {
-        Some(watchers_vec) => watchers_vec.clone(),
-        _ => Vec::new(),
-    };
+pub fn unwatch_key(key: &String, sender: &Sender<String>,db: &Database) -> Response {
+    let mut senders  = get_senders(&key, &db.watchers);
     println!("Senders before unwatch {:?}", senders.len());
     senders.retain(|x| !x.same_receiver(&sender));
     println!("Senders after unwatch {:?}", senders.len());
+    let mut watchers = db.watchers.map.lock().unwrap();
+    watchers.insert(key.clone(), senders);
+    Response::Ok {}
+}
+
+pub fn watch_key(key: &String, sender: &Sender<String>,db: &Database) -> Response {
+    let mut watchers = db.watchers.map.lock().unwrap();
+    let mut senders: Vec<Sender<String>> = match watchers.get(key) {
+        Some(watchers_vec) => watchers_vec.clone(),
+        _ => Vec::new(),
+    };
+    senders.push(sender.clone());
     watchers.insert(key.clone(), senders);
     Response::Ok {}
 }
@@ -126,6 +134,14 @@ pub fn create_init_dbs() -> Arc<Databases> {
     });
 }
 
+pub fn  get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {
+    let watchers = watchers.map.lock().unwrap();
+    return match watchers.get(key) {
+        Some(watchers_vec) => watchers_vec.clone(),
+        _ => Vec::new(),
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,11 +156,25 @@ mod tests {
 
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
 
-        let _value_in_hash = get_key_value(key.clone(), &sender, &db);
+        let _value_in_hash = get_key_value(&key, &sender, &db);
         let message = receiver.try_next().unwrap().unwrap();
         assert_eq!(
             message.as_ref(),
             format_args!("value {}\n", value.to_string()).to_string()
+        );
+    }
+
+    #[test]
+    fn should_unwatch_a_value() {
+        let key = String::from("key");
+        let hash = HashMap::new();
+        let db = create_db_from_hash(String::from("test"), hash);
+        let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        watch_key(&key, &sender,  &db);
+        let senders = get_senders(&key, &db.watchers);
+        assert_eq!(
+            senders.len(),
+            1
         );
     }
 }

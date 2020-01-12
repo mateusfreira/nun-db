@@ -46,30 +46,24 @@ pub fn process_request(
             return Response::Ok {};
         }
         Request::Watch { key } => apply_if_auth(auth, &|| {
-            apply_to_database(&dbs, &db, sender.clone(), &|_db| {
-                let mut watchers = _db.watchers.map.lock().unwrap();
-                let mut senders: Vec<Sender<String>> = match watchers.get(&key) {
-                    Some(watchers_vec) => watchers_vec.clone(),
-                    _ => Vec::new(),
-                };
-                senders.push(sender.clone());
-                watchers.insert(key.clone(), senders);
+            apply_to_database(&dbs, &db, &sender, &|_db| {
+                watch_key(&key, &sender, _db);
                 Response::Ok {}
             })
         }),
         Request::UnWatch { key } => apply_if_auth(auth, &|| {
-            apply_to_database(&dbs, &db, sender.clone(), &|_db| {
-                unwatch_key_value(key.clone(), sender.clone(), _db);
+            apply_to_database(&dbs, &db, &sender, &|_db| {
+                unwatch_key(&key, &sender, _db);
                 Response::Ok {}
             })
         }),
         Request::Get { key } => apply_if_auth(auth, &|| {
-            apply_to_database(&dbs, &db, sender.clone(), &|_db| {
-                get_key_value(key.clone(), &sender, _db)
+            apply_to_database(&dbs, &db, &sender, &|_db| {
+                get_key_value(&key, &sender, _db)
             })
         }),
         Request::Set { key, value } => apply_if_auth(auth, &|| {
-            apply_to_database(&dbs, &db, sender.clone(), &|_db| {
+            apply_to_database(&dbs, &db, &sender, &|_db| {
                 set_key_value(key.clone(), value.clone(), _db)
             })
         }),
