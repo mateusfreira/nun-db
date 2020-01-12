@@ -1,7 +1,7 @@
 use std::env;
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
+use futures::channel::mpsc::Sender;
 use std::sync::Arc;
 
 use bo::*;
@@ -9,7 +9,7 @@ use db_ops::*;
 
 pub fn process_request(
     input: &str,
-    sender: &Sender<String>,
+    sender: &mut Sender<String>,
     db: &Arc<SelectedDatabase>,
     dbs: &Arc<Databases>,
     auth: &Arc<AtomicBool>,
@@ -38,7 +38,7 @@ pub fn process_request(
             } else {
                 "invalid auth\n".to_string()
             };
-            match sender.send(message) {
+            match sender.clone().try_send(message) {
                 Ok(_n) => (),
                 Err(e) => println!("Request::Auth sender.send Error: {}", e),
             }
@@ -47,19 +47,19 @@ pub fn process_request(
         }
         Request::Watch { key } => apply_if_auth(auth, &|| {
             apply_to_database(&dbs, &db, &sender, &|_db| {
-                let mut watchers = _db.watchers.map.lock().unwrap();
-                let mut senders: Vec<Sender<String>> = match watchers.get(&key) {
-                    Some(watchers_vec) => watchers_vec.clone(),
-                    _ => Vec::new(),
-                };
-                senders.push(sender.clone());
-                watchers.insert(key.clone(), senders);
+                watch_key(&key, &sender, _db);
+                Response::Ok {}
+            })
+        }),
+        Request::UnWatch { key } => apply_if_auth(auth, &|| {
+            apply_to_database(&dbs, &db, &sender, &|_db| {
+                unwatch_key(&key, &sender, _db);
                 Response::Ok {}
             })
         }),
         Request::Get { key } => apply_if_auth(auth, &|| {
             apply_to_database(&dbs, &db, &sender, &|_db| {
-                get_key_value(key.clone(), &sender, _db)
+                get_key_value(&key, &sender, _db)
             })
         }),
         Request::Set { key, value } => apply_if_auth(auth, &|| {
@@ -92,14 +92,14 @@ pub fn process_request(
             match empty_db {
                 Ok(db) => {
                     dbs.insert(name.to_string(), db);
-                    match sender.send("create-db success\n".to_string()) {
+                    match sender.clone().try_send("create-db success\n".to_string()) {
                         Ok(_n) => (),
                         Err(e) => println!("Request::CreateDb  Error: {}", e),
                     }
                 }
                 _ => {
                     println!("Could not create the database");
-                    match sender.send("error create-db-error\n".to_string()) {
+                    match sender.clone().try_send("error create-db-error\n".to_string()) {
                         Ok(_n) => (),
                         Err(e) => println!("Request::Set sender.send Error: {}", e),
                     }

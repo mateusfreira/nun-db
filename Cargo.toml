@@ -6,7 +6,7 @@ authors = [ "Mateus Freira <mateus.freira@gmail.com>" ]
 
 [dependencies]
 tokio = "0.1.13"
-futures = "0.1.25"
+futures = "0.3.1"
 ws = "*"
 env_logger = "*"
 rustc-serialize = "*"

@@ -1,8 +1,7 @@
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::{Receiver, Sender};
+use futures::channel::mpsc::{Receiver, Sender, channel};
 use std::sync::Arc;
 use std::thread;
 use std::time;
@@ -33,7 +32,7 @@ pub fn start_tcp_client(dbs: Arc<Databases>) {
 fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
     let mut reader = BufReader::new(&stream);
     let writer = &mut BufWriter::new(&stream);
-    let (sender, receiver): (Sender<String>, Receiver<String>) = channel();
+    let (mut sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
     let auth = Arc::new(AtomicBool::new(false));
     let db = create_temp_selected_db("init".to_string());
     loop {
@@ -49,7 +48,7 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                         println!("killing scket client, because of disconection");
                         break;
                     }
-                    _ => match process_request(&buf, &sender, &db, &dbs, &auth) {
+                    _ => match process_request(&buf,&mut sender, &db, &dbs, &auth) {
                         Response::Error { msg } => {
                             println!("Error: {}", msg);
                         }
@@ -57,17 +56,22 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                     },
                 }
             }
-            _ => process_message(&receiver, writer),
+            _ => process_message(&mut receiver, writer),
         }
     }
 }
-fn process_message(receiver: &Receiver<String>, writer: &mut BufWriter<&TcpStream>) {
-    match receiver.try_recv() {
-        Ok(message) => {
-            writer.write_fmt(format_args!("{}", message)).unwrap();
-            match writer.flush() {
-                Ok(_n) => (),
-                Err(e) => println!("process_message Error: {}", e),
+fn process_message(receiver: &mut Receiver<String>, writer: &mut BufWriter<&TcpStream>) {
+    match receiver.try_next() {
+        Ok(message_opt) => {
+            match message_opt {
+                Some(message) => {
+                    writer.write_fmt(format_args!("{}", message)).unwrap();
+                    match writer.flush() {
+                        Ok(_n) => (),
+                        Err(e) => println!("process_message Error: {}", e),
+                    }
+                }
+                None => println!("tcp_ops::process_message::Empty message")
             }
         }
         _ => thread::sleep(time::Duration::from_millis(2)),
