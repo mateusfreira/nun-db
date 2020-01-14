@@ -99,6 +99,16 @@ pub fn watch_key(key: &String, sender: &Sender<String>,db: &Database) -> Respons
     Response::Ok {}
 }
 
+pub fn unwatch_all(sender: &Sender<String>,db: &Database) -> Response {
+    println!("Will unwatch_all");
+    let watchers = db.watchers.map.lock().unwrap().clone();
+    for (key, _val) in watchers.iter() {
+        unwatch_key(&key, &sender, &db);
+    }
+    println!("Done unwatch_all");
+    Response::Ok {}
+}
+
 pub fn create_temp_db(name: String) -> Arc<Database> {
     let mut initial_db = HashMap::new();
     let db_file_name = file_name_from_db_name(name.clone());
@@ -135,7 +145,7 @@ pub fn create_init_dbs() -> Arc<Databases> {
 }
 
 pub fn  get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {
-    let watchers = watchers.map.lock().unwrap();
+    let watchers = watchers.map.lock().unwrap().clone();
     return match watchers.get(key) {
         Some(watchers_vec) => watchers_vec.clone(),
         _ => Vec::new(),
@@ -175,6 +185,35 @@ mod tests {
         assert_eq!(
             senders.len(),
             1
+        );
+        unwatch_key(&key, &sender,  &db);
+        let senders = get_senders(&key, &db.watchers);
+        assert_eq!(
+            senders.len(),
+            0
+        );
+    }
+
+    #[test]
+    fn should_unwatch_all() {
+        let key = String::from("key");
+        let key1 = String::from("key1");
+        let hash = HashMap::new();
+        let db = create_db_from_hash(String::from("test"), hash);
+        let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        watch_key(&key, &sender,  &db);
+        watch_key(&key1, &sender,  &db);
+        unwatch_all(&sender, &db);
+        let senders = get_senders(&key, &db.watchers);
+        assert_eq!(
+            senders.len(),
+            0
+        );
+
+        let senders = get_senders(&key1, &db.watchers);
+        assert_eq!(
+            senders.len(),
+            0
         );
     }
 }

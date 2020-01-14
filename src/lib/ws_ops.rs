@@ -3,7 +3,6 @@ use futures::channel::mpsc::{Receiver, Sender, channel};
 use std::sync::Arc;
 use std::thread;
 use std::time;
-use std::time::Instant;
 use thread_id;
 use ws::{CloseCode, Handler, Message};
 
@@ -56,21 +55,14 @@ impl Handler for Server {
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
         let message = msg.as_text().unwrap();
         println!("[{}] Server got message '{}'. ", thread_id::get(), message);
-        let start = Instant::now();
         process_request(&message,&mut self.sender, &self.db, &self.dbs, &self.auth);
-        let elapsed = start.elapsed();
-        println!(
-            "[{}] Server processed message '{}' in {:?}",
-            thread_id::get(),
-            message,
-            elapsed
-        );
         Ok(())
     }
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
         println!("WebSocket closing for ({:?}) {}", code, reason);
         self.sender.try_send(TO_CLOSE.to_string()).unwrap(); //Closes the read thread
+        process_request("unwatch-all",&mut self.sender, &self.db, &self.dbs, &self.auth);
     }
 }
 

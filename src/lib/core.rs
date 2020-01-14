@@ -2,6 +2,7 @@ use std::env;
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
 use futures::channel::mpsc::Sender;
+use std::time::Instant;
 use std::sync::Arc;
 
 use bo::*;
@@ -14,11 +15,15 @@ pub fn process_request(
     dbs: &Arc<Databases>,
     auth: &Arc<AtomicBool>,
 ) -> Response {
+
+    println!("[{}] process_request got message '{}'. ", thread_id::get(), input);
+    let start = Instant::now();
     let request = match Request::parse(input) {
         Ok(req) => req,
         Err(e) => return Response::Error { msg: e },
     };
-    match request {
+    //println!("[{}] process_request got message '{:?}'. ", thread_id::get(), request);
+    let result = match request {
         Request::Auth { user, password } => {
             let valid_user = match env::args().nth(1) {
                 Some(user) => user.to_string(),
@@ -54,6 +59,13 @@ pub fn process_request(
         Request::UnWatch { key } => apply_if_auth(auth, &|| {
             apply_to_database(&dbs, &db, &sender, &|_db| {
                 unwatch_key(&key, &sender, _db);
+                Response::Ok {}
+            })
+        }),
+
+        Request::UnWatchAll {} => apply_if_auth(auth, &|| {
+            apply_to_database(&dbs, &db, &sender, &|_db| {
+                unwatch_all(&sender, _db);
                 Response::Ok {}
             })
         }),
@@ -107,5 +119,14 @@ pub fn process_request(
             }
             Response::Ok {}
         }),
-    }
+    };
+
+    let elapsed = start.elapsed();
+    println!(
+        "[{}] Server processed message '{}' in {:?}",
+        thread_id::get(),
+        input,
+        elapsed
+    );
+    result
 }
