@@ -203,14 +203,26 @@ mod tests {
         let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         watch_key(&key, &sender,  &db);
         watch_key(&key1, &sender,  &db);
-        unwatch_all(&sender, &db);
         let senders = get_senders(&key, &db.watchers);
+        assert_eq!(
+            senders.len(),
+            1
+        );
+
+        let senders = get_senders(&key1, &db.watchers);
+        assert_eq!(
+            senders.len(),
+            1
+        );
+        unwatch_all(&sender, &db);
+
+        let senders = get_senders(&key1, &db.watchers);
         assert_eq!(
             senders.len(),
             0
         );
 
-        let senders = get_senders(&key1, &db.watchers);
+        let senders = get_senders(&key, &db.watchers);
         assert_eq!(
             senders.len(),
             0
