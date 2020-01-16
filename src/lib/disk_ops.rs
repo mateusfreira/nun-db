@@ -8,7 +8,7 @@ use bo::*;
 use db_ops::*;
 
 const SNAPSHOT_TIME: i64 = 30000;
-const FILE_NAME: &'static str = "freira-db.data";
+const FILE_NAME: &'static str = "nun-db.data";
 const DIR_NAME: &'static str = "dbs/";
 
 pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {

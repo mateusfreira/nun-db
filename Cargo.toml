@@ -1,6 +1,6 @@
 [package]
 
-name = "freira-db"
+name = "nun-db"
 version = "0.0.1"
 authors = [ "Mateus Freira <mateus.freira@gmail.com>" ]
 

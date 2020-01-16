@@ -1,9 +1,9 @@
 FROM rust:1.38.0
 
-WORKDIR /usr/src/freira-db
+WORKDIR /usr/src/nun-db
 COPY ./ .
 
 RUN cargo install
 
-CMD ["freira-db"]
+CMD ["nun-db"]
 EXPOSE 3012
