@@ -1,20 +1,20 @@
-# Freira DB 
+# Nun DB 
 
 ## Expirementation Repository (I do not recommend it for production YET)
 
-## What is Freira DB
+## What is Nun DB
 
-Freira DB is an open source real time database, made to be fast, light and easy to use.
+Nun DB is an open source real time database, made to be fast, light and easy to use.
 
-Freira DB is written to be memory safe and vertical scalable.
+Nun DB is written to be memory safe and vertical scalable.
 
-We believe we can keep Freira DB simple at the same time it can power lots of different apps and use cases.
+We believe we can keep Nun DB simple at the same time it can power lots of different apps and use cases.
 
 ## Examples Use cases 
 
 Checkout our examples of integration and see what we can do for your app
 
-* Vue.js + Freira DB
+* Vue.js + Nun DB
 * React.js Realtime Todo app 
 
 
@@ -22,7 +22,7 @@ Checkout our examples of integration and see what we can do for your app
 * Docker 
 * From source code
 
-## Freira Query language (FQL)
+## Nun Query language (FQL)
 
 ### Get
 ### Set

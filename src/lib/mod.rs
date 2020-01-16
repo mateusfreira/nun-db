@@ -18,6 +18,9 @@ impl Request {
                 };
                 Ok(Request::Watch { key })
             }
+            Some("unwatch-all") => {
+                Ok(Request::UnWatchAll {})
+            }
             Some("unwatch") => {
                 let key = match command.next() {
                     Some(key) => key.replace("\n", ""),
@@ -234,6 +237,16 @@ mod tests {
                 }
             }
             _ => Err(String::from("get foo should be parsed to watch command")),
+        }
+    }
+
+    #[test]
+    fn should_return_an_unwatch_all() -> Result<(), String> {
+        match Request::parse("unwatch-all") {
+            Ok(Request::UnWatchAll { }) => {
+                    Ok(())
+            }
+            _ => Err(String::from("unwatch-all not parsed correct")),
         }
     }
 }
