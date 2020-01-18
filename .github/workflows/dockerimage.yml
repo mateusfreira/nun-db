@@ -10,6 +10,6 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag freira-db:latest
+      run: docker build . --file Dockerfile --tag nun-db:latest
     - name: Re-tag
-      run: docker tag freira-db:latest freira-db:$(date +%s)      
+      run: docker tag freira-db:latest nun-db:$(date +%s)      

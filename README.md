@@ -22,7 +22,7 @@ Checkout our examples of integration and see what we can do for your app
 * Docker 
 * From source code
 
-## Nun Query language (FQL)
+## Nun Query language (NQL)
 
 ### Get
 ### Set

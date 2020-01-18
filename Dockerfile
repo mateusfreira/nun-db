@@ -1,9 +1,9 @@
-FROM rust:1.38.0
-
+FROM rust:1.40 as builder
 WORKDIR /usr/src/nun-db
-COPY ./ .
+COPY . .
+RUN cargo install --path .
 
-RUN cargo install
-
+FROM debian:buster-slim
+RUN apt-get update
+COPY --from=builder /usr/local/cargo/bin/nun-db /usr/local/bin/nun-db
 CMD ["nun-db"]
-EXPOSE 3012
