@@ -11,6 +11,7 @@ use core::*;
 use db_ops::*;
 
 pub fn start_tcp_client(dbs: Arc<Databases>) {
+    println!("starting tcp client");
     match TcpListener::bind("127.0.0.1:9001") {
         Ok(listener) => {
             for stream in listener.incoming() {

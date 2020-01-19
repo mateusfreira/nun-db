@@ -1,3 +1,4 @@
+use std::env;
 use std::collections::HashMap;
 use std::fs::{create_dir_all, read_dir, File};
 use std::path::Path;
@@ -9,12 +10,20 @@ use db_ops::*;
 
 const SNAPSHOT_TIME: i64 = 30000;
 const FILE_NAME: &'static str = "nun-db.data";
-const DIR_NAME: &'static str = "dbs/";
+const DIR_NAME: &'static str = "dbs";
+
+pub fn get_dir_name() -> String {
+    match env::var_os("NUN_DBS_DIR") {
+        Some(dir_name) => dir_name.into_string().unwrap(),
+        None => DIR_NAME.to_string()
+    }
+
+}
 
 pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
-    println!("Will read the database {} from disk", name);
     let mut initial_db = HashMap::new();
     let db_file_name = file_name_from_db_name(name.clone());
+    println!("Will read the database {} from disk", db_file_name);
     if Path::new(&db_file_name).exists() {
         // May I should move this out of here
         let mut file = File::open(db_file_name).unwrap();
@@ -37,7 +46,7 @@ fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::D
     }
 }
 fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
-    if let Ok(entries) = read_dir(DIR_NAME) {
+    if let Ok(entries) = read_dir(get_dir_name()) {
         for entry in entries {
             load_one_db_from_disk(dbs, entry);
         }
@@ -47,7 +56,7 @@ fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
 pub fn file_name_from_db_name(db_name: String) -> String {
     format!(
         "{dir}/{db_name}-{sufix}",
-        dir = DIR_NAME,
+        dir = get_dir_name(),
         db_name = db_name,
         sufix = FILE_NAME
     )
@@ -63,7 +72,7 @@ fn storage_data_disk(db: &Database, db_name: String) {
 pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     println!("Will start_snap_shot_timer");
     load_all_dbs_from_disk(&dbs);
-    match create_dir_all(DIR_NAME) {
+    match create_dir_all(get_dir_name()) {
         Ok(_) => {}
         Err(e) => {
             println!("Error creating the data dirs {}", e);
