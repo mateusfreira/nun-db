@@ -12,7 +12,7 @@ jobs:
     - name: Build the Docker image
       run: docker build . --file Dockerfile --tag nun-db:latest
     - name: Re-tag
-      run: docker tag nun-db:latest mateusfreira/nun-db:$(date +%s) mateusfreira/nun-db:latest
+      run: docker tag nun-db:latest mateusfreira/nun-db:latest
     - name: Publish
       run: docker login -u ${{secrets.DOCKER_USERNAME}} -p ${{secrets.DOCKER_PASSWORD}}&&docker push mateusfreira/nun-db:latest
 
