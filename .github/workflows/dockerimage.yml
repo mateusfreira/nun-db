@@ -14,5 +14,5 @@ jobs:
     - name: Re-tag
       run: docker tag nun-db:latest nun-db:$(date +%s)
     - name: Publish
-      run: docker login -u ${{secrets.DOCKER_USERNAME}} -p ${{secrets.DOCKER_PASSWORD}}&&docker push mateusfreira/nun-db
+      run: docker login -u ${{secrets.DOCKER_USERNAME}} -p ${{secrets.DOCKER_PASSWORD}}&&docker push mateusfreira/nun-db:late
 

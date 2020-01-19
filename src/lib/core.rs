@@ -22,7 +22,7 @@ pub fn process_request(
         Ok(req) => req,
         Err(e) => return Response::Error { msg: e },
     };
-    //println!("[{}] process_request got message '{:?}'. ", thread_id::get(), request);
+    println!("[{}] process_request parsed message '{}'. ", thread_id::get(), input);
     let result = match request {
         Request::Auth { user, password } => {
             let valid_user = match env::args().nth(1) {
