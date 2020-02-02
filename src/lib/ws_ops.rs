@@ -1,5 +1,5 @@
+use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::sync::atomic::AtomicBool;
-use futures::channel::mpsc::{Receiver, Sender, channel};
 use std::sync::Arc;
 use std::thread;
 use std::time;
@@ -26,43 +26,45 @@ impl Handler for Server {
         let ws_sender = self.out.clone();
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         self.sender = sender;
-        let _read_thread = thread::spawn(move || { 
-
-            loop {
+        let _read_thread = thread::spawn(move || loop {
             match receiver.try_next() {
                 Ok(message) => match message {
-                    Some(message) => {
-                        match message.as_ref() {
-                            TO_CLOSE => {
-                                println!("Closing server connection");
-                                break;
-                            }
-                            message => {
-                                ws_sender.send(message).unwrap();
-                            }
+                    Some(message) => match message.as_ref() {
+                        TO_CLOSE => {
+                            println!("Closing server connection");
+                            break;
                         }
-                    }
-                    None =>  {
+                        message => {
+                            ws_sender.send(message).unwrap();
+                        }
+                    },
+                    None => {
                         println!("ws_ops::_read_thread::error::None");
                     }
                 },
                 _ => thread::sleep(time::Duration::from_millis(2)),
             }
-        }});
+        });
         Ok(())
     }
 
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
         let message = msg.as_text().unwrap();
         println!("[{}] Server got message '{}'. ", thread_id::get(), message);
-        process_request(&message,&mut self.sender, &self.db, &self.dbs, &self.auth);
+        process_request(&message, &mut self.sender, &self.db, &self.dbs, &self.auth);
         Ok(())
     }
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
         println!("WebSocket closing for ({:?}) {}", code, reason);
         self.sender.try_send(TO_CLOSE.to_string()).unwrap(); //Closes the read thread
-        process_request("unwatch-all",&mut self.sender, &self.db, &self.dbs, &self.auth);
+        process_request(
+            "unwatch-all",
+            &mut self.sender,
+            &self.db,
+            &self.dbs,
+            &self.auth,
+        );
     }
 }
 

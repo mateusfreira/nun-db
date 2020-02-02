@@ -1,8 +1,8 @@
+use futures::channel::mpsc::Sender;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use futures::channel::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use bo::*;
@@ -19,7 +19,10 @@ pub fn apply_to_database(
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => opp(db),
         None => {
-            sender.clone().try_send(String::from("error no-db-selected\n")).unwrap();
+            sender
+                .clone()
+                .try_send(String::from("error no-db-selected\n"))
+                .unwrap();
             return Response::Error {
                 msg: "No database found!".to_string(),
             };
@@ -44,7 +47,10 @@ pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Re
         Some(value) => value,
         None => "<Empty>",
     };
-    match sender.clone().try_send(format_args!("value {}\n", value.to_string()).to_string()) {
+    match sender
+        .clone()
+        .try_send(format_args!("value {}\n", value.to_string()).to_string())
+    {
         Ok(_n) => (),
         Err(e) => println!("Request::Get sender.send Error: {}", e),
     }
@@ -78,8 +84,8 @@ pub fn set_key_value(key: String, value: String, db: &Database) -> Response {
     }
 }
 
-pub fn unwatch_key(key: &String, sender: &Sender<String>,db: &Database) -> Response {
-    let mut senders  = get_senders(&key, &db.watchers);
+pub fn unwatch_key(key: &String, sender: &Sender<String>, db: &Database) -> Response {
+    let mut senders = get_senders(&key, &db.watchers);
     println!("Senders before unwatch {:?}", senders.len());
     senders.retain(|x| !x.same_receiver(&sender));
     println!("Senders after unwatch {:?}", senders.len());
@@ -88,7 +94,7 @@ pub fn unwatch_key(key: &String, sender: &Sender<String>,db: &Database) -> Respo
     Response::Ok {}
 }
 
-pub fn watch_key(key: &String, sender: &Sender<String>,db: &Database) -> Response {
+pub fn watch_key(key: &String, sender: &Sender<String>, db: &Database) -> Response {
     let mut watchers = db.watchers.map.lock().unwrap();
     let mut senders: Vec<Sender<String>> = match watchers.get(key) {
         Some(watchers_vec) => watchers_vec.clone(),
@@ -99,7 +105,7 @@ pub fn watch_key(key: &String, sender: &Sender<String>,db: &Database) -> Respons
     Response::Ok {}
 }
 
-pub fn unwatch_all(sender: &Sender<String>,db: &Database) -> Response {
+pub fn unwatch_all(sender: &Sender<String>, db: &Database) -> Response {
     println!("Will unwatch_all");
     let watchers = db.watchers.map.lock().unwrap().clone();
     for (key, _val) in watchers.iter() {
@@ -144,7 +150,7 @@ pub fn create_init_dbs() -> Arc<Databases> {
     });
 }
 
-pub fn  get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {
+pub fn get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {
     let watchers = watchers.map.lock().unwrap().clone();
     return match watchers.get(key) {
         Some(watchers_vec) => watchers_vec.clone(),
@@ -155,7 +161,7 @@ pub fn  get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::channel::mpsc::{Sender, Receiver, channel};
+    use futures::channel::mpsc::{channel, Receiver, Sender};
     #[test]
     fn should_set_a_value() {
         let key = String::from("key");
@@ -169,7 +175,7 @@ mod tests {
         let _value_in_hash = get_key_value(&key, &sender, &db);
         let message = receiver.try_next().unwrap().unwrap();
         assert_eq!(
-            message.as_ref(),
+            message.to_string(),
             format_args!("value {}\n", value.to_string()).to_string()
         );
     }
@@ -180,18 +186,12 @@ mod tests {
         let hash = HashMap::new();
         let db = create_db_from_hash(String::from("test"), hash);
         let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
-        watch_key(&key, &sender,  &db);
+        watch_key(&key, &sender, &db);
         let senders = get_senders(&key, &db.watchers);
-        assert_eq!(
-            senders.len(),
-            1
-        );
-        unwatch_key(&key, &sender,  &db);
+        assert_eq!(senders.len(), 1);
+        unwatch_key(&key, &sender, &db);
         let senders = get_senders(&key, &db.watchers);
-        assert_eq!(
-            senders.len(),
-            0
-        );
+        assert_eq!(senders.len(), 0);
     }
 
     #[test]
@@ -201,31 +201,19 @@ mod tests {
         let hash = HashMap::new();
         let db = create_db_from_hash(String::from("test"), hash);
         let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
-        watch_key(&key, &sender,  &db);
-        watch_key(&key1, &sender,  &db);
+        watch_key(&key, &sender, &db);
+        watch_key(&key1, &sender, &db);
         let senders = get_senders(&key, &db.watchers);
-        assert_eq!(
-            senders.len(),
-            1
-        );
+        assert_eq!(senders.len(), 1);
 
         let senders = get_senders(&key1, &db.watchers);
-        assert_eq!(
-            senders.len(),
-            1
-        );
+        assert_eq!(senders.len(), 1);
         unwatch_all(&sender, &db);
 
         let senders = get_senders(&key1, &db.watchers);
-        assert_eq!(
-            senders.len(),
-            0
-        );
+        assert_eq!(senders.len(), 0);
 
         let senders = get_senders(&key, &db.watchers);
-        assert_eq!(
-            senders.len(),
-            0
-        );
+        assert_eq!(senders.len(), 0);
     }
 }

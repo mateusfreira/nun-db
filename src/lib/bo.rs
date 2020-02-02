@@ -27,7 +27,7 @@ pub enum Request {
     Set { key: String, value: String },
     Watch { key: String },
     UnWatch { key: String },
-    UnWatchAll { },
+    UnWatchAll {},
     Auth { user: String, password: String },
     CreateDb { token: String, name: String },
     UseDb { token: String, name: String },
