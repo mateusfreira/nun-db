@@ -26,6 +26,7 @@ fn main() -> Result<(), String> {
 
     let db_socket = dbs.clone();
     let db_http = dbs.clone();
+
     // Netwotk threds
     let _ws_thread = thread::spawn(|| lib::ws_ops::start_web_socket_client(db_socket));
     let _http_thread = thread::spawn(|| lib::http_ops::start_http_client(db_http));
