@@ -8,6 +8,8 @@ use std::sync::{Arc, Mutex};
 use bo::*;
 use disk_ops::*;
 
+pub const TOKEN_KEY: &'static str = "$$token";
+
 pub fn apply_to_database(
     dbs: &Arc<Databases>,
     selected_db: &Arc<SelectedDatabase>,
@@ -57,6 +59,14 @@ pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Re
     Response::Value {
         key: key.clone(),
         value: value.to_string(),
+    }
+}
+
+pub fn is_valid_token(token: &String, db: &Database) -> bool {
+    let db = db.map.lock().unwrap();
+    match db.get(&TOKEN_KEY.to_string()) {
+        Some(value) => value == token,
+        None => false
     }
 }
 
@@ -215,5 +225,17 @@ mod tests {
 
         let senders = get_senders(&key, &db.watchers);
         assert_eq!(senders.len(), 0);
+    }
+
+    #[test]
+    fn should_validate_token() {
+        let token = String::from("key");
+        let token_invalid = String::from("key_invalid");
+        let hash = HashMap::new();
+        let db = create_db_from_hash(String::from("test"), hash);
+        set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);
+
+        assert_eq!(is_valid_token(&token, &db), true);
+        assert_eq!(is_valid_token(&token_invalid, &db), false);
     }
 }
