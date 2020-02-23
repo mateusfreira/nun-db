@@ -1,7 +1,7 @@
+use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::AtomicBool;
-use futures::channel::mpsc::{Receiver, Sender, channel};
 use std::sync::Arc;
 use std::thread;
 use std::time;
@@ -47,10 +47,10 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                 match buf.as_ref() {
                     "" => {
                         println!("killing socket client, because of disconection");
-                        process_request("unwatch-all",&mut sender, &db, &dbs, &auth);
+                        process_request("unwatch-all", &mut sender, &db, &dbs, &auth);
                         break;
                     }
-                    _ => match process_request(&buf,&mut sender, &db, &dbs, &auth) {
+                    _ => match process_request(&buf, &mut sender, &db, &dbs, &auth) {
                         Response::Error { msg } => {
                             println!("Error: {}", msg);
                         }
@@ -64,18 +64,16 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
 }
 fn process_message(receiver: &mut Receiver<String>, writer: &mut BufWriter<&TcpStream>) {
     match receiver.try_next() {
-        Ok(message_opt) => {
-            match message_opt {
-                Some(message) => {
-                    writer.write_fmt(format_args!("{}", message)).unwrap();
-                    match writer.flush() {
-                        Ok(_n) => (),
-                        Err(e) => println!("process_message Error: {}", e),
-                    }
+        Ok(message_opt) => match message_opt {
+            Some(message) => {
+                writer.write_fmt(format_args!("{}", message)).unwrap();
+                match writer.flush() {
+                    Ok(_n) => (),
+                    Err(e) => println!("process_message Error: {}", e),
                 }
-                None => println!("tcp_ops::process_message::Empty message")
             }
-        }
+            None => println!("tcp_ops::process_message::Empty message"),
+        },
         _ => thread::sleep(time::Duration::from_millis(2)),
     }
 }

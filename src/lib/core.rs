@@ -1,9 +1,9 @@
+use futures::channel::mpsc::Sender;
 use std::env;
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
-use futures::channel::mpsc::Sender;
-use std::time::Instant;
 use std::sync::Arc;
+use std::time::Instant;
 
 use bo::*;
 use db_ops::*;
@@ -15,14 +15,21 @@ pub fn process_request(
     dbs: &Arc<Databases>,
     auth: &Arc<AtomicBool>,
 ) -> Response {
-
-    println!("[{}] process_request got message '{}'. ", thread_id::get(), input);
+    println!(
+        "[{}] process_request got message '{}'. ",
+        thread_id::get(),
+        input
+    );
     let start = Instant::now();
     let request = match Request::parse(input) {
         Ok(req) => req,
         Err(e) => return Response::Error { msg: e },
     };
-    println!("[{}] process_request parsed message '{}'. ", thread_id::get(), input);
+    println!(
+        "[{}] process_request parsed message '{}'. ",
+        thread_id::get(),
+        input
+    );
     let result = match request {
         Request::Auth { user, password } => {
             let valid_user = match env::args().nth(1) {
@@ -70,9 +77,7 @@ pub fn process_request(
             })
         }),
         Request::Get { key } => apply_if_auth(auth, &|| {
-            apply_to_database(&dbs, &db, &sender, &|_db| {
-                get_key_value(&key, &sender, _db)
-            })
+            apply_to_database(&dbs, &db, &sender, &|_db| get_key_value(&key, &sender, _db))
         }),
         Request::Set { key, value } => apply_if_auth(auth, &|| {
             apply_to_database(&dbs, &db, &sender, &|_db| {
@@ -111,7 +116,10 @@ pub fn process_request(
                 }
                 _ => {
                     println!("Could not create the database");
-                    match sender.clone().try_send("error create-db-error\n".to_string()) {
+                    match sender
+                        .clone()
+                        .try_send("error create-db-error\n".to_string())
+                    {
                         Ok(_n) => (),
                         Err(e) => println!("Request::Set sender.send Error: {}", e),
                     }

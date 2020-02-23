@@ -1,23 +1,21 @@
-use std::env;
 use std::collections::HashMap;
+use std::env;
 use std::fs::{create_dir_all, read_dir, File};
 use std::path::Path;
 use std::sync::Arc;
 
-
 use bo::*;
 use db_ops::*;
 
-const SNAPSHOT_TIME: i64 = 120000;
+const SNAPSHOT_TIME: i64 = 120000; // 2 minutes
 const FILE_NAME: &'static str = "nun-db.data";
 const DIR_NAME: &'static str = "dbs";
 
 pub fn get_dir_name() -> String {
     match env::var_os("NUN_DBS_DIR") {
         Some(dir_name) => dir_name.into_string().unwrap(),
-        None => DIR_NAME.to_string()
+        None => DIR_NAME.to_string(),
     }
-
 }
 
 pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
@@ -79,7 +77,10 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
             panic!("Error creating the data dirs");
         }
     };
-    let (_tx, rx): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();// Visit this again
+    let (_tx, rx): (
+        std::sync::mpsc::Sender<String>,
+        std::sync::mpsc::Receiver<String>,
+    ) = std::sync::mpsc::channel(); // Visit this again
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
             let dbs = dbs.map.lock().unwrap();
