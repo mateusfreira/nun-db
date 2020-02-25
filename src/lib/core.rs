@@ -8,6 +8,8 @@ use std::time::Instant;
 use bo::*;
 use db_ops::*;
 
+
+
 pub fn process_request(
     input: &str,
     sender: &mut Sender<String>,
@@ -84,13 +86,19 @@ pub fn process_request(
                 set_key_value(key.clone(), value.clone(), _db)
             })
         }),
-        Request::UseDb { name, token: _ } => apply_if_auth(&auth, &|| {
+        Request::UseDb { name, token } => apply_if_auth(&auth, &|| {
             let mut db_name_state = db.name.lock().expect("Could not lock name mutex");
             let dbs = dbs.map.lock().unwrap();
             let respose: Response = match dbs.get(&name.to_string()) {
-                Some(_) => {
-                    mem::replace(&mut *db_name_state, name.clone());
-                    Response::Ok {}
+                Some(db) => {
+                    if is_valid_token(&token, db)  {
+                        mem::replace(&mut *db_name_state, name.clone());
+                        Response::Ok {}
+                    } else {
+                        Response::Error {
+                            msg: "Invalid token".to_string(),
+                        }
+                    }
                 }
                 _ => {
                     println!("Not a valid database name");
@@ -102,12 +110,13 @@ pub fn process_request(
             respose
         }),
 
-        Request::CreateDb { name, token: _ } => apply_if_auth(&auth, &|| {
+        Request::CreateDb { name, token } => apply_if_auth(&auth, &|| {
             let mut dbs = dbs.map.lock().unwrap();
             let empty_db_box = create_temp_db(name.clone());
             let empty_db = Arc::try_unwrap(empty_db_box);
             match empty_db {
                 Ok(db) => {
+                    set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);
                     dbs.insert(name.to_string(), db);
                     match sender.clone().try_send("create-db success\n".to_string()) {
                         Ok(_n) => (),

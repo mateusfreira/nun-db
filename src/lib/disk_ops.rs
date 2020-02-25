@@ -8,7 +8,7 @@ use bo::*;
 use db_ops::*;
 
 const SNAPSHOT_TIME: i64 = 120000; // 2 minutes
-const FILE_NAME: &'static str = "nun-db.data";
+const FILE_NAME: &'static str = "-nun.data";
 const DIR_NAME: &'static str = "dbs";
 
 pub fn get_dir_name() -> String {
@@ -34,8 +34,7 @@ fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::D
     let mut dbs = dbs.map.lock().unwrap();
     if let Ok(entry) = entry {
         let full_name = entry.file_name().into_string().unwrap();
-        let splited_name: Vec<&str> = full_name.split("-").collect();
-        let db_name = splited_name.first().unwrap();
+        let db_name = db_name_from_file_name(full_name);
         let db_data = load_db_from_disck_or_empty(db_name.to_string());
         dbs.insert(
             db_name.to_string(),
@@ -53,11 +52,18 @@ fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
 // send the given database to the disc
 pub fn file_name_from_db_name(db_name: String) -> String {
     format!(
-        "{dir}/{db_name}-{sufix}",
+        "{dir}/{db_name}{sufix}",
         dir = get_dir_name(),
         db_name = db_name,
         sufix = FILE_NAME
     )
+}
+
+pub fn db_name_from_file_name(full_name: String) -> String {
+        let partial_name = full_name.replace(FILE_NAME, "");
+        let splited_name: Vec<&str> = partial_name.split("/").collect();
+        let db_name = splited_name.last().unwrap();
+        return db_name.to_string();
 }
 
 fn storage_data_disk(db: &Database, db_name: String) {
@@ -91,4 +97,15 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
         })
     };
     rx.recv().unwrap(); // Thread will run for ever
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_return_the_db_name() {
+        assert_eq!(db_name_from_file_name(String::from("dbs/org-1-nun.data")), "org-1");
+    }
+
 }
