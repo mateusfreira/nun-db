@@ -65,7 +65,10 @@ pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Re
 pub fn is_valid_token(token: &String, db: &Database) -> bool {
     let db = db.map.lock().unwrap();
     match db.get(&TOKEN_KEY.to_string()) {
-        Some(value) => value == token,
+        Some(value) => {
+            println!("[is_valid_token] Token {} value {}", value, token);
+            value == token
+        },
         None => false
     }
 }

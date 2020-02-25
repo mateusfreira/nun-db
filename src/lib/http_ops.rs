@@ -50,11 +50,11 @@ fn process_commands(
     return responses;
 }
 pub fn start_http_client(dbs: Arc<Databases>) {
-    println!("String the http client with 4 threads");
+    println!("String the http client with 30 threads");
     let http_server = tiny_http::Server::http("0.0.0.0:3013").unwrap();
     let http_server = Arc::new(http_server);
     let mut guards = Vec::with_capacity(4);
-    for _ in 0..4 {
+    for _ in 0..4{
         let server = http_server.clone();
         let dbs = dbs.clone();
         let guard = thread::spawn(move || {
