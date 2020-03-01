@@ -21,7 +21,7 @@ pub fn process_request(
         input
     );
     let start = Instant::now();
-    let request = match Request::parse(String::from(input).trim_matches("\n")) {
+    let request = match Request::parse(String::from(input).trim_matches('\n')) {
         Ok(req) => req,
         Err(e) => return Response::Error { msg: e },
     };
