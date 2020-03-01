@@ -8,8 +8,6 @@ use std::time::Instant;
 use bo::*;
 use db_ops::*;
 
-
-
 pub fn process_request(
     input: &str,
     sender: &mut Sender<String>,
@@ -91,7 +89,7 @@ pub fn process_request(
             let dbs = dbs.map.lock().unwrap();
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => {
-                    if is_valid_token(&token, db)  {
+                    if is_valid_token(&token, db) {
                         mem::replace(&mut *db_name_state, name.clone());
                         Response::Ok {}
                     } else {
