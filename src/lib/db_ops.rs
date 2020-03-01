@@ -68,8 +68,8 @@ pub fn is_valid_token(token: &String, db: &Database) -> bool {
         Some(value) => {
             println!("[is_valid_token] Token {} value {}", value, token);
             value == token
-        },
-        None => false
+        }
+        None => false,
     }
 }
 

@@ -43,7 +43,6 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
         match read_line {
             Ok(_) => {
                 println!("Command print: {}", buf);
-                println!("Command Size: {}", buf.len());
                 match buf.as_ref() {
                     "" => {
                         println!("killing socket client, because of disconection");
@@ -53,8 +52,12 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                     _ => match process_request(&buf, &mut sender, &db, &dbs, &auth) {
                         Response::Error { msg } => {
                             println!("Error: {}", msg);
+                            sender.try_send(format!("error {} \n", msg)).unwrap();
                         }
-                        _ => println!("Success processed"),
+                        _ => {
+                            sender.try_send(format!("ok \n")).unwrap();
+                            println!("Success processed");
+                        }
                     },
                 }
             }
