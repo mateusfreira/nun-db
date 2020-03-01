@@ -42,6 +42,11 @@ pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Resp
         }
     }
 }
+pub fn snapshot_db(db: &Database, dbs: &Databases) -> Response {
+    let name = db.name.lock().unwrap().clone();
+    dbs.to_snapshot.lock().unwrap().push(name);
+    Response::Ok {}
+}
 
 pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Response {
     let db = db.map.lock().unwrap();
@@ -68,8 +73,8 @@ pub fn is_valid_token(token: &String, db: &Database) -> bool {
         Some(value) => {
             println!("[is_valid_token] Token {} value {}", value, token);
             value == token
-        },
-        None => false
+        }
+        None => false,
     }
 }
 
@@ -160,6 +165,7 @@ pub fn create_init_dbs() -> Arc<Databases> {
     let initial_dbs = HashMap::new();
     return Arc::new(Databases {
         map: Mutex::new(initial_dbs),
+        to_snapshot: Mutex::new(Vec::new()),
     });
 }
 

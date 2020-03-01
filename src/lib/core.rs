@@ -8,8 +8,6 @@ use std::time::Instant;
 use bo::*;
 use db_ops::*;
 
-
-
 pub fn process_request(
     input: &str,
     sender: &mut Sender<String>,
@@ -23,7 +21,7 @@ pub fn process_request(
         input
     );
     let start = Instant::now();
-    let request = match Request::parse(input) {
+    let request = match Request::parse(String::from(input).trim_matches("\n")) {
         Ok(req) => req,
         Err(e) => return Response::Error { msg: e },
     };
@@ -81,6 +79,10 @@ pub fn process_request(
         Request::Get { key } => apply_if_auth(auth, &|| {
             apply_to_database(&dbs, &db, &sender, &|_db| get_key_value(&key, &sender, _db))
         }),
+
+        Request::Snapshot {} => apply_if_auth(auth, &|| {
+            apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
+        }),
         Request::Set { key, value } => apply_if_auth(auth, &|| {
             apply_to_database(&dbs, &db, &sender, &|_db| {
                 set_key_value(key.clone(), value.clone(), _db)
@@ -91,7 +93,7 @@ pub fn process_request(
             let dbs = dbs.map.lock().unwrap();
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => {
-                    if is_valid_token(&token, db)  {
+                    if is_valid_token(&token, db) {
                         mem::replace(&mut *db_name_state, name.clone());
                         Response::Ok {}
                     } else {

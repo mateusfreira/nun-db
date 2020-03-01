@@ -60,10 +60,10 @@ pub fn file_name_from_db_name(db_name: String) -> String {
 }
 
 pub fn db_name_from_file_name(full_name: String) -> String {
-        let partial_name = full_name.replace(FILE_NAME, "");
-        let splited_name: Vec<&str> = partial_name.split("/").collect();
-        let db_name = splited_name.last().unwrap();
-        return db_name.to_string();
+    let partial_name = full_name.replace(FILE_NAME, "");
+    let splited_name: Vec<&str> = partial_name.split("/").collect();
+    let db_name = splited_name.last().unwrap();
+    return db_name.to_string();
 }
 
 fn storage_data_disk(db: &Database, db_name: String) {
@@ -89,10 +89,15 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     ) = std::sync::mpsc::channel(); // Visit this again
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
-            let dbs = dbs.map.lock().unwrap();
-            for (database_name, db) in dbs.iter() {
+            let mut dbs_to_snapshot = dbs.to_snapshot.lock().unwrap();
+            while let Some(database_name) = dbs_to_snapshot.pop() {
                 println!("Will snapshot the database {}", database_name);
-                storage_data_disk(db, database_name.clone());
+                let dbs = dbs.map.lock().unwrap();
+                let db_opt = dbs.get(&database_name);
+                match db_opt {
+                    Some(db) => storage_data_disk(db, database_name.clone()),
+                    _ => println!("Database not found {}", database_name),
+                }
             }
         })
     };
@@ -105,7 +110,9 @@ mod tests {
 
     #[test]
     fn should_return_the_db_name() {
-        assert_eq!(db_name_from_file_name(String::from("dbs/org-1-nun.data")), "org-1");
+        assert_eq!(
+            db_name_from_file_name(String::from("dbs/org-1-nun.data")),
+            "org-1"
+        );
     }
-
 }

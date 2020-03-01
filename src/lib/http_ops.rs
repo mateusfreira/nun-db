@@ -15,7 +15,6 @@ fn process_commands(
     db: &Arc<SelectedDatabase>,
     dbs: &Arc<Databases>,
     auth: &Arc<AtomicBool>,
-
 ) -> Vec<String> {
     let mut responses = Vec::new();
     for command in commands {
@@ -54,7 +53,7 @@ pub fn start_http_client(dbs: Arc<Databases>) {
     let http_server = tiny_http::Server::http("0.0.0.0:3013").unwrap();
     let http_server = Arc::new(http_server);
     let mut guards = Vec::with_capacity(4);
-    for _ in 0..4{
+    for _ in 0..4 {
         let server = http_server.clone();
         let dbs = dbs.clone();
         let guard = thread::spawn(move || {
@@ -69,10 +68,10 @@ pub fn start_http_client(dbs: Arc<Databases>) {
                 println!("[http] Processing the body{}", body);
 
                 let commands: Vec<&str> = body.split(';').collect();
-                let responses = process_commands(&commands, &mut sender, &mut receiver, &db, &dbs, &auth);
+                let responses =
+                    process_commands(&commands, &mut sender, &mut receiver, &db, &dbs, &auth);
                 let response = tiny_http::Response::from_string(responses.join(";"));
                 rq.respond(response).unwrap();
-
             }
         });
         guards.push(guard);
