@@ -51,7 +51,17 @@ impl Handler for Server {
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
         let message = msg.as_text().unwrap();
         println!("[{}] Server got message '{}'. ", thread_id::get(), message);
-        process_request(&message, &mut self.sender, &self.db, &self.dbs, &self.auth);
+        match process_request(&message, &mut self.sender, &self.db, &self.dbs, &self.auth) {
+            Response::Error { msg } => {
+                println!("Error: {}", msg);
+                self.sender.try_send(format!("error {} \n", msg)).unwrap();
+            }
+            _ => {
+                self.sender.try_send(format!("ok \n")).unwrap();
+                println!("ws::Success processed");
+            }
+        }
+
         Ok(())
     }
 

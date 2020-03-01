@@ -104,7 +104,7 @@ impl Request {
                     }
                 };
                 let token = match command.next() {
-                    Some(key) => key.to_string(),
+                    Some(key) => String::from(key).replace("\n", ""),
                     None => {
                         println!("CreateDb needs and token");
                         "".to_string()
