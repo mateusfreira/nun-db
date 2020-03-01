@@ -7,7 +7,7 @@ use std::sync::Arc;
 use bo::*;
 use db_ops::*;
 
-const SNAPSHOT_TIME: i64 = 120000; // 2 minutes
+const SNAPSHOT_TIME: i64 = 30000; // 30 secounds
 const FILE_NAME: &'static str = "-nun.data";
 const DIR_NAME: &'static str = "dbs";
 
@@ -89,10 +89,15 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     ) = std::sync::mpsc::channel(); // Visit this again
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
-            let dbs = dbs.map.lock().unwrap();
-            for (database_name, db) in dbs.iter() {
+            let mut dbs_to_snapshot = dbs.to_snapshot.lock().unwrap();
+            while let Some(database_name) = dbs_to_snapshot.pop() {
                 println!("Will snapshot the database {}", database_name);
-                storage_data_disk(db, database_name.clone());
+                let dbs = dbs.map.lock().unwrap();
+                let db_opt = dbs.get(&database_name);
+                match db_opt {
+                    Some(db) => storage_data_disk(db, database_name.clone()),
+                    _ => println!("Database not found {}", database_name),
+                }
             }
         })
     };

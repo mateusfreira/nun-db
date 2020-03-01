@@ -20,6 +20,7 @@ impl Request {
                 Ok(Request::Watch { key })
             }
             Some("unwatch-all") => Ok(Request::UnWatchAll {}),
+            Some("snapshot") => Ok(Request::Snapshot {}),
             Some("unwatch") => {
                 let key = match command.next() {
                     Some(key) => key.replace("\n", ""),

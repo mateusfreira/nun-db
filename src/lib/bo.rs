@@ -16,6 +16,7 @@ pub struct Database {
 
 pub struct Databases {
     pub map: Mutex<HashMap<String, Database>>,
+    pub to_snapshot: Mutex<Vec<String>>,
 }
 
 pub struct Watchers {
@@ -31,6 +32,7 @@ pub enum Request {
     Auth { user: String, password: String },
     CreateDb { token: String, name: String },
     UseDb { token: String, name: String },
+    Snapshot {},
 }
 
 pub enum Response {
