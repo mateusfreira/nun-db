@@ -7,7 +7,7 @@ use std::sync::Arc;
 use bo::*;
 use db_ops::*;
 
-const SNAPSHOT_TIME: i64 = 30000; // 30 secounds
+const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
 const FILE_NAME: &'static str = "-nun.data";
 const DIR_NAME: &'static str = "dbs";
 

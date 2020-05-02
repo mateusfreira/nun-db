@@ -12,7 +12,7 @@ use db_ops::*;
 
 pub fn start_tcp_client(dbs: Arc<Databases>) {
     println!("starting tcp client");
-    match TcpListener::bind("0.0.0.0:9001") {
+    match TcpListener::bind("0.0.0.0:3014") {
         Ok(listener) => {
             for stream in listener.incoming() {
                 let dbs = dbs.clone();
