@@ -63,15 +63,29 @@ pub fn start_http_client(dbs: Arc<Databases>) {
                 let db = create_temp_selected_db("init".to_string());
                 let mut body = String::new();
 
-                let mut rq = server.recv().unwrap();
-                rq.as_reader().read_to_string(&mut body).unwrap();
-                println!("[http] Processing the body{}", body);
-
-                let commands: Vec<&str> = body.split(';').collect();
-                let responses =
-                    process_commands(&commands, &mut sender, &mut receiver, &db, &dbs, &auth);
-                let response = tiny_http::Response::from_string(responses.join(";"));
-                rq.respond(response).unwrap();
+                match server.recv() {
+                    Ok(mut rq) => match rq.as_reader().read_to_string(&mut body) {
+                        Ok(_) => {
+                            let commands: Vec<&str> = body.split(';').collect();
+                            let responses = process_commands(
+                                &commands,
+                                &mut sender,
+                                &mut receiver,
+                                &db,
+                                &dbs,
+                                &auth,
+                            );
+                            let response = tiny_http::Response::from_string(responses.join(";"));
+                            match rq.respond(response) {
+                                Ok(_) => {}
+                                Err(e) => println!("http_ops response error {}", e),
+                            }
+                            println!("[http] Processing the body{}", body);
+                        }
+                        Err(e) => println!("error {}", e),
+                    },
+                    Err(e) => println!("server.recv::error {}", e),
+                }
             }
         });
         guards.push(guard);

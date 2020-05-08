@@ -35,7 +35,10 @@ impl Handler for Server {
                             break;
                         }
                         message => {
-                            ws_sender.send(message).unwrap();
+                            match ws_sender.send(message) {
+                                Ok(_) => {}
+                                Err(e) => println!("ws_ops::_read_thread::send::Error {}", e),
+                            };
                         }
                     },
                     None => {
@@ -54,10 +57,22 @@ impl Handler for Server {
         match process_request(&message, &mut self.sender, &self.db, &self.dbs, &self.auth) {
             Response::Error { msg } => {
                 println!("Error: {}", msg);
-                self.sender.try_send(format!("error {} \n", msg)).unwrap();
+                match self.sender.try_send(format!("error {} \n", msg)) {
+                    Ok(_) => {}
+                    Err(e) => println!(
+                        "ws_ops::_read_thread::process_request::try_send::Error {}",
+                        e
+                    ),
+                }
             }
             _ => {
-                self.sender.try_send(format!("ok \n")).unwrap();
+                match self.sender.try_send(format!("ok \n")) {
+                    Ok(_) => {}
+                    Err(e) => println!(
+                        "ws_ops::_read_thread::process_request::_::try_send::Error {}",
+                        e
+                    ),
+                }
                 println!("ws::Success processed");
             }
         }
@@ -67,7 +82,11 @@ impl Handler for Server {
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
         println!("WebSocket closing for ({:?}) {}", code, reason);
-        self.sender.try_send(TO_CLOSE.to_string()).unwrap(); //Closes the read thread
+        match self.sender.try_send(TO_CLOSE.to_string()) {
+            //To close the read thread
+            Ok(_) => {}
+            Err(e) => println!("on_close::Error {}", e),
+        }
         process_request(
             "unwatch-all",
             &mut self.sender,
@@ -83,7 +102,7 @@ pub fn start_web_socket_client(dbs: Arc<Databases>) {
         let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
         ws::Builder::new()
             .with_settings(ws::Settings {
-                max_connections: 10000,
+                max_connections: 1000000,
                 ..ws::Settings::default()
             })
             .build(move |out| Server {
