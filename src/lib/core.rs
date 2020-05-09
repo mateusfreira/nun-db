@@ -90,7 +90,7 @@ pub fn process_request(
         }),
         Request::UseDb { name, token } => apply_if_auth(&auth, &|| {
             let mut db_name_state = db.name.lock().expect("Could not lock name mutex");
-            let dbs = dbs.map.lock().unwrap();
+            let dbs = dbs.map.lock().expect("Could not lock the mao mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => {
                     if is_valid_token(&token, db) {
