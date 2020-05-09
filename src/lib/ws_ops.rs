@@ -102,7 +102,7 @@ pub fn start_web_socket_client(dbs: Arc<Databases>) {
         let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
         ws::Builder::new()
             .with_settings(ws::Settings {
-                max_connections: 1000000,
+                max_connections: 100000,
                 ..ws::Settings::default()
             })
             .build(move |out| Server {
