@@ -18,26 +18,58 @@ Checkout our examples of integration and see what we can do for your app
 * React.js Realtime Todo app 
 
 
-## How to run
-* Docker 
+# Instalations
+
+## Docker 
 
 Running Nun-db from docker is probably the faster way to do it, the simples steps to run nun-db with
 docker is bu running and container using all the default ports like the next example shows.
 
 ```
-docker run -it --rm -p 3013:3013 -p 3012:3012 -p 3014:3014 --name nun-test mateusfreira/nun-db
+
+docker run --env NUN_USER=user-name --env NUN_PWD=user-pwd -it --rm -p 3013:3013 -p 3012:3012 -p 3014:3014 --name nun-test mateusfreira/nun-db
+
 
 ```
 
-Create the sample DB:
+## Docker-compose
+
+```yaml
+
+version: '3'
+services:
+  nun-db:
+    image: "mateusfreira/nun-db"
+    ports:
+      - "3012:3012" # Web socket
+      - "3013:3013" # Http
+      - "3014:3014" # Socker
+    environment:
+      - NUN_DBS_DIR=/nun_data 
+      - NUN_USER=mateus
+      - NUN_PWD=mateus
+    volumes:
+        - /tmp/data/nun_db/:/nun_data
+```
+
+Note that the "/tmp/data/nun_db/" is a directory in the machine where the nun-db is running so you may need to create the directory for that use the command `mkdir /tmp/data/nun_db/`.
+
+
+### Create the sample DB:
 
 ```
-curl -X "POST" "http://localhost:3013" -d "auth mateus mateus; create-db sample sample-pwd;"
+
+# First connect to the running container
+docker exec -it nun-test  /bin/sh
+
+# Then execute the command to create the database
+nun-db -u user-name -p user-pwd create-db -d sample -t sample-pwd
+
 # You should see something like
-Valid auth
-;create-db success
-#That means success
+Response "valid auth\n;create-db success\n"
+
 ```
+
 Done you now have nun-db running in your docker and exposing all the ports to be use http (3013), web-socket(3012), socket(3014)  you are ready to use.
 
 ## Nun Query language (NQL)
@@ -60,7 +92,8 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 
 ## Diagram
 
-```
+```bash
+
                                       .------------------------------------------.
                                       |                     |                    |              .---------------.
                                       |       http_ops      |                    |------------->|  Disck        |      
@@ -85,4 +118,7 @@ Done you now have nun-db running in your docker and exposing all the ports to be
                                       |                                          |                                    
                                       |                                          |                                    
                                       .------------------------------------------.                                    
+
 ```
+
+

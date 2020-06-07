@@ -63,11 +63,9 @@ pub fn exec_command(matches: &ArgMatches) -> Result<(), String> {
 
     if let Some(create_db_matches) = matches.subcommand_matches("create-db") {
         println!(
-            "Will create the database {}, with the token {}, Admin {}, PWD: {}",
+            "Will create the database {}, with the token {}",
             create_db_matches.value_of("db-name").unwrap(),
-            create_db_matches.value_of("db-token").unwrap(),
-            matches.value_of("user").unwrap(),
-            matches.value_of("pwd").unwrap(),
+            create_db_matches.value_of("db-token").unwrap()
         );
         let body = format!(
             "auth {user} {pwd}; create-db {name} {token};",
