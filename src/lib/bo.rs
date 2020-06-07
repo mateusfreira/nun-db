@@ -17,6 +17,8 @@ pub struct Database {
 pub struct Databases {
     pub map: Mutex<HashMap<String, Database>>,
     pub to_snapshot: Mutex<Vec<String>>,
+    pub user: String,
+    pub pwd: String,
 }
 
 pub struct Watchers {

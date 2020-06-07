@@ -16,3 +16,5 @@ timer = "*"
 chrono = "*"
 thread-id = "*"
 tiny_http = "*"
+clap = "*"
+reqwest = { version="*" , features = ["blocking"]}

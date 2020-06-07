@@ -5,6 +5,7 @@ pub mod disk_ops;
 pub mod http_ops;
 pub mod tcp_ops;
 pub mod ws_ops;
+pub mod commands;
 
 use bo::*;
 

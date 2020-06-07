@@ -16,14 +16,20 @@ pub fn apply_to_database(
     sender: &Sender<String>,
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
-    let db_name = selected_db.name.lock().expect("Error getting the selected_db.name.lock");
+    let db_name = selected_db
+        .name
+        .lock()
+        .expect("Error getting the selected_db.name.lock");
     let dbs = dbs.map.lock().expect("Error getting the dbs.map.lock");
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => opp(db),
         None => {
-            match sender.clone().try_send(String::from("error no-db-selected\n")) {
+            match sender
+                .clone()
+                .try_send(String::from("error no-db-selected\n"))
+            {
                 Ok(_) => {}
-                Err(e) => println!("apply_to_database::try_send {}", e)
+                Err(e) => println!("apply_to_database::try_send {}", e),
             }
             return Response::Error {
                 msg: "No database found!".to_string(),
@@ -125,7 +131,12 @@ pub fn watch_key(key: &String, sender: &Sender<String>, db: &Database) -> Respon
 
 pub fn unwatch_all(sender: &Sender<String>, db: &Database) -> Response {
     println!("Will unwatch_all");
-    let watchers = db.watchers.map.lock().expect("Error on db.watchers.map.lock").clone();
+    let watchers = db
+        .watchers
+        .map
+        .lock()
+        .expect("Error on db.watchers.map.lock")
+        .clone();
     for (key, _val) in watchers.iter() {
         unwatch_key(&key, &sender, &db);
     }
@@ -161,16 +172,22 @@ pub fn create_temp_selected_db(name: String) -> Arc<SelectedDatabase> {
     return tmpdb;
 }
 
-pub fn create_init_dbs() -> Arc<Databases> {
+pub fn create_init_dbs(user: String, pwd: String) -> Arc<Databases> {
     let initial_dbs = HashMap::new();
     return Arc::new(Databases {
         map: Mutex::new(initial_dbs),
         to_snapshot: Mutex::new(Vec::new()),
+        user: user,
+        pwd: pwd,
     });
 }
 
 pub fn get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {
-    let watchers = watchers.map.lock().expect("Error on get_senders watchers.map.lock").clone();
+    let watchers = watchers
+        .map
+        .lock()
+        .expect("Error on get_senders watchers.map.lock")
+        .clone();
     return match watchers.get(key) {
         Some(watchers_vec) => watchers_vec.clone(),
         _ => Vec::new(),

@@ -1,5 +1,4 @@
 use futures::channel::mpsc::Sender;
-use std::env;
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -32,15 +31,8 @@ pub fn process_request(
     );
     let result = match request {
         Request::Auth { user, password } => {
-            let valid_user = match env::args().nth(1) {
-                Some(user) => user.to_string(),
-                _ => "mateus".to_string(),
-            };
-
-            let valid_pwd = match env::args().nth(2) {
-                Some(pwd) => pwd.to_string(),
-                _ => "mateus".to_string(),
-            };
+            let valid_user = dbs.user.clone();
+            let valid_pwd = dbs.pwd.clone();
 
             if user == valid_user && password == valid_pwd {
                 auth.swap(true, Ordering::Relaxed);
