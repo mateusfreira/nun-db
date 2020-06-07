@@ -5,5 +5,6 @@ RUN cargo install --path .
 
 FROM debian:buster-slim
 RUN apt-get update
+RUN apt-get install -y libssl-dev
 COPY --from=builder /usr/local/cargo/bin/nun-db /usr/local/bin/nun-db
-CMD ["nun-db", "-u", "$NUN_USER", "-p", "$NUN_PWD", "start"]
+CMD ["sh" , "-c", "nun-db -u ${NUN_USER} -p ${NUN_PWD} start"]
