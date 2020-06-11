@@ -1,7 +1,7 @@
-use clap::{ App, Arg, ArgMatches, SubCommand };
+use clap::{App, Arg, ArgMatches, SubCommand};
 
 pub fn prepare_args<'a>() -> ArgMatches<'a> {
-   return  App::new("Nun-db")
+    return App::new("Nun-db")
         .version("0.1")
         .author("Mateus F. S <mateus.freira@gmail.com>")
         .about("The best real-time database open source!")
@@ -56,11 +56,9 @@ pub fn prepare_args<'a>() -> ArgMatches<'a> {
         )
         .subcommand(SubCommand::with_name("start").about("Start Nun-db service"))
         .get_matches();
-
 }
 
 pub fn exec_command(matches: &ArgMatches) -> Result<(), String> {
-
     if let Some(create_db_matches) = matches.subcommand_matches("create-db") {
         println!(
             "Will create the database {}, with the token {}",
@@ -76,11 +74,7 @@ pub fn exec_command(matches: &ArgMatches) -> Result<(), String> {
         );
         let client = reqwest::blocking::Client::new();
         let res = client
-            .post(
-                matches
-                    .value_of("host")
-                    .unwrap_or("http://localhost:3013"),
-            )
+            .post(matches.value_of("host").unwrap_or("http://localhost:3013"))
             .body(body)
             .send()
             .unwrap()
@@ -103,11 +97,7 @@ pub fn exec_command(matches: &ArgMatches) -> Result<(), String> {
         );
         let client = reqwest::blocking::Client::new();
         let res = client
-            .post(
-                matches
-                    .value_of("host")
-                    .unwrap_or("http://localhost:3013"),
-            )
+            .post(matches.value_of("host").unwrap_or("http://localhost:3013"))
             .body(body)
             .send()
             .unwrap()
@@ -115,7 +105,6 @@ pub fn exec_command(matches: &ArgMatches) -> Result<(), String> {
             .unwrap();
         println!("Response {:?}", res,);
         return Ok(());
-
     }
     Ok(())
 }

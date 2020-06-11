@@ -1,16 +1,6 @@
-# Command line tools 
-* Start nun db 
-* Create a database
-- host
-- db_name
-- db_token
-* Fix paramters
-- admin
-- admin_pwd
-* Config
-    
-
-- [x]  Send and errro if the DB does not exits
+- [x] Add cli interface
+- [ ] Remove the need to admin ath to use an database  
+- [x] Send and errro if the DB does not exits
 - [x] Add un-watch command 
 - [x] add secret token to create datbase 
 - [ ] Read https://www.microsoft.com/en-us/research/uploads/prod/2018/03/faster-sigmod18.pdf

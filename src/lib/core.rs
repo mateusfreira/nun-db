@@ -49,38 +49,46 @@ pub fn process_request(
 
             return Response::Ok {};
         }
-        Request::Watch { key } => apply_if_auth(auth, &|| {
-            apply_to_database(&dbs, &db, &sender, &|_db| {
-                watch_key(&key, &sender, _db);
-                Response::Ok {}
-            })
-        }),
-        Request::UnWatch { key } => apply_if_auth(auth, &|| {
-            apply_to_database(&dbs, &db, &sender, &|_db| {
-                unwatch_key(&key, &sender, _db);
-                Response::Ok {}
-            })
-        }),
 
-        Request::UnWatchAll {} => apply_if_auth(auth, &|| {
-            apply_to_database(&dbs, &db, &sender, &|_db| {
-                unwatch_all(&sender, _db);
-                Response::Ok {}
-            })
-        }),
-        Request::Get { key } => apply_if_auth(auth, &|| {
+        Request::Get { key } => {
             apply_to_database(&dbs, &db, &sender, &|_db| get_key_value(&key, &sender, _db))
+        },
+
+        Request::Set { key, value } => apply_to_database(&dbs, &db, &sender, &|_db| {
+            set_key_value(key.clone(), value.clone(), _db)
         }),
 
         Request::Snapshot {} => apply_if_auth(auth, &|| {
             apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
         }),
-        Request::Set { key, value } => apply_if_auth(auth, &|| {
+
+        Request::UnWatch { key } => {
             apply_to_database(&dbs, &db, &sender, &|_db| {
-                set_key_value(key.clone(), value.clone(), _db)
+                unwatch_key(&key, &sender, _db);
+                Response::Ok {}
             })
-        }),
-        Request::UseDb { name, token } => apply_if_auth(&auth, &|| {
+        },
+
+        Request::UnWatchAll {} => {
+            apply_to_database(&dbs, &db, &sender, &|_db| {
+                unwatch_all(&sender, _db);
+                Response::Ok {}
+            })
+        },
+
+        Request::Watch { key } => {
+            apply_to_database(&dbs, &db, &sender, &|_db| {
+                watch_key(&key, &sender, _db);
+                Response::Ok {}
+            })
+        },
+
+
+
+
+
+
+        Request::UseDb { name, token } =>  {
             let mut db_name_state = db.name.lock().expect("Could not lock name mutex");
             let dbs = dbs.map.lock().expect("Could not lock the mao mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
@@ -102,7 +110,7 @@ pub fn process_request(
                 }
             };
             respose
-        }),
+        },
 
         Request::CreateDb { name, token } => apply_if_auth(&auth, &|| {
             let mut dbs = dbs.map.lock().unwrap();

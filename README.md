@@ -74,12 +74,40 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 
 ## Nun Query language (NQL)
 
-### Get
-### Set
-### Watch
-### UnWatch
 ### Auth
+#### Context
+- [ ] Require admin auth
+- [ ] Require db auth
+
+### Get
+#### Context
+- [ ] Require admin auth
+- [x] Require db auth
+
+### Set
+#### Context
+- [ ] Require admin auth
+- [x] Require db auth
+
 ### Snapshot
+#### Context
+- [x] Require admin auth
+- [x] Require db auth
+
+### UnWatch
+#### Context
+- [ ] Require admin auth
+- [x] Require db auth
+
+### UnWatchAll
+#### Context
+- [ ] Require admin auth
+- [x] Require db auth
+
+### Watch
+#### Context
+- [ ] Require admin auth
+- [x] Require db auth
 
 ## Connectors 
 * Http
