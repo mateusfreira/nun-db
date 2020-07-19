@@ -1,5 +1,11 @@
+- [ ] Data Replication
+     - Lazy Centralized Protocols using algorithm Single Master with limited Transparency 
+     - Write only on master, reads from anywhere (One point writes mutiple points reads)
+     * Main goal Delivery content change in the front ent at the time it changes (fast)
+     - Efficient leader election in complete networks (Complete netwotk election) -> https://ieeexplore.ieee.org/document/1386052?reload=true
+- [ ] Read https://jepsen.io/analyses/redis-raft-1b3fbf6
 - [x] Add cli interface
-- [ ] Remove the need to admin ath to use an database  
+- [x] Remove the need to admin ath to use an database  
 - [x] Send and errro if the DB does not exits
 - [x] Add un-watch command 
 - [x] add secret token to create datbase 
@@ -36,7 +42,7 @@
 ```
 
 # Main goal 
-* Delivery contant change in the front ent at the time it changes (fast)
+* Delivery content change in the front ent at the time it changes (fast)
 
 # What may change over time
 * Query language (I am not sure if NQL will go or I will use some kind of GraphQA)

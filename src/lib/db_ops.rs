@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn should_validate_token() {
         let token = String::from("key");
-        let token_invalid = String::from("key_invalid");
+        let token_invalid = String::from("invalid");
         let hash = HashMap::new();
         let db = create_db_from_hash(String::from("test"), hash);
         set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);

@@ -66,6 +66,7 @@ pub fn start_http_client(dbs: Arc<Databases>) {
                 match server.recv() {
                     Ok(mut rq) => match rq.as_reader().read_to_string(&mut body) {
                         Ok(_) => {
+                            println!("Body {}",body);
                             let commands: Vec<&str> = body.split(';').collect();
                             let responses = process_commands(
                                 &commands,
