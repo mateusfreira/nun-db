@@ -48,9 +48,10 @@ fn process_commands(
     }
     return responses;
 }
-pub fn start_http_client(dbs: Arc<Databases>) {
-    println!("Starting the http client with 4 threads");
-    let http_server = tiny_http::Server::http("0.0.0.0:3013").unwrap();
+pub fn start_http_client(dbs: Arc<Databases>, http_address:Arc<String>) {
+    let http_address = http_address.to_string();
+    println!("Starting the http client with 4 threads in the addr: {}", http_address);
+    let http_server = tiny_http::Server::http(http_address).unwrap();
     let http_server = Arc::new(http_server);
     let mut guards = Vec::with_capacity(4);
     for _ in 0..4 {
@@ -66,7 +67,7 @@ pub fn start_http_client(dbs: Arc<Databases>) {
                 match server.recv() {
                     Ok(mut rq) => match rq.as_reader().read_to_string(&mut body) {
                         Ok(_) => {
-                            println!("Body {}",body);
+                            println!("Body {}", body);
                             let commands: Vec<&str> = body.split(';').collect();
                             let responses = process_commands(
                                 &commands,

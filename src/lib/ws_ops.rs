@@ -97,7 +97,9 @@ impl Handler for Server {
     }
 }
 
-pub fn start_web_socket_client(dbs: Arc<Databases>) {
+pub fn start_web_socket_client(dbs: Arc<Databases>, ws_address:Arc<String>) {
+    let ws_address = ws_address.to_string();
+    println!("Starting the web socket client with addr: {}", ws_address);
     let server = thread::spawn(move || {
         let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
         ws::Builder::new()
@@ -113,7 +115,7 @@ pub fn start_web_socket_client(dbs: Arc<Databases>) {
                 auth: Arc::new(AtomicBool::new(false)),
             })
             .unwrap()
-            .listen("0.0.0.0:3012")
+            .listen(ws_address)
             .unwrap()
     });
 

@@ -16,19 +16,26 @@ mod lib;
 use lib::*;
 use std::thread;
 
+use std::sync::{Arc};
+
+use clap::{ArgMatches};
+
 fn main() -> Result<(), String> {
-    let matches = lib::commands::prepare_args();
-    if let Some(_) = matches.subcommand_matches("start") {
+    let matches:ArgMatches = lib::commands::prepare_args();
+    if let Some(start_match) = matches.subcommand_matches("start") {
         return start_db(
             matches.value_of("user").unwrap(),
             matches.value_of("pwd").unwrap(),
+            start_match.value_of("tcp-address").unwrap_or("0.0.0.0:3014"),
+            start_match.value_of("ws-address").unwrap_or("0.0.0.0:3012"),
+            start_match.value_of("http-address").unwrap_or("0.0.0.0:3012"),
         );
     } else {
         return lib::commands::exec_command(&matches);
     }
 }
 
-fn start_db(user: &str, pwd: &str) -> Result<(), String> {
+fn start_db(user: &str, pwd: &str, tcp_address: &str, ws_address:&str, http_address:&str) -> Result<(), String> {
     env_logger::init();
     let dbs = lib::db_ops::create_init_dbs(user.to_string(), pwd.to_string());
 
@@ -39,10 +46,16 @@ fn start_db(user: &str, pwd: &str) -> Result<(), String> {
 
     let db_socket = dbs.clone();
     let db_http = dbs.clone();
+    let ws_address = Arc::new(ws_address.to_string());
+    let http_address = Arc::new(http_address.to_string());
 
     // Netwotk threds
-    let _ws_thread = thread::spawn(|| lib::ws_ops::start_web_socket_client(db_socket));
-    let _http_thread = thread::spawn(|| lib::http_ops::start_http_client(db_http));
-    lib::tcp_ops::start_tcp_client(dbs.clone());
+    let ws_thread = thread::spawn(move || {
+        lib::ws_ops::start_web_socket_client(db_socket, ws_address)
+    });
+
+    let _http_thread = thread::spawn(|| lib::http_ops::start_http_client(db_http, http_address));
+    lib::tcp_ops::start_tcp_client(dbs.clone(), tcp_address);
+    ws_thread.join().expect("ws thread died");
     Ok(())
 }

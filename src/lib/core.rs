@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use bo::*;
 use db_ops::*;
+use replication_ops::*;
 
 pub fn process_request(
     input: &str,
@@ -52,7 +53,7 @@ pub fn process_request(
 
         Request::Get { key } => {
             apply_to_database(&dbs, &db, &sender, &|_db| get_key_value(&key, &sender, _db))
-        },
+        }
 
         Request::Set { key, value } => apply_to_database(&dbs, &db, &sender, &|_db| {
             set_key_value(key.clone(), value.clone(), _db)
@@ -62,33 +63,22 @@ pub fn process_request(
             apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
         }),
 
-        Request::UnWatch { key } => {
-            apply_to_database(&dbs, &db, &sender, &|_db| {
-                unwatch_key(&key, &sender, _db);
-                Response::Ok {}
-            })
-        },
+        Request::UnWatch { key } => apply_to_database(&dbs, &db, &sender, &|_db| {
+            unwatch_key(&key, &sender, _db);
+            Response::Ok {}
+        }),
 
-        Request::UnWatchAll {} => {
-            apply_to_database(&dbs, &db, &sender, &|_db| {
-                unwatch_all(&sender, _db);
-                Response::Ok {}
-            })
-        },
+        Request::UnWatchAll {} => apply_to_database(&dbs, &db, &sender, &|_db| {
+            unwatch_all(&sender, _db);
+            Response::Ok {}
+        }),
 
-        Request::Watch { key } => {
-            apply_to_database(&dbs, &db, &sender, &|_db| {
-                watch_key(&key, &sender, _db);
-                Response::Ok {}
-            })
-        },
+        Request::Watch { key } => apply_to_database(&dbs, &db, &sender, &|_db| {
+            watch_key(&key, &sender, _db);
+            Response::Ok {}
+        }),
 
-
-
-
-
-
-        Request::UseDb { name, token } =>  {
+        Request::UseDb { name, token } => {
             let mut db_name_state = db.name.lock().expect("Could not lock name mutex");
             let dbs = dbs.map.lock().expect("Could not lock the mao mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
@@ -110,7 +100,7 @@ pub fn process_request(
                 }
             };
             respose
-        },
+        }
 
         Request::CreateDb { name, token } => apply_if_auth(&auth, &|| {
             let mut dbs = dbs.map.lock().unwrap();
@@ -147,5 +137,8 @@ pub fn process_request(
         input,
         elapsed
     );
-    result
+    // Replicate, ignoring for now
+    let replication_result = replicate_request(input, result);
+
+    replication_result
 }

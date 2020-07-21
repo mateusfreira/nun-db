@@ -1,6 +1,6 @@
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-pub fn prepare_args<'a>() -> ArgMatches<'a> {
+pub fn prepare_args<'a>() -> ArgMatches<'static> {
     return App::new("Nun-db")
         .version("0.1")
         .author("Mateus F. S <mateus.freira@gmail.com>")
@@ -54,7 +54,31 @@ pub fn prepare_args<'a>() -> ArgMatches<'a> {
                         .help("Execute a sequece of command separated commands in the dabtase"),
                 ),
         )
-        .subcommand(SubCommand::with_name("start").about("Start Nun-db service"))
+        .subcommand(
+            SubCommand::with_name("start")
+                .arg(
+                    Arg::with_name("tcp-address")
+                        .short("t")
+                        .long("tcp-address")
+                        .takes_value(true)
+                        .help("TCP address"),
+                )
+                .arg(
+                    Arg::with_name("ws-address")
+                        .short("w")
+                        .long("ws-address")
+                        .takes_value(true)
+                        .help("Web socket address"),
+                )
+                .arg(
+                    Arg::with_name("http-address")
+                        .short("h")
+                        .long("http-address")
+                        .takes_value(true)
+                        .help("Http address"),
+                )
+                .about("Start Nun-db service"),
+        )
         .get_matches();
 }
 

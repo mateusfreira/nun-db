@@ -4,6 +4,7 @@ pub mod core;
 pub mod db_ops;
 pub mod disk_ops;
 pub mod http_ops;
+pub mod replication_ops;
 pub mod tcp_ops;
 pub mod ws_ops;
 
