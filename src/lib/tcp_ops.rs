@@ -10,15 +10,16 @@ use bo::*;
 use core::*;
 use db_ops::*;
 
-pub fn start_tcp_client(dbs: Arc<Databases>, tcp_addressed: &str) {
+pub fn start_tcp_client(dbs: Arc<Databases>, replication_sender: Sender<String>,tcp_addressed: &str) {
     println!("starting tcp client in the addr: {}", tcp_addressed);
     match TcpListener::bind(tcp_addressed) {
         Ok(listener) => {
             for stream in listener.incoming() {
                 let dbs = dbs.clone();
+                let replication_sender = replication_sender.clone();
                 thread::spawn(move || match stream {
                     Ok(socket) => {
-                        handle_client(socket, dbs);
+                        handle_client(socket, dbs, replication_sender);
                     }
                     _ => (),
                 });
@@ -30,7 +31,7 @@ pub fn start_tcp_client(dbs: Arc<Databases>, tcp_addressed: &str) {
     };
 }
 
-fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
+fn handle_client(stream: TcpStream, dbs: Arc<Databases>, replication_sender: Sender<String>) {
     let mut reader = BufReader::new(&stream);
     let writer = &mut BufWriter::new(&stream);
     let (mut sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
