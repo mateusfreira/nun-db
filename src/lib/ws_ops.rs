@@ -19,6 +19,7 @@ struct Server {
     dbs: Arc<Databases>,
     db: Arc<SelectedDatabase>,
     auth: Arc<AtomicBool>,
+    replication_sender: Sender<String>,
 }
 
 impl Handler for Server {
@@ -54,7 +55,14 @@ impl Handler for Server {
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
         let message = msg.as_text().unwrap();
         println!("[{}] Server got message '{}'. ", thread_id::get(), message);
-        match process_request(&message, &mut self.sender, &self.db, &self.dbs, &self.auth) {
+        match process_request(
+            &message,
+            &mut self.sender,
+            &self.db,
+            &self.dbs,
+            &self.auth,
+            &mut self.replication_sender,
+        ) {
             Response::Error { msg } => {
                 println!("Error: {}", msg);
                 match self.sender.try_send(format!("error {} \n", msg)) {
@@ -93,11 +101,16 @@ impl Handler for Server {
             &self.db,
             &self.dbs,
             &self.auth,
+            &mut self.replication_sender,
         );
     }
 }
 
-pub fn start_web_socket_client(dbs: Arc<Databases>, ws_address: Arc<String>) {
+pub fn start_web_socket_client(
+    dbs: Arc<Databases>,
+    ws_address: Arc<String>,
+    replication_sender: Sender<String>,
+) {
     let ws_address = ws_address.to_string();
     println!("Starting the web socket client with addr: {}", ws_address);
     let server = thread::spawn(move || {
@@ -112,6 +125,7 @@ pub fn start_web_socket_client(dbs: Arc<Databases>, ws_address: Arc<String>) {
                 db: create_temp_selected_db("init".to_string()),
                 dbs: dbs.clone(),
                 sender: sender.clone(),
+                replication_sender: replication_sender.clone(),
                 auth: Arc::new(AtomicBool::new(false)),
             })
             .unwrap()

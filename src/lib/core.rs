@@ -14,6 +14,7 @@ pub fn process_request(
     db: &Arc<SelectedDatabase>,
     dbs: &Arc<Databases>,
     auth: &Arc<AtomicBool>,
+    replicate_sender: &mut Sender<String>,
 ) -> Response {
     println!(
         "[{}] process_request got message '{}'. ",
@@ -46,9 +47,8 @@ pub fn process_request(
             match sender.clone().try_send(message) {
                 Ok(_n) => (),
                 Err(e) => println!("Request::Auth sender.send Error: {}", e),
-            }
-
-            return Response::Ok {};
+            };
+            Response::Ok {}
         }
 
         Request::Get { key } => {
@@ -138,7 +138,7 @@ pub fn process_request(
         elapsed
     );
     // Replicate, ignoring for now
-    let replication_result = replicate_request(input, result);
+    let replication_result = replicate_request(input, result, replicate_sender);
 
     replication_result
 }

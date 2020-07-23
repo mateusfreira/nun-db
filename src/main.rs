@@ -13,15 +13,16 @@ extern crate ws;
 
 mod lib;
 
+use futures::channel::mpsc::{channel, Receiver, Sender};
 use lib::*;
 use std::thread;
-use futures::channel::mpsc::{channel, Receiver, Sender};
 
 use std::sync::Arc;
 
 use clap::ArgMatches;
 
 fn main() -> Result<(), String> {
+    env_logger::init();
     let matches: ArgMatches = lib::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
         return start_db(
@@ -47,11 +48,13 @@ fn start_db(
     ws_address: &str,
     http_address: &str,
 ) -> Result<(), String> {
-    let (mut replication_sender, mut replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
+    let (mut replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =
+        channel(100);
 
-    lib::replication_ops::start_replication("127.0.0.1:3014", replication_receiver);
+    let replication_thread = thread::spawn(move || {
+        lib::replication_ops::start_replication("127.0.0.1:3015", replication_receiver);
+    });
 
-    env_logger::init();
     let dbs = lib::db_ops::create_init_dbs(user.to_string(), pwd.to_string());
 
     let timer = timer::Timer::new();
@@ -61,15 +64,25 @@ fn start_db(
 
     let db_socket = dbs.clone();
     let db_http = dbs.clone();
-    let ws_address = Arc::new(ws_address.to_string());
     let http_address = Arc::new(http_address.to_string());
 
-    // Netwotk threds
-    let ws_thread =
-        thread::spawn(move || lib::ws_ops::start_web_socket_client(db_socket, ws_address));
+    let ws_address = Arc::new(ws_address.to_string());
+    let replication_sender_ws = replication_sender.clone();
+    let replication_sender_http = replication_sender.clone();
 
-    let _http_thread = thread::spawn(|| lib::http_ops::start_http_client(db_http, http_address));
-    lib::tcp_ops::start_tcp_client(dbs.clone(), replication_sender.clone(),tcp_address);
+    // Netwotk threds
+    let ws_thread = thread::spawn(move || {
+        lib::ws_ops::start_web_socket_client(db_socket, ws_address, replication_sender_ws)
+    });
+
+    let _http_thread = thread::spawn(|| {
+        lib::http_ops::start_http_client(db_http, http_address, replication_sender_http)
+    });
+    replication_sender
+        .try_send("auth mateus mateus".to_string())
+        .unwrap();
+    lib::tcp_ops::start_tcp_client(dbs.clone(), replication_sender.clone(), tcp_address);
     ws_thread.join().expect("ws thread died");
+    replication_thread.join().expect("replication_thread thread died");
     Ok(())
 }
