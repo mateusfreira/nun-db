@@ -26,12 +26,13 @@ pub fn process_request(
         Ok(req) => req,
         Err(e) => return Response::Error { msg: e },
     };
+
     println!(
         "[{}] process_request parsed message '{}'. ",
         thread_id::get(),
         input
     );
-    let result = match request {
+    let result = match request.clone() {
         Request::Auth { user, password } => {
             let valid_user = dbs.user.clone();
             let valid_pwd = dbs.pwd.clone();
@@ -57,6 +58,24 @@ pub fn process_request(
 
         Request::Set { key, value } => apply_to_database(&dbs, &db, &sender, &|_db| {
             set_key_value(key.clone(), value.clone(), _db)
+        }),
+
+        Request::ReplicateSet {
+            db: name,
+            key,
+            value,
+        } => apply_if_auth(auth, &|| {
+            let dbs = dbs.map.lock().expect("Could not lock the dbs mutex");
+            let respose: Response = match dbs.get(&name.to_string()) {
+                Some(db) => set_key_value(key.clone(), value.clone(), db),
+                _ => {
+                    println!("Not a valid database name");
+                    Response::Error {
+                        msg: "Not a valid database name".to_string(),
+                    }
+                }
+            };
+            respose
         }),
 
         Request::Snapshot {} => apply_if_auth(auth, &|| {
@@ -138,7 +157,12 @@ pub fn process_request(
         elapsed
     );
     // Replicate, ignoring for now
-    let replication_result = replicate_request(input, result, replicate_sender);
-
-    replication_result
+    if dbs.should_repliate {
+        let db_name_state = db.name.lock().expect("Could not lock name mutex").clone();
+        let replication_result =
+            replicate_request(request, &db_name_state, result, replicate_sender);
+        replication_result
+    } else {
+        result
+    }
 }

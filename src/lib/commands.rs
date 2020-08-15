@@ -77,6 +77,13 @@ pub fn prepare_args<'a>() -> ArgMatches<'static> {
                         .takes_value(true)
                         .help("Http address"),
                 )
+                .arg(
+                    Arg::with_name("replicate-address")
+                        .short("r")
+                        .long("replicate-address")
+                        .takes_value(true)
+                        .help("Replicate address"),
+                )
                 .about("Start Nun-db service"),
         )
         .get_matches();

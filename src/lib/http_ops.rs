@@ -61,8 +61,8 @@ pub fn start_http_client(
     );
     let http_server = tiny_http::Server::http(http_address).unwrap();
     let http_server = Arc::new(http_server);
-    let mut guards = Vec::with_capacity(4);
-    for _ in 0..4 {
+    let mut guards = Vec::with_capacity(10);
+    for _ in 0..10 {
         let server = http_server.clone();
         let dbs = dbs.clone();
         let mut replication_sender = replication_sender.clone();

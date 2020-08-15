@@ -15,6 +15,7 @@ mod lib;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use lib::*;
+use std::sync::atomic::AtomicBool;
 use std::thread;
 
 use std::sync::Arc;
@@ -35,6 +36,7 @@ fn main() -> Result<(), String> {
             start_match
                 .value_of("http-address")
                 .unwrap_or("0.0.0.0:3012"),
+            start_match.value_of("replicate-address").unwrap_or(""),
         );
     } else {
         return lib::commands::exec_command(&matches);
@@ -47,15 +49,23 @@ fn start_db(
     tcp_address: &str,
     ws_address: &str,
     http_address: &str,
+    replicate_address: &str,
 ) -> Result<(), String> {
-    let (mut replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =
+    let should_replicate = replicate_address != "";
+    let (replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =
         channel(100);
 
-    let replication_thread = thread::spawn(move || {
-        lib::replication_ops::start_replication("127.0.0.1:3015", replication_receiver);
+    let replicate_address = Arc::new(replicate_address.to_string());
+    let should_replicate_arc = Arc::new(AtomicBool::new(should_replicate));
+    let replication_thread = thread::spawn(|| {
+        lib::replication_ops::start_replication(
+            replicate_address,
+            replication_receiver,
+            should_replicate_arc,
+        );
     });
 
-    let dbs = lib::db_ops::create_init_dbs(user.to_string(), pwd.to_string());
+    let dbs = lib::db_ops::create_init_dbs(user.to_string(), pwd.to_string(), should_replicate);
 
     let timer = timer::Timer::new();
     let db_snap = dbs.clone();
@@ -78,11 +88,18 @@ fn start_db(
     let _http_thread = thread::spawn(|| {
         lib::http_ops::start_http_client(db_http, http_address, replication_sender_http)
     });
-    replication_sender
-        .try_send("auth mateus mateus".to_string())
-        .unwrap();
+
     lib::tcp_ops::start_tcp_client(dbs.clone(), replication_sender.clone(), tcp_address);
+
+    lib::replication_ops::auth_on_replication(
+        user.to_string(),
+        pwd.to_string(),
+        replication_sender,
+    );
+
     ws_thread.join().expect("ws thread died");
-    replication_thread.join().expect("replication_thread thread died");
+    replication_thread
+        .join()
+        .expect("replication_thread thread died");
     Ok(())
 }

@@ -118,6 +118,45 @@ impl Request {
                     token: token.to_string(),
                 })
             }
+            Some("replicate") => {
+                let db = match command.next() {
+                    Some(key) => key,
+                    None => {
+                        println!("replicate needs to provide an db name");
+                        ""
+                    }
+                };
+                return match command.next() {
+                    Some(command_value) => {
+                        let mut command = command_value.splitn(2, " ");
+                        let name = match command.next() {
+                            Some(key) => String::from(key).replace("\n", ""),
+                            None => {
+                                println!("ReplicateSet needs name");
+                                "".to_string()
+                            }
+                        };
+
+                        let value = match command.next() {
+                            Some(key) => String::from(key).replace("\n", ""),
+                            None => {
+                                println!("ReplicateSet needs value");
+                                "".to_string()
+                            }
+                        };
+                        Ok(Request::ReplicateSet {
+                            db: db.to_string(),
+                            key: name.to_string(),
+                            value: value.to_string(),
+                        })
+                    }
+                    None => {
+                        println!("replicate needs to provide an db name");
+                        Err(format!("no command sent"))
+                    }
+                };
+            }
+
             Some(cmd) => Err(format!("unknown command: {}", cmd)),
             _ => Err(format!("no command sent")),
         };
@@ -247,6 +286,20 @@ mod tests {
         match Request::parse("unwatch-all") {
             Ok(Request::UnWatchAll {}) => Ok(()),
             _ => Err(String::from("unwatch-all not parsed correct")),
+        }
+    }
+
+    #[test]
+    fn should_parse_replicaion() -> Result<(), String> {
+        match Request::parse("replicate vue jose 1") {
+            Ok(Request::ReplicateSet { db, key, value }) => {
+                if db == "vue" && key == "jose" && value == "1" {
+                    Ok(())
+                } else {
+                    Err(String::from("db should vue key should be jose value 1"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
         }
     }
 }
