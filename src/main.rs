@@ -24,7 +24,7 @@ use clap::ArgMatches;
 
 fn main() -> Result<(), String> {
     env_logger::init();
-    let matches: ArgMatches = lib::commands::prepare_args();
+    let matches: ArgMatches = lib::commad_line::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
         return start_db(
             matches.value_of("user").unwrap(),
@@ -39,7 +39,7 @@ fn main() -> Result<(), String> {
             start_match.value_of("replicate-address").unwrap_or(""),
         );
     } else {
-        return lib::commands::exec_command(&matches);
+        return lib::commad_line::commands::exec_command(&matches);
     }
 }
 
@@ -82,14 +82,14 @@ fn start_db(
 
     // Netwotk threds
     let ws_thread = thread::spawn(move || {
-        lib::ws_ops::start_web_socket_client(db_socket, ws_address, replication_sender_ws)
+        lib::network::ws_ops::start_web_socket_client(db_socket, ws_address, replication_sender_ws)
     });
 
     let _http_thread = thread::spawn(|| {
-        lib::http_ops::start_http_client(db_http, http_address, replication_sender_http)
+        lib::network::http_ops::start_http_client(db_http, http_address, replication_sender_http)
     });
 
-    lib::tcp_ops::start_tcp_client(dbs.clone(), replication_sender.clone(), tcp_address);
+    lib::network::tcp_ops::start_tcp_client(dbs.clone(), replication_sender.clone(), tcp_address);
 
     lib::replication_ops::auth_on_replication(
         user.to_string(),

@@ -82,6 +82,13 @@ pub fn process_request(
             apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
         }),
 
+        Request::ReplicateSnapshot {
+            db: db_to_snap_shot,
+        } => apply_if_auth(auth, &|| {
+            let db = create_temp_selected_db(db_to_snap_shot.clone());
+            apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
+        }),
+
         Request::UnWatch { key } => apply_to_database(&dbs, &db, &sender, &|_db| {
             unwatch_key(&key, &sender, _db);
             Response::Ok {}

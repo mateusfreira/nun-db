@@ -60,6 +60,9 @@ pub enum Request {
         name: String,
     },
     Snapshot {},
+    ReplicateSnapshot {
+        db: String,
+    },
 }
 
 #[derive(PartialEq)]

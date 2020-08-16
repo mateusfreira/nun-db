@@ -7,8 +7,8 @@ use thread_id;
 use ws::{CloseCode, Handler, Message};
 
 use bo::*;
-use core::*;
 use db_ops::*;
+use process_request::*;
 
 const TO_CLOSE: &'static str = "##CLOSE##";
 

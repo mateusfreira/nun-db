@@ -27,6 +27,14 @@ pub fn replicate_request(
                     .unwrap();
                 return Response::Ok {};
             }
+            Request::Snapshot { } => {
+                println!("Will replicate a snapshot to the database {}", db_name);
+                replication_sender
+                    .clone()
+                    .try_send(format!("replicate-snapshot {}", db_name))
+                    .unwrap();
+                return Response::Ok {};
+            }
             Request::Set { value, key } => {
                 println!("Will replicate the set of the key {} to {} ", key, value);
                 replication_sender
@@ -157,6 +165,22 @@ mod tests {
         assert_eq!(receiver_replicate_result, None);
     }
 
+    #[test]
+    fn should_replicate_if_the_command_is_a_snapshot() {
+        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let request = Request::Snapshot {};
+
+        let resp_get = Response::Ok {};
+
+        let db_name = "some_db_name".to_string();
+        let result = match replicate_request(request, &db_name, resp_get, &sender) {
+            Response::Ok {} => true,
+            _ => false,
+        };
+        assert!(result, "should have returned an Ok response!");
+        let receiver_replicate_result = receiver.try_next().unwrap().unwrap();
+        assert_eq!(receiver_replicate_result, "replicate-snapshot some_db_name");
+    }
     #[test]
     fn should_replicate_if_the_command_is_a_create_db() {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
