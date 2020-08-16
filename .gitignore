@@ -10,3 +10,4 @@ Cargo.lock
 **/*.rs.bk
 # Ignore data file
 dbs/
+*.log

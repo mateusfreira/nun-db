@@ -89,13 +89,14 @@ fn start_db(
         lib::network::http_ops::start_http_client(db_http, http_address, replication_sender_http)
     });
 
-    lib::network::tcp_ops::start_tcp_client(dbs.clone(), replication_sender.clone(), tcp_address);
 
     lib::replication_ops::auth_on_replication(
         user.to_string(),
         pwd.to_string(),
-        replication_sender,
+        replication_sender.clone(),
     );
+
+    lib::network::tcp_ops::start_tcp_client(dbs.clone(), replication_sender, tcp_address);
 
     ws_thread.join().expect("ws thread died");
     replication_thread
