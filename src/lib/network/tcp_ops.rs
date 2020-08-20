@@ -10,20 +10,15 @@ use bo::*;
 use db_ops::*;
 use process_request::*;
 
-pub fn start_tcp_client(
-    dbs: Arc<Databases>,
-    replication_sender: Sender<String>,
-    tcp_addressed: &str,
-) {
+pub fn start_tcp_client(dbs: Arc<Databases>, tcp_addressed: &str) {
     println!("starting tcp client in the addr: {}", tcp_addressed);
     match TcpListener::bind(tcp_addressed) {
         Ok(listener) => {
             for stream in listener.incoming() {
                 let dbs = dbs.clone();
-                let replication_sender = replication_sender.clone();
                 thread::spawn(move || match stream {
                     Ok(socket) => {
-                        handle_client(socket, dbs, replication_sender);
+                        handle_client(socket, dbs);
                     }
                     _ => (),
                 });
@@ -35,7 +30,7 @@ pub fn start_tcp_client(
     };
 }
 
-fn handle_client(stream: TcpStream, dbs: Arc<Databases>, mut replication_sender: Sender<String>) {
+fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
     let mut reader = BufReader::new(&stream);
     let writer = &mut BufWriter::new(&stream);
     let (mut sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -61,14 +56,7 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>, mut replication_sender:
                         );*/
                         break;
                     }
-                    _ => match process_request(
-                        &buf,
-                        &mut sender,
-                        &db,
-                        &dbs,
-                        &auth,
-                        &mut replication_sender,
-                    ) {
+                    _ => match process_request(&buf, &mut sender, &db, &dbs, &auth) {
                         Response::Error { msg } => {
                             println!("Error: {}", msg);
                             sender.try_send(format!("error {} \n", msg)).unwrap();

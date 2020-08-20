@@ -1,8 +1,22 @@
 use futures::channel::mpsc::Sender;
-
 use std::sync::Mutex;
 
 use std::collections::HashMap;
+
+pub struct ClusterMember {
+    pub name: String,
+    pub role: ClusterRole,
+    pub sender: Sender<String>,
+}
+
+pub enum ClusterRole {
+    Primary,
+    Secoundary,
+}
+
+pub struct ClusterState {
+    pub members: Mutex<Vec<ClusterMember>>,
+}
 
 pub struct SelectedDatabase {
     pub name: Mutex<String>,
@@ -17,7 +31,9 @@ pub struct Database {
 pub struct Databases {
     pub map: Mutex<HashMap<String, Database>>,
     pub to_snapshot: Mutex<Vec<String>>,
-    pub should_repliate: bool,
+    pub cluster_state: Mutex<ClusterState>,
+    pub start_replication_sender: Sender<String>,
+    pub replication_sender: Sender<String>,
     pub user: String,
     pub pwd: String,
 }
@@ -62,6 +78,14 @@ pub enum Request {
     Snapshot {},
     ReplicateSnapshot {
         db: String,
+    },
+
+    Join {
+        name: String,
+    },
+
+    SetPrimary {
+        name: String,
     },
 }
 

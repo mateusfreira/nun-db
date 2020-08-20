@@ -1,9 +1,9 @@
+use std::mem;
 use std::net::TcpStream;
 use std::thread;
 
-use futures::channel::mpsc::{Receiver, Sender};
+use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::io::{BufWriter, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use bo::*;
@@ -27,7 +27,7 @@ pub fn replicate_request(
                     .unwrap();
                 return Response::Ok {};
             }
-            Request::Snapshot { } => {
+            Request::Snapshot {} => {
                 println!("Will replicate a snapshot to the database {}", db_name);
                 replication_sender
                     .clone()
@@ -48,46 +48,112 @@ pub fn replicate_request(
     }
 }
 
-pub fn start_replication(
-    replicate_address: Arc<String>,
-    mut command_receiver: Receiver<String>,
-    should_repliate: Arc<AtomicBool>,
-) {
-    if should_repliate.load(Ordering::SeqCst) {
-        let replicate_address = replicate_address.to_string();
-        println!(
-            "replicating to tcp client in the addr: {}",
-            replicate_address
-        );
-        let socket = TcpStream::connect(replicate_address).unwrap();
-        let writer = &mut BufWriter::new(&socket);
-        loop {
-            match command_receiver.try_next() {
-                Ok(message_opt) => match message_opt {
-                    Some(message) => {
-                        println!("Will replicate {}", message);
-                        writer.write_fmt(format_args!("{}\n", message)).unwrap();
-                        match writer.flush() {
-                            Err(e) => println!("replication error: {}", e),
-                            _ => (),
+pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs: Arc<Databases>) {
+    loop {
+        match replication_receiver.try_next() {
+            Ok(message_opt) => match message_opt {
+                Some(message) => {
+                    println!("Got {} to replicate ", message);
+                    let dbs = dbs.clone();
+                    let state = dbs.cluster_state.lock().unwrap();
+                    for member in state.members.lock().unwrap().iter() {
+                        println!("Replicating {} to {}", message, member.name);
+                        match member.sender.clone().try_send(message.to_string()) {
+                            Ok(_n) => (),
+                            Err(e) => {
+                                println!("start_replication_thread1 sender.send Error: {}", e)
+                            }
                         }
                     }
-                    None => println!("replication::try_next::Empty message"),
-                },
-                _ => thread::sleep(time::Duration::from_millis(2)),
-            }
+                }
+                None => println!("replication::try_next::Empty message"),
+            },
+            _ => thread::sleep(time::Duration::from_millis(2)),
         }
-    } else {
-        println!(
-            "[replication_ops] no replication addr provided, will not start a replication thread"
-        )
+    }
+}
+pub fn start_replication_creator_thread(
+    mut replication_start_receiver: Receiver<String>,
+    dbs: Arc<Databases>,
+) {
+    let mut guards = Vec::with_capacity(10); // Max 10 servers
+    loop {
+        match replication_start_receiver.try_next() {
+            Ok(message_opt) => match message_opt {
+                Some(name) => {
+                    let user = dbs.user.to_string();
+                    let pwd = dbs.pwd.to_string();
+                    let cluster_state = dbs.cluster_state.lock().unwrap();
+                    let mut members = cluster_state
+                        .members
+                        .lock()
+                        .expect("Could not lock members!");
+                    let (sender, receiver): (Sender<String>, Receiver<String>) = channel(100);
+                    println!("Member before {}", (*members).len());
+                    members.push(ClusterMember {
+                        name: name.clone(),
+                        role: ClusterRole::Secoundary,
+                        sender: sender,
+                    });
+                    println!("Member after {}", (*members).len());
+                    let mut new_members = Vec::new();
+                    new_members.append(&mut members);
+                    mem::replace(&mut *members, new_members);
+                    let guard = thread::spawn(move || {
+                        start_replication(name, receiver, user, pwd);
+                    });
+                    guards.push(guard);
+                }
+                None => println!("replication::try_next::Empty message"),
+            },
+            _ => thread::sleep(time::Duration::from_millis(2)),
+        }
     }
 }
 
-pub fn auth_on_replication(user: String, pwd: String, mut replication_sender: Sender<String>) {
-    replication_sender
-        .try_send(format!("auth {} {}", user, pwd))
+fn start_replication(
+    replicate_address: String,
+    mut command_receiver: Receiver<String>,
+    user: String,
+    pwd: String,
+) {
+    println!(
+        "replicating to tcp client in the addr: {}",
+        replicate_address
+    );
+    let socket = TcpStream::connect(replicate_address).unwrap();
+    let writer = &mut BufWriter::new(&socket);
+    auth_on_replication(user, pwd, writer);
+    loop {
+        match command_receiver.try_next() {
+            Ok(message_opt) => match message_opt {
+                Some(message) => {
+                    println!("Will replicate {}", message);
+                    writer.write_fmt(format_args!("{}\n", message)).unwrap();
+                    match writer.flush() {
+                        Err(e) => println!("replication error: {}", e),
+                        _ => (),
+                    }
+                }
+                None => println!("replication::try_next::Empty message"),
+            },
+            _ => thread::sleep(time::Duration::from_millis(2)),
+        }
+    }
+}
+
+pub fn auth_on_replication(
+    user: String,
+    pwd: String,
+    writer: &mut std::io::BufWriter<&std::net::TcpStream>,
+) {
+    writer
+        .write_fmt(format_args!("auth {} {}\n", user, pwd))
         .unwrap();
+    match writer.flush() {
+        Err(e) => println!("replication error: {}", e),
+        _ => (),
+    }
 }
 
 #[cfg(test)]

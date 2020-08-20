@@ -16,9 +16,24 @@ impl Request {
             Some("replicate-snapshot") => {
                 let db_name = match command.next() {
                     Some(db_name) => db_name.replace("\n", ""),
-                    None => return Err(format!("get must contain a db name")),
+                    None => return Err(format!("replicate-snapshot must contain a db name")),
                 };
                 Ok(Request::ReplicateSnapshot { db: db_name })
+            }
+            Some("join") => {
+                let name = match command.next() {
+                    Some(name) => name.replace("\n", ""),
+                    None => return Err(format!("join must contain a name")),
+                };
+                Ok(Request::Join { name: name })
+            }
+
+            Some("set-primary") => {
+                let name = match command.next() {
+                    Some(name) => name.replace("\n", ""),
+                    None => return Err(format!("set-primary must contain a name")),
+                };
+                Ok(Request::SetPrimary { name: name })
             }
             Some("unwatch") => {
                 let key = match command.next() {

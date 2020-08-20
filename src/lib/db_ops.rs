@@ -172,12 +172,21 @@ pub fn create_temp_selected_db(name: String) -> Arc<SelectedDatabase> {
     return tmpdb;
 }
 
-pub fn create_init_dbs(user: String, pwd: String, should_repliate: bool) -> Arc<Databases> {
+pub fn create_init_dbs(
+    user: String,
+    pwd: String,
+    start_replication_sender: Sender<String>,
+    replication_sender: Sender<String>,
+) -> Arc<Databases> {
     let initial_dbs = HashMap::new();
     return Arc::new(Databases {
         map: Mutex::new(initial_dbs),
-        should_repliate: should_repliate,
         to_snapshot: Mutex::new(Vec::new()),
+        cluster_state: Mutex::new(ClusterState {
+            members: Mutex::new(Vec::new()),
+        }),
+        start_replication_sender: start_replication_sender,
+        replication_sender: replication_sender,
         user: user,
         pwd: pwd,
     });

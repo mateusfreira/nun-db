@@ -15,7 +15,6 @@ mod lib;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use lib::*;
-use std::sync::atomic::AtomicBool;
 use std::thread;
 
 use std::sync::Arc;
@@ -36,7 +35,6 @@ fn main() -> Result<(), String> {
             start_match
                 .value_of("http-address")
                 .unwrap_or("0.0.0.0:3012"),
-            start_match.value_of("replicate-address").unwrap_or(""),
         );
     } else {
         return lib::commad_line::commands::exec_command(&matches);
@@ -49,23 +47,32 @@ fn start_db(
     tcp_address: &str,
     ws_address: &str,
     http_address: &str,
-    replicate_address: &str,
 ) -> Result<(), String> {
-    let should_replicate = replicate_address != "";
     let (replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =
         channel(100);
 
-    let replicate_address = Arc::new(replicate_address.to_string());
-    let should_replicate_arc = Arc::new(AtomicBool::new(should_replicate));
-    let replication_thread = thread::spawn(|| {
-        lib::replication_ops::start_replication(
-            replicate_address,
-            replication_receiver,
-            should_replicate_arc,
+    let (start_replication_sender, start_replication_receiver): (Sender<String>, Receiver<String>) =
+        channel(100);
+
+    let dbs = lib::db_ops::create_init_dbs(
+        user.to_string(),
+        pwd.to_string(),
+        start_replication_sender,
+        replication_sender.clone(),
+    );
+
+    let db_replication_start = dbs.clone();
+    let replication_thread_creator = thread::spawn(|| {
+        lib::replication_ops::start_replication_creator_thread(
+            start_replication_receiver,
+            db_replication_start,
         );
     });
 
-    let dbs = lib::db_ops::create_init_dbs(user.to_string(), pwd.to_string(), should_replicate);
+    let db_replication = dbs.clone();
+    let replication_thread = thread::spawn(|| {
+        lib::replication_ops::start_replication_thread(replication_receiver, db_replication);
+    });
 
     let timer = timer::Timer::new();
     let db_snap = dbs.clone();
@@ -77,30 +84,23 @@ fn start_db(
     let http_address = Arc::new(http_address.to_string());
 
     let ws_address = Arc::new(ws_address.to_string());
-    let replication_sender_ws = replication_sender.clone();
-    let replication_sender_http = replication_sender.clone();
 
     // Netwotk threds
-    let ws_thread = thread::spawn(move || {
-        lib::network::ws_ops::start_web_socket_client(db_socket, ws_address, replication_sender_ws)
-    });
+    let ws_thread =
+        thread::spawn(move || lib::network::ws_ops::start_web_socket_client(db_socket, ws_address));
 
-    let _http_thread = thread::spawn(|| {
-        lib::network::http_ops::start_http_client(db_http, http_address, replication_sender_http)
-    });
+    let _http_thread =
+        thread::spawn(|| lib::network::http_ops::start_http_client(db_http, http_address));
 
-
-    lib::replication_ops::auth_on_replication(
-        user.to_string(),
-        pwd.to_string(),
-        replication_sender.clone(),
-    );
-
-    lib::network::tcp_ops::start_tcp_client(dbs.clone(), replication_sender, tcp_address);
+    lib::network::tcp_ops::start_tcp_client(dbs.clone(), tcp_address);
 
     ws_thread.join().expect("ws thread died");
     replication_thread
         .join()
         .expect("replication_thread thread died");
+
+    replication_thread_creator
+        .join()
+        .expect("replication_thread_creator thread died");
     Ok(())
 }

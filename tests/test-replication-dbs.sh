@@ -1,23 +1,55 @@
 #!/bin/bash
 trap "kill 0" EXIT
-# Run db main
- cargo run -- --user mateus -p mateus start  --tcp-address "0.0.0.0:3016" --ws-address "0.0.0.0:3057" --http-address "0.0.0.0:9091">secoundary.log&
 
-# Run db 2
-cargo run -- --user mateus -p mateus start  --tcp-address "0.0.0.0:3017" --ws-address "0.0.0.0:3058" --http-address "0.0.0.0:9092" --replicate-address "127.0.0.1:3016">primary.log&
+echo "Starting the primary"
+primaryHttpAddress="127.0.0.1:9092"
+secoundary1HttpAddress="127.0.0.1:9093"
+secoundary2HttpAddress="127.0.0.1:9093"
 
-sleep 10000
+cargo run -- --user mateus -p mateus start --http-address "$primaryHttpAddress" --tcp-address "0.0.0.0:3017" --ws-address "0.0.0.0:3058">primary.log&
+
+echo "Starting secoundary 1"
+
+cargo run -- --user mateus -p mateus start --http-address "$secoundary1HttpAddress" --tcp-address "0.0.0.0:3016" --ws-address "0.0.0.0:3057">secoundary.log&
+
+echo "Starting secoundary 2"
+
+cargo run -- --user mateus -p mateus start --http-address "$secoundary2HttpAddress" --tcp-address "0.0.0.0:3018" --ws-address "0.0.0.0:3059">secoundary23log&
+
+
+echo "Will Connect the secoundaries to the primary"
+
+sleep 10
+
+joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3016")
+echo "Join 1result $joinResult"
+
+joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3018")
+
+echo "Join result $joinResult"
+
+curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; create-db test-db test-db-key;"
+
 start_time="$(date -u +%s)"
 for i in {1..2000}
 do
-    r=$(curl -s -X "POST" "http://localhost:9092" -d "auth mateus mateus; create-db org-$i key-$i; use-db org-$i key-$i; set state jose-$i-1;")
-    get_result=$(curl -s -X "POST" "http://localhost:9091" -d "use-db org-$i key-$i;get state")
-    if [ "$get_result" != "empty;value jose-$i-1" ]; then
-       echo "Invalid value : $get_result $i"
-       exit 1
-    else
-       echo "Server returned:"
-    fi
+	echo "Set in the primary"
+	r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1;")
+	echo "Read from the secoundary"
+	get_result=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "use-db test-db test-db-key; get state")
+	get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
+	if [ "$get_result" != "empty;value jose-$i-1" ]; then
+		echo "Invalid value value in the secoundary 1: $get_result $i"
+		exit 1
+	else
+
+		if [ "$get_result2" != "empty;value jose-$i-1" ]; then
+			echo "Invalid value value in the secoundary 2: $get_result $i"
+			exit 1
+		else
+			echo "Request $i Ok"
+		fi 
+	fi
 done
 end_time="$(date -u +%s)"
 elapsed="$(($end_time-$start_time))"

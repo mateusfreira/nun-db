@@ -3,6 +3,7 @@
      - Write only on master, reads from anywhere (One point writes mutiple points reads)
      * Main goal Delivery content change in the front ent at the time it changes (fast)
      - Efficient leader election in complete networks (Complete netwotk election) -> https://ieeexplore.ieee.org/document/1386052?reload=true
+     - [ ] Add Join command
 - [ ] Read https://jepsen.io/analyses/redis-raft-1b3fbf6
 - [x] Add cli interface
 - [x] Remove the need to admin ath to use an database  

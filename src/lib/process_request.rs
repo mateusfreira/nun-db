@@ -14,7 +14,6 @@ pub fn process_request(
     db: &Arc<SelectedDatabase>,
     dbs: &Arc<Databases>,
     auth: &Arc<AtomicBool>,
-    replicate_sender: &mut Sender<String>,
 ) -> Response {
     println!(
         "[{}] process_request got message '{}'. ",
@@ -154,6 +153,35 @@ pub fn process_request(
             }
             Response::Ok {}
         }),
+
+        Request::SetPrimary { name: _name } => {
+            /*
+            let cluster_state = dbs.cluster_state.lock().unwrap();
+            let mut members = cluster_state
+                .members
+                .lock()
+                .expect("Could not lock members!");
+            println!("Member before {}", (*members).len());
+            members.push(ClusterMember {
+                name: name.clone(),
+                role: ClusterRole::Primary,
+                sender: sender,
+            });
+            println!("Member after {}", (*members).len());
+            let mut new_members = Vec::new();
+            new_members.append(&mut members);
+            mem::replace(&mut *members, new_members);
+            */
+            Response::Ok {}
+        }
+
+        Request::Join { name } => {
+            match dbs.start_replication_sender.clone().try_send(name) {
+                Ok(_n) => (),
+                Err(e) => println!("Request::Join sender.send Error: {}", e),
+            }
+            Response::Ok {}
+        }
     };
 
     let elapsed = start.elapsed();
@@ -164,12 +192,12 @@ pub fn process_request(
         elapsed
     );
     // Replicate, ignoring for now
-    if dbs.should_repliate {
-        let db_name_state = db.name.lock().expect("Could not lock name mutex").clone();
-        let replication_result =
-            replicate_request(request, &db_name_state, result, replicate_sender);
-        replication_result
-    } else {
-        result
-    }
+    let db_name_state = db.name.lock().expect("Could not lock name mutex").clone();
+    let replication_result = replicate_request(
+        request,
+        &db_name_state,
+        result,
+        &dbs.replication_sender.clone(),
+    );
+    replication_result
 }

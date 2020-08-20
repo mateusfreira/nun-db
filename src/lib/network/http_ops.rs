@@ -15,13 +15,12 @@ fn process_commands(
     db: &Arc<SelectedDatabase>,
     dbs: &Arc<Databases>,
     auth: &Arc<AtomicBool>,
-    replication_sender: &mut Sender<String>,
 ) -> Vec<String> {
     let mut responses = Vec::new();
     for command in commands {
         let clean_command = command.trim();
         if clean_command != "" {
-            match process_request(clean_command, sender, db, dbs, auth, replication_sender) {
+            match process_request(clean_command, sender, db, dbs, auth) {
                 Response::Error { msg } => {
                     responses.push(msg.clone());
                     println!("Error: {}", msg);
@@ -49,11 +48,7 @@ fn process_commands(
     }
     return responses;
 }
-pub fn start_http_client(
-    dbs: Arc<Databases>,
-    http_address: Arc<String>,
-    replication_sender: Sender<String>,
-) {
+pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
     let http_address = http_address.to_string();
     println!(
         "Starting the http client with 4 threads in the addr: {}",
@@ -65,7 +60,6 @@ pub fn start_http_client(
     for _ in 0..10 {
         let server = http_server.clone();
         let dbs = dbs.clone();
-        let mut replication_sender = replication_sender.clone();
         let guard = thread::spawn(move || {
             loop {
                 let (mut sender, mut receiver): (Sender<String>, Receiver<String>) = channel(10);
@@ -85,7 +79,6 @@ pub fn start_http_client(
                                 &db,
                                 &dbs,
                                 &auth,
-                                &mut replication_sender,
                             );
                             let response = tiny_http::Response::from_string(responses.join(";"));
                             match rq.respond(response) {
