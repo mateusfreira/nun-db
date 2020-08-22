@@ -154,7 +154,21 @@ pub fn process_request(
             Response::Ok {}
         }),
 
-        Request::SetPrimary { name } => {
+
+        Request::ElectionWin { } => apply_if_auth(&auth, &|| {
+            println!("Setting this server as a primary!");
+            match dbs
+                .start_replication_sender
+                .clone()
+                .try_send(format!("election winning"))
+            {
+                Ok(_n) => (),
+                Err(e) => println!("Request::Join sender.send Error: {}", e),
+            }
+            Response::Ok {}
+        }),
+
+        Request::SetPrimary { name } => apply_if_auth(&auth, &|| {
             println!("Setting {} as primary!", name);
             match dbs
                 .start_replication_sender
@@ -165,9 +179,9 @@ pub fn process_request(
                 Err(e) => println!("Request::Join sender.send Error: {}", e),
             }
             Response::Ok {}
-        }
+        }),
 
-        Request::Join { name } => {
+        Request::Join { name } => apply_if_auth(&auth, &|| {
             match dbs
                 .start_replication_sender
                 .clone()
@@ -177,7 +191,35 @@ pub fn process_request(
                 Err(e) => println!("Request::Join sender.send Error: {}", e),
             }
             Response::Ok {}
-        }
+        }),
+
+        Request::ClusterState {} => apply_if_auth(&auth, &|| {
+            let cluster_state_str = dbs
+                .cluster_state
+                .lock()
+                .unwrap()
+                .members
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|member| format!("{}:{}", member.name, member.role))
+                .fold(String::from(""), |current, acc| {
+                    format!("{} {},", current, acc)
+                });
+            match sender
+                .clone()
+                .try_send(format_args!("cluster-state {}\n", cluster_state_str).to_string())
+            {
+                Err(e) => println!("Request::ClusterState sender.send Error: {}", e),
+                _ => (),
+            }
+
+            println!("ClusterState {}", cluster_state_str);
+            Response::Value {
+                key: String::from("cluster-state"),
+                value: String::from(cluster_state_str),
+            }
+        }),
     };
 
     let elapsed = start.elapsed();

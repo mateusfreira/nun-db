@@ -1,4 +1,5 @@
 use futures::channel::mpsc::Sender;
+use std::fmt;
 use std::sync::Mutex;
 
 use std::collections::HashMap;
@@ -12,6 +13,15 @@ pub struct ClusterMember {
 pub enum ClusterRole {
     Primary,
     Secoundary,
+}
+
+impl fmt::Display for ClusterRole {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ClusterRole::Primary => write!(f, "Primary"),
+            ClusterRole::Secoundary => write!(f, "Secoundary"),
+        }
+    }
 }
 
 pub struct ClusterState {
@@ -87,6 +97,8 @@ pub enum Request {
     SetPrimary {
         name: String,
     },
+    ClusterState {},
+    ElectionWin {},
 }
 
 #[derive(PartialEq)]

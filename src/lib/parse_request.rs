@@ -20,6 +20,8 @@ impl Request {
                 };
                 Ok(Request::ReplicateSnapshot { db: db_name })
             }
+            Some("cluster-state") => Ok(Request::ClusterState {}),
+            Some("election-win") => Ok(Request::ElectionWin {}),
             Some("join") => {
                 let name = match command.next() {
                     Some(name) => name.replace("\n", ""),
@@ -339,6 +341,22 @@ mod tests {
                     Err(String::from("set primary name value wrong parsed!!"))
                 }
             }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_cluster_state() -> Result<(), String> {
+        match Request::parse("cluster-state") {
+            Ok(Request::ClusterState {}) => Ok(()),
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_election_win() -> Result<(), String> {
+        match Request::parse("election-win") {
+            Ok(Request::ElectionWin {}) => Ok(()),
             _ => Err(String::from("wrong command parsed")),
         }
     }

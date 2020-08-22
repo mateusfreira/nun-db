@@ -152,6 +152,17 @@ pub fn start_replication_creator_thread(
                             });
                             guards.push(guard);
                         }
+                        Some("election") => {
+                            members.push(ClusterMember {
+                                name: tcp_addr.to_string(),
+                                role: ClusterRole::Primary,
+                                sender: sender,
+                            });
+                            println!("Member after {}", (*members).len());
+                            let mut new_members = Vec::new();
+                            new_members.append(&mut members);
+                            mem::replace(&mut *members, new_members);
+                        }
                         _ => (),
                     }
                 }
