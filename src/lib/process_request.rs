@@ -154,29 +154,25 @@ pub fn process_request(
             Response::Ok {}
         }),
 
-        Request::SetPrimary { name: _name } => {
-            /*
-            let cluster_state = dbs.cluster_state.lock().unwrap();
-            let mut members = cluster_state
-                .members
-                .lock()
-                .expect("Could not lock members!");
-            println!("Member before {}", (*members).len());
-            members.push(ClusterMember {
-                name: name.clone(),
-                role: ClusterRole::Primary,
-                sender: sender,
-            });
-            println!("Member after {}", (*members).len());
-            let mut new_members = Vec::new();
-            new_members.append(&mut members);
-            mem::replace(&mut *members, new_members);
-            */
+        Request::SetPrimary { name } => {
+            println!("Setting {} as primary!", name);
+            match dbs
+                .start_replication_sender
+                .clone()
+                .try_send(format!("primary {}", name))
+            {
+                Ok(_n) => (),
+                Err(e) => println!("Request::Join sender.send Error: {}", e),
+            }
             Response::Ok {}
         }
 
         Request::Join { name } => {
-            match dbs.start_replication_sender.clone().try_send(name) {
+            match dbs
+                .start_replication_sender
+                .clone()
+                .try_send(format!("secoundary {}", name))
+            {
                 Ok(_n) => (),
                 Err(e) => println!("Request::Join sender.send Error: {}", e),
             }

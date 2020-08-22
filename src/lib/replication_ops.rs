@@ -58,11 +58,17 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
                     let state = dbs.cluster_state.lock().unwrap();
                     for member in state.members.lock().unwrap().iter() {
                         println!("Replicating {} to {}", message, member.name);
-                        match member.sender.clone().try_send(message.to_string()) {
-                            Ok(_n) => (),
-                            Err(e) => {
-                                println!("start_replication_thread1 sender.send Error: {}", e)
+                        match member.role {
+                            ClusterRole::Secoundary => {
+                                match member.sender.clone().try_send(message.to_string()) {
+                                    Ok(_n) => (),
+                                    Err(e) => println!(
+                                        "start_replication_thread1 sender.send Error: {}",
+                                        e
+                                    ),
+                                }
                             }
+                            ClusterRole::Primary => (),
                         }
                     }
                 }
@@ -75,12 +81,21 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
 pub fn start_replication_creator_thread(
     mut replication_start_receiver: Receiver<String>,
     dbs: Arc<Databases>,
+    tcp_addr: Arc<String>,
 ) {
     let mut guards = Vec::with_capacity(10); // Max 10 servers
     loop {
         match replication_start_receiver.try_next() {
             Ok(message_opt) => match message_opt {
-                Some(name) => {
+                Some(replicate_message) => {
+                    println!(
+                        "[start_replication_creator_thread] got {}",
+                        replicate_message
+                    );
+                    let mut command = replicate_message.splitn(2, " ");
+
+                    let command_str = command.next();
+                    let name = String::from(command.next().unwrap());
                     let user = dbs.user.to_string();
                     let pwd = dbs.pwd.to_string();
                     let cluster_state = dbs.cluster_state.lock().unwrap();
@@ -90,19 +105,55 @@ pub fn start_replication_creator_thread(
                         .expect("Could not lock members!");
                     let (sender, receiver): (Sender<String>, Receiver<String>) = channel(100);
                     println!("Member before {}", (*members).len());
-                    members.push(ClusterMember {
-                        name: name.clone(),
-                        role: ClusterRole::Secoundary,
-                        sender: sender,
-                    });
-                    println!("Member after {}", (*members).len());
-                    let mut new_members = Vec::new();
-                    new_members.append(&mut members);
-                    mem::replace(&mut *members, new_members);
-                    let guard = thread::spawn(move || {
-                        start_replication(name, receiver, user, pwd);
-                    });
-                    guards.push(guard);
+                    match command_str {
+                        Some("secoundary") => {
+                            members.push(ClusterMember {
+                                name: name.clone(),
+                                role: ClusterRole::Secoundary,
+                                sender: sender,
+                            });
+                            println!("Member after {}", (*members).len());
+                            let mut new_members = Vec::new();
+                            new_members.append(&mut members);
+                            mem::replace(&mut *members, new_members);
+                            let tcp_addr = tcp_addr.clone();
+                            let guard = thread::spawn(move || {
+                                start_replication(
+                                    name,
+                                    receiver,
+                                    user,
+                                    pwd,
+                                    tcp_addr.to_string(),
+                                    true,
+                                );
+                            });
+                            guards.push(guard);
+                        }
+                        Some("primary") => {
+                            members.push(ClusterMember {
+                                name: name.clone(),
+                                role: ClusterRole::Primary,
+                                sender: sender,
+                            });
+                            println!("Member after {}", (*members).len());
+                            let mut new_members = Vec::new();
+                            new_members.append(&mut members);
+                            mem::replace(&mut *members, new_members);
+                            let tcp_addr = tcp_addr.clone();
+                            let guard = thread::spawn(move || {
+                                start_replication(
+                                    name,
+                                    receiver,
+                                    user,
+                                    pwd,
+                                    tcp_addr.to_string(),
+                                    false,
+                                );
+                            });
+                            guards.push(guard);
+                        }
+                        _ => (),
+                    }
                 }
                 None => println!("replication::try_next::Empty message"),
             },
@@ -116,6 +167,8 @@ fn start_replication(
     mut command_receiver: Receiver<String>,
     user: String,
     pwd: String,
+    tcp_addr: String,
+    is_primary: bool,
 ) {
     println!(
         "replicating to tcp client in the addr: {}",
@@ -123,7 +176,7 @@ fn start_replication(
     );
     let socket = TcpStream::connect(replicate_address).unwrap();
     let writer = &mut BufWriter::new(&socket);
-    auth_on_replication(user, pwd, writer);
+    auth_on_replication(user, pwd, tcp_addr, is_primary, writer);
     loop {
         match command_receiver.try_next() {
             Ok(message_opt) => match message_opt {
@@ -145,11 +198,18 @@ fn start_replication(
 pub fn auth_on_replication(
     user: String,
     pwd: String,
+    tcp_addr: String,
+    is_primary: bool,
     writer: &mut std::io::BufWriter<&std::net::TcpStream>,
 ) {
     writer
         .write_fmt(format_args!("auth {} {}\n", user, pwd))
         .unwrap();
+    if is_primary {
+        writer
+            .write_fmt(format_args!("set-primary {}\n", tcp_addr))
+            .unwrap();
+    }
     match writer.flush() {
         Err(e) => println!("replication error: {}", e),
         _ => (),

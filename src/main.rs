@@ -62,10 +62,12 @@ fn start_db(
     );
 
     let db_replication_start = dbs.clone();
+    let tcp_address_to_relication = Arc::new(tcp_address.to_string());
     let replication_thread_creator = thread::spawn(|| {
         lib::replication_ops::start_replication_creator_thread(
             start_replication_receiver,
             db_replication_start,
+            tcp_address_to_relication,
         );
     });
 

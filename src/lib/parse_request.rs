@@ -328,4 +328,18 @@ mod tests {
             _ => Err(String::from("wrong command parsed")),
         }
     }
+
+    #[test]
+    fn should_parse_replicaion_set_primary() -> Result<(), String> {
+        match Request::parse("set-primary some:3014") {
+            Ok(Request::SetPrimary { name }) => {
+                if name == "some:3014" {
+                    Ok(())
+                } else {
+                    Err(String::from("set primary name value wrong parsed!!"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
 }
