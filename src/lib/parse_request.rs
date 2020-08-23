@@ -30,6 +30,14 @@ impl Request {
                 Ok(Request::Join { name: name })
             }
 
+            Some("replicate-join") => {
+                let name = match command.next() {
+                    Some(name) => name.replace("\n", ""),
+                    None => return Err(format!("join must contain a name")),
+                };
+                Ok(Request::ReplicateJoin { name: name })
+            }
+
             Some("set-primary") => {
                 let name = match command.next() {
                     Some(name) => name.replace("\n", ""),
@@ -325,6 +333,34 @@ mod tests {
                     Ok(())
                 } else {
                     Err(String::from("db should vue key should be jose value 1"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_join() -> Result<(), String> {
+        match Request::parse("join some:8071") {
+            Ok(Request::Join { name }) => {
+                if name == "some:8071" {
+                    Ok(())
+                } else {
+                    Err(String::from("Name is wrong!"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_replicate_join() -> Result<(), String> {
+        match Request::parse("replicate-join some:8071") {
+            Ok(Request::ReplicateJoin { name }) => {
+                if name == "some:8071" {
+                    Ok(())
+                } else {
+                    Err(String::from("Name is wrong!"))
                 }
             }
             _ => Err(String::from("wrong command parsed")),

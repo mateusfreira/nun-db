@@ -27,6 +27,14 @@ pub fn replicate_request(
                     .unwrap();
                 return Response::Ok {};
             }
+            Request::Join { name } => {
+                println!("Will replicate command a created database name {}", name);
+                replication_sender
+                    .clone()
+                    .try_send(format!("replicate-join {}", name))
+                    .unwrap();
+                return Response::Ok {};
+            }
             Request::Snapshot {} => {
                 println!("Will replicate a snapshot to the database {}", db_name);
                 replication_sender
@@ -57,9 +65,9 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
                     let dbs = dbs.clone();
                     let state = dbs.cluster_state.lock().unwrap();
                     for member in state.members.lock().unwrap().iter() {
-                        println!("Replicating {} to {}", message, member.name);
                         match member.role {
                             ClusterRole::Secoundary => {
+                                println!("Replicating {} to {}", message, member.name);
                                 match member.sender.clone().try_send(message.to_string()) {
                                     Ok(_n) => (),
                                     Err(e) => println!(
@@ -107,6 +115,24 @@ pub fn start_replication_creator_thread(
                     println!("Member before {}", (*members).len());
                     match command_str {
                         Some("secoundary") => {
+                            for member in members.iter() {
+                                match member.role {
+                                    ClusterRole::Secoundary => {
+                                        match sender
+                                            .clone()
+                                            .try_send(format!("replicate-join {}", member.name))
+                                        {
+                                            Ok(_n) => (),
+                                            Err(e) => println!(
+                                                "secoundary::start_replication_creator_thread sender.send Error: {}",
+                                                e
+                                            ),
+                                        }
+                                    }
+                                    ClusterRole::Primary => (),
+                                }
+                            }
+
                             members.push(ClusterMember {
                                 name: name.clone(),
                                 role: ClusterRole::Secoundary,
@@ -151,6 +177,17 @@ pub fn start_replication_creator_thread(
                                 );
                             });
                             guards.push(guard);
+                        }
+                        Some("new-secoundary") => {
+                            members.push(ClusterMember {
+                                name: name.clone(),
+                                role: ClusterRole::Secoundary,
+                                sender: sender,
+                            });
+                            println!("Member after {}", (*members).len());
+                            let mut new_members = Vec::new();
+                            new_members.append(&mut members);
+                            mem::replace(&mut *members, new_members);
                         }
                         Some("election") => {
                             members.push(ClusterMember {

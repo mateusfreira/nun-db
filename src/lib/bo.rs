@@ -94,6 +94,9 @@ pub enum Request {
         name: String,
     },
 
+    ReplicateJoin {
+        name: String,
+    },
     SetPrimary {
         name: String,
     },

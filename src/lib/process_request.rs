@@ -154,8 +154,7 @@ pub fn process_request(
             Response::Ok {}
         }),
 
-
-        Request::ElectionWin { } => apply_if_auth(&auth, &|| {
+        Request::ElectionWin {} => apply_if_auth(&auth, &|| {
             println!("Setting this server as a primary!");
             match dbs
                 .start_replication_sender
@@ -176,7 +175,19 @@ pub fn process_request(
                 .try_send(format!("primary {}", name))
             {
                 Ok(_n) => (),
-                Err(e) => println!("Request::Join sender.send Error: {}", e),
+                Err(e) => println!("Request::SetPrimary sender.send Error: {}", e),
+            }
+            Response::Ok {}
+        }),
+
+        Request::ReplicateJoin { name } => apply_if_auth(&auth, &|| {
+            match dbs
+                .start_replication_sender
+                .clone()
+                .try_send(format!("new-secoundary {}", name))
+            {
+                Ok(_n) => (),
+                Err(e) => println!("Request::ReplicateJoin sender.send Error: {}", e),
             }
             Response::Ok {}
         }),

@@ -15,7 +15,8 @@ cargo run -- --user mateus -p mateus start --http-address "$secoundary1HttpAddre
 
 echo "Starting secoundary 2"
 
-cargo run -- --user mateus -p mateus start --http-address "$secoundary2HttpAddress" --tcp-address "0.0.0.0:3018" --ws-address "0.0.0.0:3059">secoundary23log&
+cargo run -- --user mateus -p mateus start --http-address "$secoundary2HttpAddress" --tcp-address
+"0.0.0.0:3018" --ws-address "0.0.0.0:3059">secoundary.2.log&
 
 sleep 10
 echo "Will Connect the secoundaries to the primary"
@@ -23,12 +24,36 @@ electionResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus;
 echo "Election result: $electionResult"
 
 joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3016")
+
+
 echo "Join1 result $joinResult"
 joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3018")
+
 echo "Join2 result $joinResult"
+
+clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; cluster-state;")
+clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth mateus mateus; cluster-state;")
+
+clusterStateSecoundary2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth mateus mateus; cluster-state;")
+echo "Final : $clusterStatePrimary"
+echo "Final Secoundary: $clusterStateSecoundary"
+echo "Final Secoundary2: $clusterStateSecoundary2"
 sleep 3
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; cluster-state;")
 clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth mateus mateus; cluster-state;")
+clusterStateSecoundary2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth mateus mateus; cluster-state;")
+
+if [ "$clusterStatePrimary" != "$clusterStateSecoundary" ]; then
+    echo "Cluster state should be the same in all the cluster members! "
+    echo "Primary: $clusterStatePrimary \n Secoundary: $clusterStateSecoundary"
+    exit 1
+fi
+
+if [ "$clusterStatePrimary" != "$clusterStateSecoundary2" ]; then
+    echo "Cluster state should be the same in all the cluster members! "
+    echo "Primary: $clusterStatePrimary \n Secoundary2: $clusterStateSecoundary2"
+    exit 1
+fi
 
 echo "Change cluster state primary : $clusterStatePrimary"
 # Todo must be the same in all the members of the clustrer
