@@ -162,7 +162,7 @@ pub fn process_request(
                 .try_send(format!("election winning"))
             {
                 Ok(_n) => (),
-                Err(e) => println!("Request::Join sender.send Error: {}", e),
+                Err(e) => println!("Request::ElectionWin sender.send Error: {}", e),
             }
             Response::Ok {}
         }),
@@ -180,18 +180,6 @@ pub fn process_request(
             Response::Ok {}
         }),
 
-        Request::ReplicateJoin { name } => apply_if_auth(&auth, &|| {
-            match dbs
-                .start_replication_sender
-                .clone()
-                .try_send(format!("new-secoundary {}", name))
-            {
-                Ok(_n) => (),
-                Err(e) => println!("Request::ReplicateJoin sender.send Error: {}", e),
-            }
-            Response::Ok {}
-        }),
-
         Request::Join { name } => apply_if_auth(&auth, &|| {
             match dbs
                 .start_replication_sender
@@ -200,6 +188,18 @@ pub fn process_request(
             {
                 Ok(_n) => (),
                 Err(e) => println!("Request::Join sender.send Error: {}", e),
+            }
+            Response::Ok {}
+        }),
+
+        Request::ReplicateJoin { name } => apply_if_auth(&auth, &|| {
+            match dbs
+                .start_replication_sender
+                .clone()
+                .try_send(format!("new-secoundary {}", name))
+            {
+                Ok(_n) => (),
+                Err(e) => println!("Request::ReplicateJoin sender.send Error: {}", e),
             }
             Response::Ok {}
         }),

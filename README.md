@@ -78,36 +78,62 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 #### Context
 - [ ] Require admin auth
 - [ ] Require db auth
+- [ ] Replicate? How? ()
 
 ### Get
 #### Context
 - [ ] Require admin auth
 - [x] Require db auth
+- [ ] Replicate? How? ()
 
 ### Set
 #### Context
 - [ ] Require admin auth
 - [x] Require db auth
+- [x] Replicate? How? (replicate)
 
 ### Snapshot
 #### Context
 - [x] Require admin auth
 - [x] Require db auth
+- [x] Replicate? How? (replicate-snapshot)
 
 ### UnWatch
 #### Context
 - [ ] Require admin auth
 - [x] Require db auth
+- [ ] Replicate? How? 
 
 ### UnWatchAll
 #### Context
 - [ ] Require admin auth
 - [x] Require db auth
+- [ ] Replicate? How? 
+
 
 ### Watch
 #### Context
 - [ ] Require admin auth
 - [x] Require db auth
+- [ ] Replicate? How? 
+
+### SetPrimary
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [ ] Replicate? How? 
+
+### ElectionWin
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [ ] Replicate? How? 
+
+### Join
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [x] Replicate? How? (replicate-join)
 
 ## Connectors 
 * Http

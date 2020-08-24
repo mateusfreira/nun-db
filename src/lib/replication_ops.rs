@@ -27,14 +27,6 @@ pub fn replicate_request(
                     .unwrap();
                 return Response::Ok {};
             }
-            Request::Join { name } => {
-                println!("Will replicate command a created database name {}", name);
-                replication_sender
-                    .clone()
-                    .try_send(format!("replicate-join {}", name))
-                    .unwrap();
-                return Response::Ok {};
-            }
             Request::Snapshot {} => {
                 println!("Will replicate a snapshot to the database {}", db_name);
                 replication_sender
@@ -86,6 +78,19 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
         }
     }
 }
+
+fn replicate_join(sender: Sender<String>, name: String) {
+    match sender
+        .clone()
+        .try_send(format!("replicate-join {}", name))
+    {
+        Ok(_n) => (),
+        Err(e) => println!(
+            "secoundary::replicate_join sender.send Error: {}",
+            e
+        ),
+    }
+}
 pub fn start_replication_creator_thread(
     mut replication_start_receiver: Receiver<String>,
     dbs: Arc<Databases>,
@@ -112,35 +117,32 @@ pub fn start_replication_creator_thread(
                         .lock()
                         .expect("Could not lock members!");
                     let (sender, receiver): (Sender<String>, Receiver<String>) = channel(100);
+
+                    for member in members.iter() {
+                        match member.role {
+                            ClusterRole::Secoundary => {
+                                //Notify the new secoundary about the already connected menbers.
+                                replicate_join(sender.clone(), member.name.to_string());
+                                //Notify the old secoundary about the new secoundary
+                                replicate_join(member.sender.clone(), name.to_string());
+                            }
+                            ClusterRole::Primary => (),
+                        }
+                    }
                     println!("Member before {}", (*members).len());
                     match command_str {
                         Some("secoundary") => {
-                            for member in members.iter() {
-                                match member.role {
-                                    ClusterRole::Secoundary => {
-                                        match sender
-                                            .clone()
-                                            .try_send(format!("replicate-join {}", member.name))
-                                        {
-                                            Ok(_n) => (),
-                                            Err(e) => println!(
-                                                "secoundary::start_replication_creator_thread sender.send Error: {}",
-                                                e
-                                            ),
-                                        }
-                                    }
-                                    ClusterRole::Primary => (),
-                                }
-                            }
-
+                            //Notify the new secoundary about it self
+                            replicate_join(sender.clone(), name.to_string());
                             members.push(ClusterMember {
                                 name: name.clone(),
                                 role: ClusterRole::Secoundary,
-                                sender: sender,
+                                sender: sender.clone(),
                             });
                             println!("Member after {}", (*members).len());
                             let mut new_members = Vec::new();
                             new_members.append(&mut members);
+
                             mem::replace(&mut *members, new_members);
                             let tcp_addr = tcp_addr.clone();
                             let guard = thread::spawn(move || {
