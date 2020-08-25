@@ -7,7 +7,7 @@ use std::collections::HashMap;
 pub struct ClusterMember {
     pub name: String,
     pub role: ClusterRole,
-    pub sender: Sender<String>,
+    pub sender: Option<Sender<String>>,
 }
 
 pub enum ClusterRole {

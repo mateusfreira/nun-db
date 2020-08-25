@@ -51,44 +51,45 @@ pub fn replicate_request(
 pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs: Arc<Databases>) {
     loop {
         match replication_receiver.try_next() {
-            Ok(message_opt) => match message_opt {
-                Some(message) => {
-                    println!("Got {} to replicate ", message);
-                    let dbs = dbs.clone();
-                    let state = dbs.cluster_state.lock().unwrap();
-                    for member in state.members.lock().unwrap().iter() {
-                        match member.role {
-                            ClusterRole::Secoundary => {
-                                println!("Replicating {} to {}", message, member.name);
-                                match member.sender.clone().try_send(message.to_string()) {
-                                    Ok(_n) => (),
-                                    Err(e) => println!(
-                                        "start_replication_thread1 sender.send Error: {}",
-                                        e
-                                    ),
+            Ok(message_opt) => {
+                match message_opt {
+                    Some(message) => {
+                        println!("Got {} to replicate ", message);
+                        let dbs = dbs.clone();
+                        let state = dbs.cluster_state.lock().unwrap();
+                        for member in state.members.lock().unwrap().iter() {
+                            match member.role {
+                                ClusterRole::Secoundary => {
+                                    println!("Replicating {} to {}", message, member.name);
+                                    match &member.sender.clone() {
+                                    Some(member_sender) => {
+                                        match member_sender.clone().try_send(message.to_string()) {
+                                            Ok(_n) => (),
+                                            Err(e) => println!(
+                                                "start_replication_thread1 sender.send Error: {}",
+                                                e
+                                            ),
+                                        }
+                                    }
+                                    None => println!("start_replication_thread:: Not replicatin {}, None sender", message)
                                 }
+                                }
+                                ClusterRole::Primary => (),
                             }
-                            ClusterRole::Primary => (),
                         }
                     }
+                    None => println!("replication::try_next::Empty message"),
                 }
-                None => println!("replication::try_next::Empty message"),
-            },
+            }
             _ => thread::sleep(time::Duration::from_millis(2)),
         }
     }
 }
 
 fn replicate_join(sender: Sender<String>, name: String) {
-    match sender
-        .clone()
-        .try_send(format!("replicate-join {}", name))
-    {
+    match sender.clone().try_send(format!("replicate-join {}", name)) {
         Ok(_n) => (),
-        Err(e) => println!(
-            "secoundary::replicate_join sender.send Error: {}",
-            e
-        ),
+        Err(e) => println!("secoundary::replicate_join sender.send Error: {}", e),
     }
 }
 pub fn start_replication_creator_thread(
@@ -124,7 +125,12 @@ pub fn start_replication_creator_thread(
                                 //Notify the new secoundary about the already connected menbers.
                                 replicate_join(sender.clone(), member.name.to_string());
                                 //Notify the old secoundary about the new secoundary
-                                replicate_join(member.sender.clone(), name.to_string());
+                                match &member.sender {
+                                    Some(member_sender) => {
+                                        replicate_join(member_sender.clone(), name.to_string());
+                                    }
+                                    None => println!("[start_replication_creator_thread] not replicate_joi None found")
+                                }
                             }
                             ClusterRole::Primary => (),
                         }
@@ -137,7 +143,7 @@ pub fn start_replication_creator_thread(
                             members.push(ClusterMember {
                                 name: name.clone(),
                                 role: ClusterRole::Secoundary,
-                                sender: sender.clone(),
+                                sender: Some(sender.clone()),
                             });
                             println!("Member after {}", (*members).len());
                             let mut new_members = Vec::new();
@@ -161,7 +167,7 @@ pub fn start_replication_creator_thread(
                             members.push(ClusterMember {
                                 name: name.clone(),
                                 role: ClusterRole::Primary,
-                                sender: sender,
+                                sender: Some(sender),
                             });
                             println!("Member after {}", (*members).len());
                             let mut new_members = Vec::new();
@@ -184,7 +190,7 @@ pub fn start_replication_creator_thread(
                             members.push(ClusterMember {
                                 name: name.clone(),
                                 role: ClusterRole::Secoundary,
-                                sender: sender,
+                                sender: None,
                             });
                             println!("Member after {}", (*members).len());
                             let mut new_members = Vec::new();
@@ -195,7 +201,7 @@ pub fn start_replication_creator_thread(
                             members.push(ClusterMember {
                                 name: tcp_addr.to_string(),
                                 role: ClusterRole::Primary,
-                                sender: sender,
+                                sender: None,
                             });
                             println!("Member after {}", (*members).len());
                             let mut new_members = Vec::new();
