@@ -267,7 +267,7 @@ pub fn auth_on_replication(
             .unwrap();
     }
     match writer.flush() {
-        Err(e) => println!("replication error: {}", e),
+        Err(e) => println!("auth replication error: {}", e),
         _ => (),
     }
 }
