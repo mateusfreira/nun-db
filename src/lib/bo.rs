@@ -4,12 +4,14 @@ use std::sync::Mutex;
 
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct ClusterMember {
     pub name: String,
     pub role: ClusterRole,
     pub sender: Option<Sender<String>>,
 }
 
+#[derive(Clone)]
 pub enum ClusterRole {
     Primary,
     Secoundary,

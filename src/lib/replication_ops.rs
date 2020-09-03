@@ -62,17 +62,17 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
                                 ClusterRole::Secoundary => {
                                     println!("Replicating {} to {}", message, member.name);
                                     match &member.sender.clone() {
-                                    Some(member_sender) => {
-                                        match member_sender.clone().try_send(message.to_string()) {
-                                            Ok(_n) => (),
-                                            Err(e) => println!(
-                                                "start_replication_thread1 sender.send Error: {}",
-                                                e
-                                            ),
+                                        Some(member_sender) => {
+                                            match member_sender.clone().try_send(message.to_string()) {
+                                                Ok(_n) => (),
+                                                Err(e) => println!(
+                                                    "start_replication_thread1 sender.send Error: {}",
+                                                    e
+                                                ),
+                                            }
                                         }
+                                        None => println!("start_replication_thread:: Not replicatin {}, None sender", message)
                                     }
-                                    None => println!("start_replication_thread:: Not replicatin {}, None sender", message)
-                                }
                                 }
                                 ClusterRole::Primary => (),
                             }
@@ -151,15 +151,33 @@ pub fn start_replication_creator_thread(
 
                             mem::replace(&mut *members, new_members);
                             let tcp_addr = tcp_addr.clone();
+                            let dbs = dbs.clone();
                             let guard = thread::spawn(move || {
                                 start_replication(
-                                    name,
+                                    name.clone(),
                                     receiver,
                                     user,
                                     pwd,
                                     tcp_addr.to_string(),
                                     true,
                                 );
+
+                                println!("Removing member {} from cluster!", name);
+                                let cluster_state = dbs.cluster_state.lock().unwrap();
+                                let mut members = cluster_state
+                                    .members
+                                    .lock()
+                                    .expect("Could not lock members!");
+                                println!("Member before {}", (*members).len());
+                                let mut filtered_members = members.iter()
+                                                .filter(|member| member.name != name.clone())
+                                                .cloned()
+                                                .collect();
+                                let mut new_members = Vec::new();
+                                new_members.append(&mut filtered_members);
+                                mem::replace(&mut *members, new_members);
+                                println!("Member after {}", (*members).len());
+
                             });
                             guards.push(guard);
                         }
@@ -240,11 +258,17 @@ fn start_replication(
                     println!("Will replicate {}", message);
                     writer.write_fmt(format_args!("{}\n", message)).unwrap();
                     match writer.flush() {
-                        Err(e) => println!("replication error: {}", e),
+                        Err(e) => {
+                            println!("replication error: {}", e);
+                            break;
+                        },
                         _ => (),
                     }
                 }
-                None => println!("replication::try_next::Empty message"),
+                None => {
+                    println!("replication::try_next::Empty message");
+                    break;
+                },
             },
             _ => thread::sleep(time::Duration::from_millis(2)),
         }

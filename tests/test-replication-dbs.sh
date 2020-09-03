@@ -7,13 +7,13 @@ primaryTcpAddress="127.0.0.1:3017"
 secoundary1HttpAddress="127.0.0.1:9093"
 secoundary2HttpAddress="127.0.0.1:9094"
 cargo build
-./target/debug/nun-db --user mateus -p mateus start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "0.0.0.0:3058">primary.log&
+RUST_BACKTRACE=1 ./target/debug/nun-db --user mateus -p mateus start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "0.0.0.0:3058">primary.log&
 PRIMARY_PID=$!
 
 
 echo "Starting secoundary 1"
 
-./target/debug/nun-db --user mateus -p mateus start --http-address "$secoundary1HttpAddress" --tcp-address "0.0.0.0:3016" --ws-address "0.0.0.0:3057">secoundary.log&
+RUST_BACKTRACE=1 ./target/debug/nun-db --user mateus -p mateus start --http-address "$secoundary1HttpAddress" --tcp-address "0.0.0.0:3016" --ws-address "0.0.0.0:3057">secoundary.log&
 SECOUNDARY_PID=$!
 
 
@@ -63,7 +63,7 @@ curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; create-db test-d
 sleep 5
 
 start_time="$(date -u +%s)"
-for i in {1..200}
+for i in {1..20}
 do
 	echo "Set in the primary"
 	r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1;")
@@ -89,7 +89,7 @@ echo "Total of $elapsed seconds elapsed for process"
 echo "Will start the tests of failure"
 sleep 5
 
-kill -9  $SECOUNDARY_PID
+kill -9 $SECOUNDARY_PID
 
 r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state mateus;")
 get_result=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
@@ -105,7 +105,7 @@ if [ "$get_result" != "empty;value mateus" ]; then
 fi
 
 
-for i in {1..200}
+for i in {1..20}
 do
     echo "Set in the primary"
     r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1;")
@@ -118,8 +118,18 @@ do
         echo "Request $i Ok"
     fi
 done
+
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; cluster-state;")
-echo "Echo $clusterStatePrimary new Custer state"
+expectedCluster="valid auth
+;cluster-state  127.0.0.1:3017:Primary, 127.0.0.1:3018:Secoundary,"
+echo "Cluster state $clusterStatePrimary - $expectedCluster"
+
+if [ "$clusterStatePrimary" !=  "$expectedCluster" ]; then
+    echo "Invalid cluster state after kill"
+    exit 4
+else
+    echo "Request Ok"
+fi
 
 exit 0
 
