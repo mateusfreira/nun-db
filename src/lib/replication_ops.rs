@@ -48,36 +48,47 @@ pub fn replicate_request(
     }
 }
 
+/**
+ * Will replicate the message if the sender is Some reference, if not will print and message 
+ *
+ */
+fn replicate_if_some(opt_sender: &Option<Sender<String>>, message: &String, name: &String) {
+    match opt_sender {
+        Some(member_sender) => {
+            println!("Replicating {} to {}", message, name);
+            match member_sender.clone().try_send(message.to_string()) {
+                Ok(_n) => (),
+                Err(e) => println!(
+                    "replicate_if_some sender.send Error: {}",
+                    e
+                ),
+            }
+        }
+        None => println!("start_replication_thread:: Not replicatin {}, None sender", message)
+    }
+}
+fn replicate_message_to_secoundary(message: String, dbs: &Arc<Databases>) {
+    println!("Got the message {} to replicate ", message);
+    let state = dbs.cluster_state.lock().unwrap();
+    for member in state.members.lock().unwrap().iter() {
+        match member.role {
+            ClusterRole::Secoundary => replicate_if_some(&member.sender, &message, &member.name),
+            ClusterRole::Primary => (),
+        }
+    }
+}
+/**
+ *
+ * This function will wait for  requests to replicates the messages to the menbers receiver
+ * Here I replicate the message the all the members in the cluster
+ *
+ */
 pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs: Arc<Databases>) {
     loop {
         match replication_receiver.try_next() {
             Ok(message_opt) => {
                 match message_opt {
-                    Some(message) => {
-                        println!("Got {} to replicate ", message);
-                        let dbs = dbs.clone();
-                        let state = dbs.cluster_state.lock().unwrap();
-                        for member in state.members.lock().unwrap().iter() {
-                            match member.role {
-                                ClusterRole::Secoundary => {
-                                    println!("Replicating {} to {}", message, member.name);
-                                    match &member.sender.clone() {
-                                        Some(member_sender) => {
-                                            match member_sender.clone().try_send(message.to_string()) {
-                                                Ok(_n) => (),
-                                                Err(e) => println!(
-                                                    "start_replication_thread1 sender.send Error: {}",
-                                                    e
-                                                ),
-                                            }
-                                        }
-                                        None => println!("start_replication_thread:: Not replicatin {}, None sender", message)
-                                    }
-                                }
-                                ClusterRole::Primary => (),
-                            }
-                        }
-                    }
+                    Some(message) => replicate_message_to_secoundary(message, &dbs),
                     None => println!("replication::try_next::Empty message"),
                 }
             }
