@@ -103,6 +103,50 @@ fn replicate_join(sender: Sender<String>, name: String) {
         Err(e) => println!("secoundary::replicate_join sender.send Error: {}", e),
     }
 }
+
+
+fn send_cluster_state_to_the_new_member(sender: &Sender<String>, members: &Vec<ClusterMember>, name: &String) {
+
+    for member in members.iter() {
+        match member.role {
+            ClusterRole::Secoundary => {
+                //Notify the new secoundary about the already connected menbers.
+                replicate_join(sender.clone(), member.name.to_string());
+                //Notify the old secoundary about the new secoundary
+                match &member.sender {
+                    Some(member_sender) => {
+                        replicate_join(member_sender.clone(), name.to_string());
+                    }
+                    None => println!("[start_replication_creator_thread] not replicate_joi None found")
+                }
+            }
+            ClusterRole::Primary => (),
+        }
+    }
+}
+
+fn add_new_sencoundary(sender: &Sender<String>, name : &String,mut  old_members: Vec<ClusterMember>, cluster_state: &ClusterState) -> Vec<ClusterMember>{
+    replicate_join(sender.clone(), name.to_string());
+    old_members.push(ClusterMember {
+        name: name.clone(),
+        role: ClusterRole::Secoundary,
+        sender: Some(sender.clone()),
+    });
+    println!("Member after {}", (old_members).len());
+    old_members
+}
+
+/**
+ * This function goal is to start the theread to connecto to the other cluster members
+ *
+ * The command send to the replication_start_receiver are like
+ *
+ * commads e.g:
+ * secoundary some_sever:1412
+ * primary some_sever:1412
+ * <kind> <name:port>
+ *
+ */
 pub fn start_replication_creator_thread(
     mut replication_start_receiver: Receiver<String>,
     dbs: Arc<Databases>,
@@ -112,12 +156,12 @@ pub fn start_replication_creator_thread(
     loop {
         match replication_start_receiver.try_next() {
             Ok(message_opt) => match message_opt {
-                Some(replicate_message) => {
+                Some(start_replicate_message) => {
                     println!(
                         "[start_replication_creator_thread] got {}",
-                        replicate_message
+                        start_replicate_message
                     );
-                    let mut command = replicate_message.splitn(2, " ");
+                    let mut command = start_replicate_message.splitn(2, " ");
 
                     let command_str = command.next();
                     let name = String::from(command.next().unwrap());
@@ -130,36 +174,14 @@ pub fn start_replication_creator_thread(
                         .expect("Could not lock members!");
                     let (sender, receiver): (Sender<String>, Receiver<String>) = channel(100);
 
-                    for member in members.iter() {
-                        match member.role {
-                            ClusterRole::Secoundary => {
-                                //Notify the new secoundary about the already connected menbers.
-                                replicate_join(sender.clone(), member.name.to_string());
-                                //Notify the old secoundary about the new secoundary
-                                match &member.sender {
-                                    Some(member_sender) => {
-                                        replicate_join(member_sender.clone(), name.to_string());
-                                    }
-                                    None => println!("[start_replication_creator_thread] not replicate_joi None found")
-                                }
-                            }
-                            ClusterRole::Primary => (),
-                        }
-                    }
+                    // Notify the members in the cluster about the new member
+                    send_cluster_state_to_the_new_member(&sender, &members, &name);
                     println!("Member before {}", (*members).len());
                     match command_str {
                         Some("secoundary") => {
                             //Notify the new secoundary about it self
-                            replicate_join(sender.clone(), name.to_string());
-                            members.push(ClusterMember {
-                                name: name.clone(),
-                                role: ClusterRole::Secoundary,
-                                sender: Some(sender.clone()),
-                            });
-                            println!("Member after {}", (*members).len());
-                            let mut new_members = Vec::new();
-                            new_members.append(&mut members);
-
+                            let new_members = add_new_sencoundary(&sender, &name, members.to_vec(), &cluster_state);
+                            //Keep the refactory from here!!!
                             mem::replace(&mut *members, new_members);
                             let tcp_addr = tcp_addr.clone();
                             let dbs = dbs.clone();

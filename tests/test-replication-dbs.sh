@@ -26,10 +26,11 @@ sleep 1
 echo "Will Connect the secoundaries to the primary"
 electionResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; election-win")
 echo "Election result: $electionResult"
-
 joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3016")
+echo "Join 1 done"
 sleep 1
 joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3018")
+echo "Join 2 done"
 sleep 1
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; cluster-state;")
 sleep 1
