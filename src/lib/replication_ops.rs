@@ -10,6 +10,15 @@ use bo::*;
 
 use std::time;
 
+pub fn replicate_web(replication_sender: &Sender<String>, message: String) {
+    match replication_sender
+        .clone()
+        .try_send(message.clone()) {
+            Ok(_) =>(),
+            Err(_) => println!("Error replicating message {}", message),
+        }
+}
+
 pub fn replicate_request(
     input: Request,
     db_name: &String,
@@ -21,27 +30,18 @@ pub fn replicate_request(
         _ => match input {
             Request::CreateDb { name, token } => {
                 println!("Will replicate command a created database name {}", name);
-                replication_sender
-                    .clone()
-                    .try_send(format!("create-db {} {}", name, token))
-                    .unwrap();
-                return Response::Ok {};
+                replicate_web(replication_sender, format!("create-db {} {}", name, token));
+                Response::Ok {}
             }
             Request::Snapshot {} => {
                 println!("Will replicate a snapshot to the database {}", db_name);
-                replication_sender
-                    .clone()
-                    .try_send(format!("replicate-snapshot {}", db_name))
-                    .unwrap();
-                return Response::Ok {};
+                replicate_web(replication_sender, format!("replicate-snapshot {}", db_name));
+                Response::Ok {}
             }
             Request::Set { value, key } => {
                 println!("Will replicate the set of the key {} to {} ", key, value);
-                replication_sender
-                    .clone()
-                    .try_send(format!("replicate {} {} {}", db_name, key, value))
-                    .unwrap();
-                return Response::Ok {};
+                replicate_web(replication_sender, format!("replicate {} {} {}", db_name, key, value));
+                Response::Ok {}
             }
             _ => reponse,
         },
@@ -57,7 +57,7 @@ fn replicate_if_some(opt_sender: &Option<Sender<String>>, message: &String, name
         Some(member_sender) => {
             println!("Replicating {} to {}", message, name);
             match member_sender.clone().try_send(message.to_string()) {
-                Ok(_n) => (),
+                Ok(_) => (),
                 Err(e) => println!("replicate_if_some sender.send Error: {}", e),
             }
         }
@@ -149,6 +149,7 @@ fn add_primary_to_secoundary(
     });
     (old_members, guard)
 }
+
 fn add_sencoundary_to_primary(
     sender: &Sender<String>,
     name: String,
@@ -210,6 +211,7 @@ fn add_sencoundary_to_primary(
  * <kind> <name:port>
  *
  */
+
 pub fn start_replication_creator_thread(
     mut replication_start_receiver: Receiver<String>,
     dbs: Arc<Databases>,
