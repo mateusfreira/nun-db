@@ -189,6 +189,7 @@ pub fn create_init_dbs(
         replication_sender: replication_sender,
         user: user,
         pwd: pwd,
+        is_primary: Arc::new(AtomicBool::new(true)),
     });
 }
 

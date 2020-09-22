@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool};
+use std::sync::Arc;
 use futures::channel::mpsc::Sender;
 use std::fmt;
 use std::sync::Mutex;
@@ -46,6 +48,7 @@ pub struct Databases {
     pub cluster_state: Mutex<ClusterState>,
     pub start_replication_sender: Sender<String>,
     pub replication_sender: Sender<String>,
+    pub is_primary: Arc<AtomicBool>,
     pub user: String,
     pub pwd: String,
 }

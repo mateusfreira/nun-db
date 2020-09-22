@@ -164,6 +164,8 @@ pub fn process_request(
                 Ok(_n) => (),
                 Err(e) => println!("Request::ElectionWin sender.send Error: {}", e),
             }
+
+            dbs.is_primary.swap(true, Ordering::Relaxed);
             Response::Ok {}
         }),
 
@@ -177,6 +179,7 @@ pub fn process_request(
                 Ok(_n) => (),
                 Err(e) => println!("Request::SetPrimary sender.send Error: {}", e),
             }
+            dbs.is_primary.swap(false, Ordering::Relaxed);
             Response::Ok {}
         }),
 
