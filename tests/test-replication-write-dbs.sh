@@ -71,7 +71,7 @@ start_time="$(date -u +%s)"
 for i in {1..20}
 do
 	echo "Set in the secoundary"
-	r=$(curl -s -X "POST" "$secoundary" -d "use-db test-db test-db-key; set state jose-$i-1;")
+	r=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1;")
 	echo "Read from the secoundary"
 	get_result=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; get state")
 	get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")

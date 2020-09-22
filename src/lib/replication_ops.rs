@@ -11,12 +11,14 @@ use bo::*;
 use std::time;
 
 pub fn replicate_web(replication_sender: &Sender<String>, message: String) {
-    match replication_sender
-        .clone()
-        .try_send(message.clone()) {
-            Ok(_) =>(),
-            Err(_) => println!("Error replicating message {}", message),
-        }
+    match replication_sender.clone().try_send(message.clone()) {
+        Ok(_) => (),
+        Err(_) => println!("Error replicating message {}", message),
+    }
+}
+
+pub fn get_replicate_message(db_name: String, key: String, value: String) -> String {
+    return format!("replicate {} {} {}", db_name, key, value);
 }
 
 pub fn replicate_request(
@@ -24,6 +26,7 @@ pub fn replicate_request(
     db_name: &String,
     reponse: Response,
     replication_sender: &Sender<String>,
+    is_primary: bool,
 ) -> Response {
     match reponse {
         Response::Error { msg: _ } => reponse,
@@ -35,12 +38,28 @@ pub fn replicate_request(
             }
             Request::Snapshot {} => {
                 println!("Will replicate a snapshot to the database {}", db_name);
-                replicate_web(replication_sender, format!("replicate-snapshot {}", db_name));
+                replicate_web(
+                    replication_sender,
+                    format!("replicate-snapshot {}", db_name),
+                );
                 Response::Ok {}
             }
             Request::Set { value, key } => {
                 println!("Will replicate the set of the key {} to {} ", key, value);
-                replicate_web(replication_sender, format!("replicate {} {} {}", db_name, key, value));
+                replicate_web(
+                    replication_sender,
+                    get_replicate_message(db_name.to_string(), key, value),
+                );
+                Response::Ok {}
+            }
+            Request::ReplicateSet { db, value, key } => {
+                if is_primary {
+                    println!("Will replicate the set of the key {} to {} ", key, value);
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_message(db.to_string(), key, value),
+                    );
+                }
                 Response::Ok {}
             }
             _ => reponse,
@@ -74,6 +93,17 @@ fn replicate_message_to_secoundary(message: String, dbs: &Arc<Databases>) {
         match member.role {
             ClusterRole::Secoundary => replicate_if_some(&member.sender, &message, &member.name),
             ClusterRole::Primary => (),
+        }
+    }
+}
+
+pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
+    println!("Got the message {} to send to primary", message);
+    let state = dbs.cluster_state.lock().unwrap();
+    for member in state.members.lock().unwrap().iter() {
+        match member.role {
+            ClusterRole::Secoundary => (),
+            ClusterRole::Primary => replicate_if_some(&member.sender, &message, &member.name),
         }
     }
 }
@@ -383,6 +413,7 @@ mod tests {
             &db_name,
             resp_error,
             &sender,
+            false,
         ) {
             Response::Error { msg: _ } => true,
             _ => false,
@@ -403,7 +434,7 @@ mod tests {
             value: "any_value".to_string(),
         };
         let db_name = "some".to_string();
-        let result = match replicate_request(req_set, &db_name, resp_set, &sender) {
+        let result = match replicate_request(req_set, &db_name, resp_set, &sender, false) {
             Response::Ok {} => true,
             _ => false,
         };
@@ -428,6 +459,7 @@ mod tests {
             &db_name,
             resp_get,
             &sender,
+            false,
         ) {
             Response::Value { key: _, value: _ } => true,
             _ => false,
@@ -445,7 +477,7 @@ mod tests {
         let resp_get = Response::Ok {};
 
         let db_name = "some_db_name".to_string();
-        let result = match replicate_request(request, &db_name, resp_get, &sender) {
+        let result = match replicate_request(request, &db_name, resp_get, &sender, false) {
             Response::Ok {} => true,
             _ => false,
         };
@@ -464,7 +496,7 @@ mod tests {
         let resp_get = Response::Ok {};
 
         let db_name = "some".to_string();
-        let result = match replicate_request(request, &db_name, resp_get, &sender) {
+        let result = match replicate_request(request, &db_name, resp_get, &sender, false) {
             Response::Ok {} => true,
             _ => false,
         };

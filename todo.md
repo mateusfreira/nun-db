@@ -4,7 +4,8 @@
      * Main goal Delivery content change in the front ent at the time it changes (fast)
      - Efficient leader election in complete networks (Complete netwotk election) -> https://ieeexplore.ieee.org/document/1386052?reload=true
      - [x] Add Join command
-     - [ ] Wire from secoundary
+     - [x] Wire from secoundary
+     - [ ] Implement replication transaction
      - [ ] Implement ping command
      - [ ] Update library to use the cluster (Js)
 - [ ] Read https://jepsen.io/analyses/redis-raft-1b3fbf6

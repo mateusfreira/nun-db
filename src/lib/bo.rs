@@ -1,7 +1,7 @@
-use std::sync::atomic::{AtomicBool};
-use std::sync::Arc;
 use futures::channel::mpsc::Sender;
 use std::fmt;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use std::collections::HashMap;

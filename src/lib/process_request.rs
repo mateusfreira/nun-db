@@ -56,7 +56,16 @@ pub fn process_request(
         }
 
         Request::Set { key, value } => apply_to_database(&dbs, &db, &sender, &|_db| {
-            set_key_value(key.clone(), value.clone(), _db)
+            if dbs.is_primary.load(Ordering::SeqCst) {
+                set_key_value(key.clone(), value.clone(), _db)
+            } else {
+                let db_name_state = _db.name.lock().expect("Could not lock name mutex");
+                send_message_to_primary(
+                    get_replicate_message(db_name_state.to_string(), key.clone(), value.clone()),
+                    dbs,
+                );
+                Response::Ok {}
+            }
         }),
 
         Request::ReplicateSet {
@@ -250,6 +259,7 @@ pub fn process_request(
         &db_name_state,
         result,
         &dbs.replication_sender.clone(),
+        dbs.is_primary.load(Ordering::SeqCst),
     );
     replication_result
 }
