@@ -89,34 +89,6 @@ elapsed="$(($end_time-$start_time))"
 echo "Total of $elapsed seconds elapsed for process"
 
 
-echo "Will test write in the secoundary read from primary"
-
-
-sleep 3
-start_time="$(date -u +%s)"
-
-for i in {1..20}
-do
-	echo "Set in the secoundary"
-	r=$(curl -s -X "POST" "$secoundary" -d "use-db test-db test-db-key; set state jose-$i-1;")
-	echo "Read from the secoundary"
-	get_result=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; get state")
-	get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
-	if [ "$get_result" != "empty;value jose-$i-1" ]; then
-		echo "Invalid value value in the primary: $get_result $i"
-		exit 2
-	else
-		if [ "$get_result2" != "empty;value jose-$i-1" ]; then
-			echo "Invalid value value in the secoundary 2: $get_result $i"
-			exit 3
-		else
-			echo "Request $i Ok"
-		fi 
-	fi
-done
-end_time="$(date -u +%s)"
-elapsed="$(($end_time-$start_time))"
-echo "Total of $elapsed seconds elapsed for process"
 
 
 echo "Will start the tests of failure"

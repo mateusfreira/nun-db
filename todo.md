@@ -47,9 +47,11 @@
 ```
 
 # Main goal 
+
 * Delivery content change in the front ent at the time it changes (fast)
 
 # What may change over time
+
 * Query language (I am not sure if NQL will go or I will use some kind of GraphQA)
 * Hash map to Tree or key lock Hash map
 * Security layer
