@@ -178,6 +178,21 @@ pub fn process_request(
             Response::Ok {}
         }),
 
+        Request::Election { id } => apply_if_auth(&auth, &|| {
+            println!("Setting this server as a primary!");
+            match dbs
+                .start_replication_sender
+                .clone()
+                .try_send(format!("election winning"))
+            {
+                Ok(_n) => (),
+                Err(e) => println!("Request::ElectionWin sender.send Error: {}", e),
+            }
+
+            dbs.is_primary.swap(true, Ordering::Relaxed);
+            Response::Ok {}
+        }),
+
         Request::SetPrimary { name } => apply_if_auth(&auth, &|| {
             println!("Setting {} as primary!", name);
             match dbs

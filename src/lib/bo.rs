@@ -49,6 +49,7 @@ pub struct Databases {
     pub start_replication_sender: Sender<String>,
     pub replication_sender: Sender<String>,
     pub is_primary: Arc<AtomicBool>,
+    pub process_id: u128,
     pub user: String,
     pub pwd: String,
 }
@@ -107,6 +108,12 @@ pub enum Request {
     },
     ClusterState {},
     ElectionWin {},
+    Election {
+      id: u128
+    },
+    /*ElectionActive {
+      id: u128
+    },*/
 }
 
 #[derive(PartialEq)]

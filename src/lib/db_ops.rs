@@ -4,6 +4,8 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
+
 
 use bo::*;
 use disk_ops::*;
@@ -178,6 +180,11 @@ pub fn create_init_dbs(
     start_replication_sender: Sender<String>,
     replication_sender: Sender<String>,
 ) -> Arc<Databases> {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+
     let initial_dbs = HashMap::new();
     return Arc::new(Databases {
         map: Mutex::new(initial_dbs),
@@ -189,7 +196,8 @@ pub fn create_init_dbs(
         replication_sender: replication_sender,
         user: user,
         pwd: pwd,
-        is_primary: Arc::new(AtomicBool::new(true)),
+        is_primary: Arc::new(AtomicBool::new(false)),
+        process_id: since_the_epoch.as_millis(),
     });
 }
 

@@ -3,8 +3,22 @@
      - Write only on master, reads from anywhere (One point writes mutiple points reads)
      * Main goal Delivery content change in the front ent at the time it changes (fast)
      - Efficient leader election in complete networks (Complete netwotk election) -> https://ieeexplore.ieee.org/document/1386052?reload=true
+     * Bully algorithm
+        Messages:
+            ElectionMessage id
+            Alive id ->
+            Victory ->  SetPrimary
+        Implementation
+            An election ir run
+                Node sends a new Election message.
+                If it receives a message with a higer id than it has it set it self as secoundary
+                It it has the highest process ID it sends a victory message
+                If no Answer after 1s it bacame the leader and seds Victory message
+                If P receives an Election message from another process with a lower ID it sends an Answer message back and starts the election process at the beginning, by sending an Election message to higher-numbered processes.
+                If P receives a Coordinator message, it treats the sender as the coordinator.
      - [x] Add Join command
      - [x] Wire from secoundary
+     - [ ] Primary disconnection
      - [ ] Implement replication transaction
      - [ ] Implement ping command
      - [ ] Update library to use the cluster (Js)
