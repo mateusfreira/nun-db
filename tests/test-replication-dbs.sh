@@ -22,17 +22,23 @@ echo "Starting secoundary 2"
 SECOUNDARY_2_PID=$!
 
 sleep 1
+sleep 5
+
 echo "Will Connect the secoundaries to the primary"
 #electionResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; election win")
 echo "Election result: $electionResult"
 joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3016")
 echo "Join 1 done"
-sleep 1
+
+clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; cluster-state;")
+echo "Final Primary: $clusterStatePrimary"
+
 joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3018")
 echo "Join 2 done"
 sleep 1
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; cluster-state;")
-echo "Final : $clusterStatePrimary"
+echo "Final Primary: $clusterStatePrimary"
+sleep 10
 clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth mateus mateus; cluster-state;")
 echo "Final Secoundary: $clusterStateSecoundary"
 

@@ -221,7 +221,7 @@ pub fn process_request(
         }),
 
         Request::ClusterState {} => apply_if_auth(&auth, &|| {
-            let cluster_state_str = dbs
+            let mut members: Vec<String> = dbs
                 .cluster_state
                 .lock()
                 .unwrap()
@@ -230,9 +230,14 @@ pub fn process_request(
                 .unwrap()
                 .iter()
                 .map(|(_name, member)| format!("{}:{}", member.name, member.role))
+                .collect();
+            members.sort();//OMG try not to use this
+            let cluster_state_str = members
+                .iter()
                 .fold(String::from(""), |current, acc| {
                     format!("{} {},", current, acc)
-                });
+                })
+                ;
             match sender
                 .clone()
                 .try_send(format_args!("cluster-state {}\n", cluster_state_str).to_string())

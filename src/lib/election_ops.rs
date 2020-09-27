@@ -6,7 +6,7 @@ use bo::*;
 use db_ops::*;
 
 pub fn start_inital_election(dbs: Arc<Databases>) {
-    thread::sleep(time::Duration::from_millis(1000));
+    thread::sleep(time::Duration::from_millis(1));
     println!("calling start_election");
     start_election(&dbs);
 }
