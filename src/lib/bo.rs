@@ -1,6 +1,6 @@
 use futures::channel::mpsc::Sender;
 use std::fmt;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -14,9 +14,23 @@ pub struct ClusterMember {
 }
 
 #[derive(Clone)]
+#[derive(PartialEq)]
 pub enum ClusterRole {
-    Primary,
-    Secoundary,
+    StartingUp  = 0,
+    Primary = 1,
+    Secoundary = 2,
+}
+
+impl From<usize> for ClusterRole {
+    fn from(val: usize) -> Self {
+        use self::ClusterRole::*;
+        match val {
+            0 => StartingUp,
+            1 => Primary,
+            2 => Secoundary,
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl fmt::Display for ClusterRole {
@@ -24,12 +38,13 @@ impl fmt::Display for ClusterRole {
         match *self {
             ClusterRole::Primary => write!(f, "Primary"),
             ClusterRole::Secoundary => write!(f, "Secoundary"),
+            ClusterRole::StartingUp  => write!(f, "StartingUp"),
         }
     }
 }
 
 pub struct ClusterState {
-    pub members: Mutex<Vec<ClusterMember>>,
+    pub members: Mutex<HashMap<String, ClusterMember>>,
 }
 
 pub struct SelectedDatabase {
@@ -48,10 +63,51 @@ pub struct Databases {
     pub cluster_state: Mutex<ClusterState>,
     pub start_replication_sender: Sender<String>,
     pub replication_sender: Sender<String>,
-    pub is_primary: Arc<AtomicBool>,
+    pub node_state: Arc<AtomicUsize>,
     pub process_id: u128,
     pub user: String,
     pub pwd: String,
+}
+
+impl Databases {
+    pub fn get_role(&self) -> ClusterRole {
+        let role_int = (*self.node_state).load(Ordering::SeqCst);
+        return ClusterRole::from(role_int);
+    }
+
+    pub fn is_primary(&self) -> bool {
+        return self.get_role() == ClusterRole::Primary;
+    }
+
+    pub fn is_eligible(&self) -> bool {
+        return self.get_role() == ClusterRole::StartingUp;
+    }
+
+    pub fn add_cluster_member(&self, member: ClusterMember) {//todo receive the data separated!!!
+        let cluster_state = (*self).cluster_state.lock().unwrap();
+        let mut members = cluster_state.members.lock().unwrap();
+        if member.role  == ClusterRole::Primary {
+            println!("New primary added channging all old to secundary");
+            for (name, old_member) in members.clone().iter() {
+                members.insert(name.to_string(), ClusterMember {
+                    name: name.clone(),
+                    role: ClusterRole::Secoundary,
+                    sender: old_member.sender.clone(),
+                });
+            }
+        }
+        members.insert(member.name.to_string(), ClusterMember {
+            name: member.name.clone(),
+            role: member.role,
+            sender: member.sender.clone(),
+        });
+    }
+
+    pub fn remove_cluster_member(&self, name: &String) {
+        let cluster_state = (*self).cluster_state.lock().unwrap();
+        let mut members = cluster_state.members.lock().unwrap();
+        members.remove(&name.to_string());
+    }
 }
 
 pub struct Watchers {
@@ -111,9 +167,7 @@ pub enum Request {
     Election {
       id: u128
     },
-    /*ElectionActive {
-      id: u128
-    },*/
+    ElectionActive {},
 }
 
 #[derive(PartialEq)]

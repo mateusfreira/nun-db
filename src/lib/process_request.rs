@@ -7,6 +7,7 @@ use std::time::Instant;
 use bo::*;
 use db_ops::*;
 use replication_ops::*;
+use election_ops::*;
 
 pub fn process_request(
     input: &str,
@@ -20,6 +21,8 @@ pub fn process_request(
         thread_id::get(),
         input
     );
+    let db_name_state = db.name.lock().expect("Could not lock name mutex").clone();
+    let is_primary = dbs.is_primary();
     let start = Instant::now();
     let request = match Request::parse(String::from(input).trim_matches('\n')) {
         Ok(req) => req,
@@ -56,7 +59,7 @@ pub fn process_request(
         }
 
         Request::Set { key, value } => apply_to_database(&dbs, &db, &sender, &|_db| {
-            if dbs.is_primary.load(Ordering::SeqCst) {
+            if dbs.is_primary() {
                 set_key_value(key.clone(), value.clone(), _db)
             } else {
                 let db_name_state = _db.name.lock().expect("Could not lock name mutex");
@@ -163,33 +166,18 @@ pub fn process_request(
             Response::Ok {}
         }),
 
-        Request::ElectionWin {} => apply_if_auth(&auth, &|| {
-            println!("Setting this server as a primary!");
-            match dbs
-                .start_replication_sender
-                .clone()
-                .try_send(format!("election winning"))
-            {
-                Ok(_n) => (),
-                Err(e) => println!("Request::ElectionWin sender.send Error: {}", e),
-            }
-
-            dbs.is_primary.swap(true, Ordering::Relaxed);
-            Response::Ok {}
-        }),
-
+        Request::ElectionActive {} => Response::Ok {},//Nothing need to be done here now
+        Request::ElectionWin {} => apply_if_auth(&auth, &|| election_win(dbs.clone())),
         Request::Election { id } => apply_if_auth(&auth, &|| {
-            println!("Setting this server as a primary!");
-            match dbs
-                .start_replication_sender
-                .clone()
-                .try_send(format!("election winning"))
-            {
-                Ok(_n) => (),
-                Err(e) => println!("Request::ElectionWin sender.send Error: {}", e),
+            if id < dbs.process_id {
+                start_election(dbs);
+            } else {
+                match dbs.replication_sender.clone().try_send(format!("election alive")) {
+                    Ok(_) => (),
+                    Err(_) => println!("Error election alive"),
+                }
+                dbs.node_state.swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
             }
-
-            dbs.is_primary.swap(true, Ordering::Relaxed);
             Response::Ok {}
         }),
 
@@ -203,7 +191,7 @@ pub fn process_request(
                 Ok(_n) => (),
                 Err(e) => println!("Request::SetPrimary sender.send Error: {}", e),
             }
-            dbs.is_primary.swap(false, Ordering::Relaxed);
+            dbs.node_state.swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
             Response::Ok {}
         }),
 
@@ -216,6 +204,7 @@ pub fn process_request(
                 Ok(_n) => (),
                 Err(e) => println!("Request::Join sender.send Error: {}", e),
             }
+            start_election(dbs);
             Response::Ok {}
         }),
 
@@ -240,7 +229,7 @@ pub fn process_request(
                 .lock()
                 .unwrap()
                 .iter()
-                .map(|member| format!("{}:{}", member.name, member.role))
+                .map(|(_name, member)| format!("{}:{}", member.name, member.role))
                 .fold(String::from(""), |current, acc| {
                     format!("{} {},", current, acc)
                 });
@@ -267,14 +256,12 @@ pub fn process_request(
         input,
         elapsed
     );
-    // Replicate, ignoring for now
-    let db_name_state = db.name.lock().expect("Could not lock name mutex").clone();
     let replication_result = replicate_request(
         request,
         &db_name_state,
         result,
         &dbs.replication_sender.clone(),
-        dbs.is_primary.load(Ordering::SeqCst),
+        is_primary,
     );
     replication_result
 }

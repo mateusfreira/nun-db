@@ -2,7 +2,7 @@ use futures::channel::mpsc::Sender;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -53,6 +53,21 @@ pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Resp
 pub fn snapshot_db(db: &Database, dbs: &Databases) -> Response {
     let name = db.name.lock().unwrap().clone();
     dbs.to_snapshot.lock().unwrap().push(name);
+    Response::Ok {}
+}
+
+pub fn election_win(dbs: Arc<Databases>) -> Response {
+    println!("Setting this server as a primary!");
+    match dbs
+        .start_replication_sender
+        .clone()
+        .try_send(format!("election-win self"))
+        {
+            Ok(_n) => (),
+            Err(e) => println!("Request::ElectionWin sender.send Error: {}", e),
+        }
+
+    dbs.node_state.swap(ClusterRole::Primary as usize, Ordering::Relaxed);
     Response::Ok {}
 }
 
@@ -190,13 +205,13 @@ pub fn create_init_dbs(
         map: Mutex::new(initial_dbs),
         to_snapshot: Mutex::new(Vec::new()),
         cluster_state: Mutex::new(ClusterState {
-            members: Mutex::new(Vec::new()),
+            members: Mutex::new(HashMap::new()),
         }),
         start_replication_sender: start_replication_sender,
         replication_sender: replication_sender,
         user: user,
         pwd: pwd,
-        is_primary: Arc::new(AtomicBool::new(false)),
+        node_state: Arc::new(AtomicUsize::new(ClusterRole::StartingUp as usize)),
         process_id: since_the_epoch.as_millis(),
     });
 }

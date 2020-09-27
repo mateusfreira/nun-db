@@ -7,24 +7,23 @@ primaryTcpAddress="127.0.0.1:3017"
 secoundary1HttpAddress="127.0.0.1:9093"
 secoundary2HttpAddress="127.0.0.1:9094"
 cargo build
-RUST_BACKTRACE=1 ./target/debug/nun-db --user mateus -p mateus start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "0.0.0.0:3058">primary.log&
+RUST_BACKTRACE=1 ./target/debug/nun-db --user mateus -p mateus start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "127.0.0.1:3058">primary.log&
 PRIMARY_PID=$!
-
 
 echo "Starting secoundary 1"
 
-RUST_BACKTRACE=1 ./target/debug/nun-db --user mateus -p mateus start --http-address "$secoundary1HttpAddress" --tcp-address "0.0.0.0:3016" --ws-address "0.0.0.0:3057">secoundary.log&
+RUST_BACKTRACE=1 ./target/debug/nun-db --user mateus -p mateus start --http-address "$secoundary1HttpAddress" --tcp-address "127.0.0.1:3016" --ws-address "127.0.0.1:3057">secoundary.log&
 SECOUNDARY_PID=$!
 
 
 echo "Starting secoundary 2"
 
-./target/debug/nun-db --user mateus -p mateus start --http-address "$secoundary2HttpAddress" --tcp-address "0.0.0.0:3018" --ws-address "0.0.0.0:3059">secoundary.2.log&
+./target/debug/nun-db --user mateus -p mateus start --http-address "$secoundary2HttpAddress" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059">secoundary.2.log&
 SECOUNDARY_2_PID=$!
 
 sleep 1
 echo "Will Connect the secoundaries to the primary"
-electionResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; election-win")
+#electionResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; election win")
 echo "Election result: $electionResult"
 joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3016")
 echo "Join 1 done"
@@ -33,10 +32,10 @@ joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; joi
 echo "Join 2 done"
 sleep 1
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; cluster-state;")
-sleep 1
-clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth mateus mateus; cluster-state;")
 echo "Final : $clusterStatePrimary"
+clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth mateus mateus; cluster-state;")
 echo "Final Secoundary: $clusterStateSecoundary"
+
 clusterStateSecoundary2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth mateus mateus; cluster-state;")
 echo "Final Secoundary2: $clusterStateSecoundary2"
 sleep 1

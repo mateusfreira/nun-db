@@ -1,4 +1,3 @@
-use std::mem;
 use std::net::TcpStream;
 use std::thread;
 
@@ -52,6 +51,23 @@ pub fn replicate_request(
                 );
                 Response::Ok {}
             }
+
+            Request::Election { id } => {
+                replicate_web(
+                    replication_sender,
+                    format!("election cadidate {}", id),
+                );
+                Response::Ok {}
+            }
+
+            Request::ElectionActive { } => {
+                replicate_web(
+                    replication_sender,
+                    format!("election active"),
+                );
+                Response::Ok {}
+            }
+
             Request::ReplicateSet { db, value, key } => {
                 if is_primary {
                     println!("Will replicate the set of the key {} to {} ", key, value);
@@ -89,10 +105,11 @@ fn replicate_if_some(opt_sender: &Option<Sender<String>>, message: &String, name
 fn replicate_message_to_secoundary(message: String, dbs: &Arc<Databases>) {
     println!("Got the message {} to replicate ", message);
     let state = dbs.cluster_state.lock().unwrap();
-    for member in state.members.lock().unwrap().iter() {
+    for (_name, member) in state.members.lock().unwrap().iter() {
         match member.role {
             ClusterRole::Secoundary => replicate_if_some(&member.sender, &message, &member.name),
             ClusterRole::Primary => (),
+            ClusterRole::StartingUp => (),
         }
     }
 }
@@ -100,10 +117,11 @@ fn replicate_message_to_secoundary(message: String, dbs: &Arc<Databases>) {
 pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
     println!("Got the message {} to send to primary", message);
     let state = dbs.cluster_state.lock().unwrap();
-    for member in state.members.lock().unwrap().iter() {
+    for (_name, member) in state.members.lock().unwrap().iter() {
         match member.role {
             ClusterRole::Secoundary => (),
             ClusterRole::Primary => replicate_if_some(&member.sender, &message, &member.name),
+            ClusterRole::StartingUp => (),
         }
     }
 }
@@ -134,10 +152,18 @@ fn replicate_join(sender: Sender<String>, name: String) {
 
 fn send_cluster_state_to_the_new_member(
     sender: &Sender<String>,
-    members: &Vec<ClusterMember>,
+    dbs: &Arc<Databases>,
     name: &String,
 ) {
-    for member in members.iter() {
+
+    let cluster_state = dbs.cluster_state.lock().unwrap();
+    let members = cluster_state
+        .members
+        .lock()
+        .expect("Could not lock members!")
+        .clone()
+        ;
+    for (_name, member) in members.iter() {
         match member.role {
             ClusterRole::Secoundary => {
                 //Notify the new secoundary about the already connected menbers.
@@ -153,6 +179,7 @@ fn send_cluster_state_to_the_new_member(
                 }
             }
             ClusterRole::Primary => (),
+            ClusterRole::StartingUp => (),
         }
     }
 }
@@ -160,43 +187,39 @@ fn send_cluster_state_to_the_new_member(
 fn add_primary_to_secoundary(
     sender: &Sender<String>,
     name: String,
-    mut old_members: Vec<ClusterMember>,
     tcp_addr: &String,
     dbs: Arc<Databases>,
     receiver: Receiver<String>,
-) -> (Vec<ClusterMember>, std::thread::JoinHandle<()>) {
+) -> std::thread::JoinHandle<()> {
     let user = dbs.user.to_string();
     let pwd = dbs.pwd.to_string();
-    old_members.push(ClusterMember {
+    dbs.add_cluster_member(ClusterMember {
         name: name.clone(),
         role: ClusterRole::Primary,
         sender: Some(sender.clone()),
     });
-    println!("Member after {}", (*old_members).len());
     let tcp_addr = tcp_addr.clone();
     let guard = thread::spawn(move || {
         start_replication(name, receiver, user, pwd, tcp_addr.to_string(), false);
     });
-    (old_members, guard)
+    guard
 }
 
 fn add_sencoundary_to_primary(
     sender: &Sender<String>,
     name: String,
-    mut old_members: Vec<ClusterMember>,
     tcp_addr: &String,
     dbs: Arc<Databases>,
     receiver: Receiver<String>,
-) -> (Vec<ClusterMember>, std::thread::JoinHandle<()>) {
+) -> std::thread::JoinHandle<()> {
     let user = dbs.user.to_string();
     let pwd = dbs.pwd.to_string();
     replicate_join(sender.clone(), name.to_string());
-    old_members.push(ClusterMember {
+    dbs.add_cluster_member(ClusterMember {
         name: name.clone(),
         role: ClusterRole::Secoundary,
         sender: Some(sender.clone()),
     });
-    println!("Member after {}", (old_members).len());
 
     let tcp_addr = tcp_addr.clone();
     let dbs = dbs.clone();
@@ -211,23 +234,9 @@ fn add_sencoundary_to_primary(
         );
 
         println!("Removing member {} from cluster!", name);
-        let cluster_state = dbs.cluster_state.lock().unwrap();
-        let mut members = cluster_state
-            .members
-            .lock()
-            .expect("Could not lock members!");
-        println!("Member before {}", (*members).len());
-        let mut filtered_members = members
-            .iter()
-            .filter(|member| member.name != name.clone())
-            .cloned()
-            .collect();
-        let mut new_members = Vec::new();
-        new_members.append(&mut filtered_members);
-        mem::replace(&mut *members, new_members);
-        println!("Member after {}", (*members).len());
+        dbs.remove_cluster_member(&name);
     });
-    (old_members, guard)
+    (guard)
 }
 
 /**
@@ -260,67 +269,58 @@ pub fn start_replication_creator_thread(
 
                     let command_str = command.next();
                     let name = String::from(command.next().unwrap());
-                    let cluster_state = dbs.cluster_state.lock().unwrap();
-                    let mut members = cluster_state
-                        .members
-                        .lock()
-                        .expect("Could not lock members!");
                     let (sender, receiver): (Sender<String>, Receiver<String>) = channel(100);
 
-                    // Notify the members in the cluster about the new member
-                    send_cluster_state_to_the_new_member(&sender, &members, &name);
-                    println!("Member before {}", (*members).len());
                     match command_str {
                         // Add secoundary to primary
                         Some("secoundary") => {
-                            let (new_members, guard) = add_sencoundary_to_primary(
+                            // Notify the members in the cluster about the new member
+                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                            let guard = add_sencoundary_to_primary(
                                 &sender,
                                 name.clone(),
-                                members.to_vec(),
                                 &tcp_addr,
                                 dbs.clone(),
                                 receiver,
                             );
-                            //Keep the refactory from here!!!
-                            mem::replace(&mut *members, new_members);
                             guards.push(guard);
                         }
                         // Add primary to secoundary
                         Some("primary") => {
-                            let (new_members, guard) = add_primary_to_secoundary(
+                            // Notify the members in the cluster about the new member
+                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                            let guard = add_primary_to_secoundary(
                                 &sender,
                                 name.clone(),
-                                members.to_vec(),
                                 &tcp_addr,
                                 dbs.clone(),
                                 receiver,
                             );
-                            mem::replace(&mut *members, new_members);
                             guards.push(guard);
                         }
                         // Add secoundary to secoundary
                         Some("new-secoundary") => {
-                            members.push(ClusterMember {
+                            // Notify the members in the cluster about the new member
+                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                            dbs.add_cluster_member(ClusterMember {
                                 name: name.clone(),
                                 role: ClusterRole::Secoundary,
-                                sender: None,
+                                sender: None,//todo change
                             });
-                            println!("Member after {}", (*members).len());
-                            let mut new_members = Vec::new();
-                            new_members.append(&mut members);
-                            mem::replace(&mut *members, new_members);
                         }
                         // Add primary to primary
-                        Some("election") => {
-                            members.push(ClusterMember {
+                        Some("election-win") => {
+
+                            dbs.add_cluster_member(ClusterMember {
                                 name: tcp_addr.to_string(),
                                 role: ClusterRole::Primary,
                                 sender: None,
                             });
-                            println!("Member after {}", (*members).len());
-                            let mut new_members = Vec::new();
-                            new_members.append(&mut members);
-                            mem::replace(&mut *members, new_members);
+                            //noity others about primary
+                            match dbs.replication_sender.clone().try_send(format!("set-primary {}", tcp_addr)) {
+                                Ok(_) => (),
+                                Err(_) => println!("Error election cadidate"),
+                            }
                         }
                         _ => (),
                     }

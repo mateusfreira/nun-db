@@ -76,6 +76,9 @@ fn start_db(
         lib::replication_ops::start_replication_thread(replication_receiver, db_replication);
     });
 
+    let db_election = dbs.clone();
+    let election_thread = thread::spawn(|| lib::election_ops::start_inital_election(db_election));
+
     let timer = timer::Timer::new();
     let db_snap = dbs.clone();
     // Disck thread
@@ -104,5 +107,9 @@ fn start_db(
     replication_thread_creator
         .join()
         .expect("replication_thread_creator thread died");
+
+    election_thread
+        .join()
+        .expect("election_thread thread died");
     Ok(())
 }

@@ -21,7 +21,19 @@ impl Request {
                 Ok(Request::ReplicateSnapshot { db: db_name })
             }
             Some("cluster-state") => Ok(Request::ClusterState {}),
-            Some("election-win") => Ok(Request::ElectionWin {}),
+            Some("election") => {
+                match command.next() {
+                    Some("win") => Ok(Request::ElectionWin {}),
+                    Some("cadidate") => {
+                        let process_id = match command.next() {
+                            Some(id) => id.parse::<u128>().unwrap(),
+                            None => return Err(format!("replicate-snapshot must contain a db name")),
+                        };
+                        Ok(Request::Election { id: process_id })
+                    },
+                    _ => Ok(Request::ElectionActive {}),
+                }
+            },
             Some("join") => {
                 let name = match command.next() {
                     Some(name) => name.replace("\n", ""),
@@ -391,7 +403,7 @@ mod tests {
 
     #[test]
     fn should_parse_election_win() -> Result<(), String> {
-        match Request::parse("election-win") {
+        match Request::parse("election win") {
             Ok(Request::ElectionWin {}) => Ok(()),
             _ => Err(String::from("wrong command parsed")),
         }
