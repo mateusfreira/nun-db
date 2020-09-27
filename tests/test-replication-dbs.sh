@@ -20,8 +20,6 @@ echo "Starting secoundary 2"
 
 ./target/debug/nun-db --user mateus -p mateus start --http-address "$secoundary2HttpAddress" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059">secoundary.2.log&
 SECOUNDARY_2_PID=$!
-
-sleep 1
 sleep 5
 
 echo "Will Connect the secoundaries to the primary"
