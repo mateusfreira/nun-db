@@ -51,7 +51,7 @@ pub fn prepare_args<'a>() -> ArgMatches<'a> {
                     Arg::with_name("commands")
                         .takes_value(true)
                         .index(1)
-                        .help("Execute a sequece of command separated commands in the dabtase"),
+                        .help("Execute a sequence of command separated commands in the database"),
                 ),
         )
         .subcommand(SubCommand::with_name("start").about("Start Nun-db service"))
@@ -86,7 +86,7 @@ pub fn exec_command(matches: &ArgMatches) -> Result<(), String> {
 
     if let Some(exec_matches) = matches.subcommand_matches("exec") {
         println!(
-            "Will execute the commands database {}",
+            "Will execute the commands on the database {}",
             exec_matches.value_of("commands").unwrap(),
         );
         let body = format!(

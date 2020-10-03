@@ -67,7 +67,7 @@ impl Request {
                 let pwd = match command.next() {
                     Some(pwd) => pwd.to_string(),
                     None => {
-                        println!("Auth needs and password");
+                        println!("Auth needs a password");
                         "".to_string()
                     }
                 };
@@ -80,14 +80,14 @@ impl Request {
                 let name = match command.next() {
                     Some(name) => name,
                     None => {
-                        println!("UseDb needs to provide an db name");
+                        println!("UseDb needs to provide a db name");
                         ""
                     }
                 };
                 let token = match command.next() {
                     Some(key) => String::from(key).replace("\n", ""),
                     None => {
-                        println!("UseDb needs and token");
+                        println!("UseDb needs a token");
                         "".to_string()
                     }
                 };
@@ -100,14 +100,14 @@ impl Request {
                 let name = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("CreateDb needs to provide an db name");
+                        println!("CreateDb needs to provide a db name");
                         ""
                     }
                 };
                 let token = match command.next() {
                     Some(key) => String::from(key).replace("\n", ""),
                     None => {
-                        println!("CreateDb needs and token");
+                        println!("CreateDb needs a token");
                         "".to_string()
                     }
                 };
@@ -138,7 +138,7 @@ mod tests {
                     Err(String::from("user should be foo and password bar"))
                 }
             }
-            _ => Err(String::from("get foo sould be parsed to Get command")),
+            _ => Err(String::from("get foo should be parsed to Get command")),
         }
     }
 
@@ -152,7 +152,7 @@ mod tests {
                     Err(String::from("user should be foo and password bar"))
                 }
             }
-            _ => Err(String::from("get foo sould be parsed to Get command")),
+            _ => Err(String::from("get foo should be parsed to Get command")),
         }
     }
 
@@ -166,7 +166,7 @@ mod tests {
                     Err(String::from("user should be foo and password bar"))
                 }
             }
-            _ => Err(String::from("get foo sould be parsed to Get command")),
+            _ => Err(String::from("get foo should be parsed to Get command")),
         }
     }
     #[test]
@@ -179,7 +179,7 @@ mod tests {
                     Err(String::from("the key should be foo"))
                 }
             }
-            _ => Err(String::from("get foo sould be parsed to Get command")),
+            _ => Err(String::from("get foo should be parsed to Get command")),
         }
     }
 

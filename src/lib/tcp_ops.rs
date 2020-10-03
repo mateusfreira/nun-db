@@ -45,7 +45,7 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                 println!("Command print: {}", buf);
                 match buf.as_ref() {
                     "" => {
-                        println!("killing socket client, because of disconection");
+                        println!("killing socket client, because of disconnection");
                         process_request("unwatch-all", &mut sender, &db, &dbs, &auth);
                         break;
                     }
