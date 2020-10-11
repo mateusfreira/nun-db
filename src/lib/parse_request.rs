@@ -21,18 +21,16 @@ impl Request {
                 Ok(Request::ReplicateSnapshot { db: db_name })
             }
             Some("cluster-state") => Ok(Request::ClusterState {}),
-            Some("election") => {
-                match command.next() {
-                    Some("win") => Ok(Request::ElectionWin {}),
-                    Some("cadidate") => {
-                        let process_id = match command.next() {
-                            Some(id) => id.parse::<u128>().unwrap(),
-                            None => return Err(format!("replicate-snapshot must contain a db name")),
-                        };
-                        Ok(Request::Election { id: process_id })
-                    },
-                    _ => Ok(Request::ElectionActive {}),
+            Some("election") => match command.next() {
+                Some("win") => Ok(Request::ElectionWin {}),
+                Some("cadidate") => {
+                    let process_id = match command.next() {
+                        Some(id) => id.parse::<u128>().unwrap(),
+                        None => return Err(format!("replicate-snapshot must contain a db name")),
+                    };
+                    Ok(Request::Election { id: process_id })
                 }
+                _ => Ok(Request::ElectionActive {}),
             },
             Some("join") => {
                 let name = match command.next() {
@@ -40,6 +38,22 @@ impl Request {
                     None => return Err(format!("join must contain a name")),
                 };
                 Ok(Request::Join { name: name })
+            }
+
+            Some("leave") => {
+                let name = match command.next() {
+                    Some(name) => name.replace("\n", ""),
+                    None => return Err(format!("leave must contain a name")),
+                };
+                Ok(Request::Leave { name: name })
+            }
+
+            Some("replicate-leave") => {
+                let name = match command.next() {
+                    Some(name) => name.replace("\n", ""),
+                    None => return Err(format!("leave must contain a name")),
+                };
+                Ok(Request::ReplicateLeave { name: name })
             }
 
             Some("replicate-join") => {
@@ -56,6 +70,14 @@ impl Request {
                     None => return Err(format!("set-primary must contain a name")),
                 };
                 Ok(Request::SetPrimary { name: name })
+            }
+
+            Some("set-secoundary") => {
+                let name = match command.next() {
+                    Some(name) => name.replace("\n", ""),
+                    None => return Err(format!("set-primary must contain a name")),
+                };
+                Ok(Request::SetScoundary { name: name })
             }
             Some("unwatch") => {
                 let key = match command.next() {

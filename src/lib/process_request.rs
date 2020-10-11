@@ -1,20 +1,20 @@
 use futures::channel::mpsc::Sender;
 use std::mem;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
 use bo::*;
 use db_ops::*;
-use replication_ops::*;
 use election_ops::*;
+use replication_ops::*;
 
 pub fn process_request(
     input: &str,
     sender: &mut Sender<String>,
     db: &Arc<SelectedDatabase>,
     dbs: &Arc<Databases>,
-    auth: &Arc<AtomicBool>,
+    client: &mut Client,
 ) -> Response {
     println!(
         "[{}] process_request got message '{}'. ",
@@ -40,9 +40,9 @@ pub fn process_request(
             let valid_pwd = dbs.pwd.clone();
 
             if user == valid_user && password == valid_pwd {
-                auth.swap(true, Ordering::Relaxed);
+                client.auth.swap(true, Ordering::Relaxed);
             };
-            let message = if auth.load(Ordering::SeqCst) {
+            let message = if client.auth.load(Ordering::SeqCst) {
                 "valid auth\n".to_string()
             } else {
                 "invalid auth\n".to_string()
@@ -75,7 +75,7 @@ pub fn process_request(
             db: name,
             key,
             value,
-        } => apply_if_auth(auth, &|| {
+        } => apply_if_auth(&client.auth, &|| {
             let dbs = dbs.map.lock().expect("Could not lock the dbs mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => set_key_value(key.clone(), value.clone(), db),
@@ -89,13 +89,13 @@ pub fn process_request(
             respose
         }),
 
-        Request::Snapshot {} => apply_if_auth(auth, &|| {
+        Request::Snapshot {} => apply_if_auth(&client.auth, &|| {
             apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
         }),
 
         Request::ReplicateSnapshot {
             db: db_to_snap_shot,
-        } => apply_if_auth(auth, &|| {
+        } => apply_if_auth(&client.auth, &|| {
             let db = create_temp_selected_db(db_to_snap_shot.clone());
             apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
         }),
@@ -139,7 +139,7 @@ pub fn process_request(
             respose
         }
 
-        Request::CreateDb { name, token } => apply_if_auth(&auth, &|| {
+        Request::CreateDb { name, token } => apply_if_auth(&client.auth, &|| {
             let mut dbs = dbs.map.lock().unwrap();
             let empty_db_box = create_temp_db(name.clone());
             let empty_db = Arc::try_unwrap(empty_db_box);
@@ -166,22 +166,27 @@ pub fn process_request(
             Response::Ok {}
         }),
 
-        Request::ElectionActive {} => Response::Ok {},//Nothing need to be done here now
-        Request::ElectionWin {} => apply_if_auth(&auth, &|| election_win(dbs.clone())),
-        Request::Election { id } => apply_if_auth(&auth, &|| {
+        Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
+        Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(dbs.clone())),
+        Request::Election { id } => apply_if_auth(&client.auth, &|| {
             if id < dbs.process_id {
                 start_election(dbs);
             } else {
-                match dbs.replication_sender.clone().try_send(format!("election alive")) {
+                match dbs
+                    .replication_sender
+                    .clone()
+                    .try_send(format!("election alive"))
+                {
                     Ok(_) => (),
                     Err(_) => println!("Error election alive"),
                 }
-                dbs.node_state.swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
+                dbs.node_state
+                    .swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
             }
             Response::Ok {}
         }),
 
-        Request::SetPrimary { name } => apply_if_auth(&auth, &|| {
+        Request::SetPrimary { name } => apply_if_auth(&client.auth, &|| {
             println!("Setting {} as primary!", name);
             match dbs
                 .start_replication_sender
@@ -191,11 +196,33 @@ pub fn process_request(
                 Ok(_n) => (),
                 Err(e) => println!("Request::SetPrimary sender.send Error: {}", e),
             }
-            dbs.node_state.swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
+            dbs.node_state
+                .swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
+            let member = Some(ClusterMember {
+                    name: name.clone(),
+                    role: ClusterRole::Primary,
+                    sender: None,
+            });
+            let mut  member_lock = client
+                .cluster_member.lock().unwrap();
+            *member_lock = member;
             Response::Ok {}
         }),
 
-        Request::Join { name } => apply_if_auth(&auth, &|| {
+        Request::SetScoundary { name } => apply_if_auth(&client.auth, &|| {
+            println!("Setting {} as primary!", name);
+            let member = Some(ClusterMember {
+                    name: name.clone(),
+                    role: ClusterRole::Secoundary,
+                    sender: None,
+            });
+            let mut  member_lock = client
+                .cluster_member.lock().unwrap();
+            *member_lock = member;
+            Response::Ok {}
+        }),
+
+        Request::Join { name } => apply_if_auth(&client.auth, &|| {
             match dbs
                 .start_replication_sender
                 .clone()
@@ -208,7 +235,34 @@ pub fn process_request(
             Response::Ok {}
         }),
 
-        Request::ReplicateJoin { name } => apply_if_auth(&auth, &|| {
+        Request::Leave { name } => apply_if_auth(&client.auth, &|| {
+            match dbs
+                .start_replication_sender
+                .clone()
+                .try_send(format!("leave {}", name))
+            {
+                Ok(_n) => (),
+                Err(e) => println!("Request::leave sender.send Error: {}", e),
+            }
+            start_new_election(dbs);
+            Response::Ok {}
+        }),
+
+        Request::ReplicateLeave { name } => apply_if_auth(&client.auth, &|| {
+            match dbs
+                .start_replication_sender
+                .clone()
+                .try_send(format!("leave {}", name))
+            {
+                Ok(_n) => (),
+                Err(e) => println!("Request::replicateLeave sender.send Error: {}", e),
+            }
+            start_election(dbs);
+            Response::Ok {}
+        }),
+
+
+        Request::ReplicateJoin { name } => apply_if_auth(&client.auth, &|| {
             match dbs
                 .start_replication_sender
                 .clone()
@@ -220,7 +274,7 @@ pub fn process_request(
             Response::Ok {}
         }),
 
-        Request::ClusterState {} => apply_if_auth(&auth, &|| {
+        Request::ClusterState {} => apply_if_auth(&client.auth, &|| {
             let mut members: Vec<String> = dbs
                 .cluster_state
                 .lock()
@@ -231,13 +285,10 @@ pub fn process_request(
                 .iter()
                 .map(|(_name, member)| format!("{}:{}", member.name, member.role))
                 .collect();
-            members.sort();//OMG try not to use this
-            let cluster_state_str = members
-                .iter()
-                .fold(String::from(""), |current, acc| {
-                    format!("{} {},", current, acc)
-                })
-                ;
+            members.sort(); //OMG try not to use this
+            let cluster_state_str = members.iter().fold(String::from(""), |current, acc| {
+                format!("{} {},", current, acc)
+            });
             match sender
                 .clone()
                 .try_send(format_args!("cluster-state {}\n", cluster_state_str).to_string())

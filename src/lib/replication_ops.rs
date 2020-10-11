@@ -53,18 +53,17 @@ pub fn replicate_request(
             }
 
             Request::Election { id } => {
-                replicate_web(
-                    replication_sender,
-                    format!("election cadidate {}", id),
-                );
+                replicate_web(replication_sender, format!("election cadidate {}", id));
                 Response::Ok {}
             }
 
-            Request::ElectionActive { } => {
-                replicate_web(
-                    replication_sender,
-                    format!("election active"),
-                );
+            Request::ElectionActive {} => {
+                replicate_web(replication_sender, format!("election active"));
+                Response::Ok {}
+            }
+
+            Request::Leave { name } => {
+                replicate_web(replication_sender, format!("replicate-leave {}", name));
                 Response::Ok {}
             }
 
@@ -155,14 +154,12 @@ fn send_cluster_state_to_the_new_member(
     dbs: &Arc<Databases>,
     name: &String,
 ) {
-
     let cluster_state = dbs.cluster_state.lock().unwrap();
     let members = cluster_state
         .members
         .lock()
         .expect("Could not lock members!")
-        .clone()
-        ;
+        .clone();
     for (_name, member) in members.iter() {
         match member.role {
             ClusterRole::Secoundary => {
@@ -174,7 +171,7 @@ fn send_cluster_state_to_the_new_member(
                         replicate_join(member_sender.clone(), name.to_string());
                     }
                     None => {
-                        println!("[start_replication_creator_thread] not replicate_joi None found")
+                        println!("[start_replication_creator_thread] not replicate_join None found")
                     }
                 }
             }
@@ -239,6 +236,39 @@ fn add_sencoundary_to_primary(
     (guard)
 }
 
+fn add_sencoundary_to_secoundary(
+    sender: &Sender<String>,
+    name: String,
+    tcp_addr: &String,
+    dbs: Arc<Databases>,
+    receiver: Receiver<String>,
+) -> () {
+    let user = dbs.user.to_string();
+    let pwd = dbs.pwd.to_string();
+    dbs.add_cluster_member(ClusterMember {
+        name: name.clone(),
+        role: ClusterRole::Secoundary,
+        sender: Some(sender.clone()),
+    });
+
+   /* let tcp_addr = tcp_addr.clone();
+    let dbs = dbs.clone();
+    let guard = thread::spawn(move || {
+        start_replication(
+            name.clone(),
+            receiver,
+            user,
+            pwd,
+            tcp_addr.to_string(),
+            true,
+        );
+
+        println!("Removing member {} from cluster!", name);
+        dbs.remove_cluster_member(&name);
+    });
+    (guard)*/
+}
+
 /**
  * This function goal is to start the theread to connecto to the other cluster members
  *
@@ -285,6 +315,10 @@ pub fn start_replication_creator_thread(
                             );
                             guards.push(guard);
                         }
+
+                        Some("leave") => {
+                            dbs.remove_cluster_member(&name);
+                        }
                         // Add primary to secoundary
                         Some("primary") => {
                             // Notify the members in the cluster about the new member
@@ -302,22 +336,28 @@ pub fn start_replication_creator_thread(
                         Some("new-secoundary") => {
                             // Notify the members in the cluster about the new member
                             send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                            dbs.add_cluster_member(ClusterMember {
-                                name: name.clone(),
-                                role: ClusterRole::Secoundary,
-                                sender: None,//todo change
-                            });
+                            let _guard = add_sencoundary_to_secoundary(
+                                &sender,
+                                name.clone(),
+                                &tcp_addr,
+                                dbs.clone(),
+                                receiver,
+                            );
+                            //guards.push(guard);
                         }
                         // Add primary to primary
                         Some("election-win") => {
-
                             dbs.add_cluster_member(ClusterMember {
                                 name: tcp_addr.to_string(),
                                 role: ClusterRole::Primary,
                                 sender: None,
                             });
                             //noity others about primary
-                            match dbs.replication_sender.clone().try_send(format!("set-primary {}", tcp_addr)) {
+                            match dbs
+                                .replication_sender
+                                .clone()
+                                .try_send(format!("set-primary {}", tcp_addr))
+                            {
                                 Ok(_) => (),
                                 Err(_) => println!("Error election cadidate"),
                             }
@@ -384,6 +424,10 @@ pub fn auth_on_replication(
     if is_primary {
         writer
             .write_fmt(format_args!("set-primary {}\n", tcp_addr))
+            .unwrap();
+    } else {
+        writer
+            .write_fmt(format_args!("set-secoundary {}\n", tcp_addr))
             .unwrap();
     }
     match writer.flush() {

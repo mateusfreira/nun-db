@@ -1,5 +1,4 @@
 use futures::channel::mpsc::{channel, Receiver, Sender};
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread;
 use std::time;
@@ -18,7 +17,7 @@ struct Server {
     sender: Sender<String>,
     dbs: Arc<Databases>,
     db: Arc<SelectedDatabase>,
-    auth: Arc<AtomicBool>,
+    client: Client,
 }
 
 impl Handler for Server {
@@ -54,7 +53,13 @@ impl Handler for Server {
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
         let message = msg.as_text().unwrap();
         println!("[{}] Server got message '{}'. ", thread_id::get(), message);
-        match process_request(&message, &mut self.sender, &self.db, &self.dbs, &self.auth) {
+        match process_request(
+            &message,
+            &mut self.sender,
+            &self.db,
+            &self.dbs,
+            &mut self.client,
+        ) {
             Response::Error { msg } => {
                 println!("Error: {}", msg);
                 match self.sender.try_send(format!("error {} \n", msg)) {
@@ -92,7 +97,7 @@ impl Handler for Server {
             &mut self.sender,
             &self.db,
             &self.dbs,
-            &self.auth,
+            &mut self.client,
         );
     }
 }
@@ -112,7 +117,7 @@ pub fn start_web_socket_client(dbs: Arc<Databases>, ws_address: Arc<String>) {
                 db: create_temp_selected_db("init".to_string()),
                 dbs: dbs.clone(),
                 sender: sender.clone(),
-                auth: Arc::new(AtomicBool::new(false)),
+                client: Client::new_empty(),
             })
             .unwrap()
             .listen(ws_address)

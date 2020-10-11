@@ -1,5 +1,4 @@
 use futures::channel::mpsc::{channel, Receiver, Sender};
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread;
 use tiny_http;
@@ -14,13 +13,13 @@ fn process_commands(
     receiver: &mut Receiver<String>,
     db: &Arc<SelectedDatabase>,
     dbs: &Arc<Databases>,
-    auth: &Arc<AtomicBool>,
+    client: &mut Client,
 ) -> Vec<String> {
     let mut responses = Vec::new();
     for command in commands {
         let clean_command = command.trim();
         if clean_command != "" {
-            match process_request(clean_command, sender, db, dbs, auth) {
+            match process_request(clean_command, sender, db, dbs, client) {
                 Response::Error { msg } => {
                     responses.push(msg.clone());
                     println!("Error: {}", msg);
@@ -60,37 +59,36 @@ pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
     for _ in 0..10 {
         let server = http_server.clone();
         let dbs = dbs.clone();
-        let guard = thread::spawn(move || {
-            loop {
-                let (mut sender, mut receiver): (Sender<String>, Receiver<String>) = channel(10);
-                let auth = Arc::new(AtomicBool::new(false)); //Fix this
-                let db = create_temp_selected_db("init".to_string());
-                let mut body = String::new();
+        let guard = thread::spawn(move || loop {
+            let (mut sender, mut receiver): (Sender<String>, Receiver<String>) = channel(10);
 
-                match server.recv() {
-                    Ok(mut rq) => match rq.as_reader().read_to_string(&mut body) {
-                        Ok(_) => {
-                            println!("Body {}", body);
-                            let commands: Vec<&str> = body.split(';').collect();
-                            let responses = process_commands(
-                                &commands,
-                                &mut sender,
-                                &mut receiver,
-                                &db,
-                                &dbs,
-                                &auth,
-                            );
-                            let response = tiny_http::Response::from_string(responses.join(";"));
-                            match rq.respond(response) {
-                                Ok(_) => {}
-                                Err(e) => println!("http_ops response error {}", e),
-                            }
-                            println!("[http] Processing the body{}", body);
+            let mut client = Client::new_empty();
+            let db = create_temp_selected_db("init".to_string());
+            let mut body = String::new();
+
+            match server.recv() {
+                Ok(mut rq) => match rq.as_reader().read_to_string(&mut body) {
+                    Ok(_) => {
+                        println!("Body {}", body);
+                        let commands: Vec<&str> = body.split(';').collect();
+                        let responses = process_commands(
+                            &commands,
+                            &mut sender,
+                            &mut receiver,
+                            &db,
+                            &dbs,
+                            &mut client,
+                        );
+                        let response = tiny_http::Response::from_string(responses.join(";"));
+                        match rq.respond(response) {
+                            Ok(_) => {}
+                            Err(e) => println!("http_ops response error {}", e),
                         }
-                        Err(e) => println!("error {}", e),
-                    },
-                    Err(e) => println!("server.recv::error {}", e),
-                }
+                        println!("[http] Processing the body{}", body);
+                    }
+                    Err(e) => println!("error {}", e),
+                },
+                Err(e) => println!("server.recv::error {}", e),
             }
         });
         guards.push(guard);

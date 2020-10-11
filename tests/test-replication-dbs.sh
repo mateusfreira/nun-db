@@ -26,12 +26,17 @@ echo "Will Connect the secoundaries to the primary"
 #electionResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; election win")
 echo "Election result: $electionResult"
 joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3016")
+#joinResult=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth mateus mateus; join 127.0.0.1:3016")
+#joinResult=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth mateus mateus; join 127.0.0.1:3017")
+#joinResult=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth mateus mateus; join 127.0.0.1:3018")
 echo "Join 1 done"
 
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; cluster-state;")
 echo "Final Primary: $clusterStatePrimary"
 
 joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; join 127.0.0.1:3018")
+#joinResult=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth mateus mateus; join 127.0.0.1:3016")
+#joinResult=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth mateus mateus; join 127.0.0.1:3018")
 echo "Join 2 done"
 sleep 1
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; cluster-state;")
@@ -95,11 +100,17 @@ echo "Total of $elapsed seconds elapsed for process"
 
 
 echo "Will start the tests of failure"
+
+kill -9 $PRIMARY_PID
+# kill -9 $SECOUNDARY_PID
+sleep 5
+echo 'Rebuilding the cluster'
+#joinResult=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth mateus mateus; join 127.0.0.1:3016")
 sleep 5
 
-kill -9 $SECOUNDARY_PID
 
-r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state mateus;")
+#r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state mateus;")
+r=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "use-db test-db test-db-key; set state mateus;")
 get_result=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
 
 echo "Check the log..."

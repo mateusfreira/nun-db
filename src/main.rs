@@ -108,8 +108,6 @@ fn start_db(
         .join()
         .expect("replication_thread_creator thread died");
 
-    election_thread
-        .join()
-        .expect("election_thread thread died");
+    election_thread.join().expect("election_thread thread died");
     Ok(())
 }

@@ -22,7 +22,7 @@ echo "Starting secoundary 2"
 SECOUNDARY_2_PID=$!
 
 sleep 1
-sleep 5
+sleep 2
 
 echo "Will Connect the secoundaries to the primary"
 #electionResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; election win")
@@ -38,7 +38,7 @@ echo "Join 2 done"
 sleep 1
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth mateus mateus; cluster-state;")
 echo "Final Primary: $clusterStatePrimary"
-sleep 10
+sleep 5
 clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth mateus mateus; cluster-state;")
 echo "Final Secoundary: $clusterStateSecoundary"
 
@@ -53,11 +53,11 @@ echo "Will test write in the secoundary read from primary"
 sleep 3
 start_time="$(date -u +%s)"
 
-for i in {1..20}
+for i in {1..2000}
 do
 	echo "Set in the secoundary"
 	r=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1;")
-	echo "Read from the secoundary"
+	echo "Read from the primary and secoundary"
 	get_result=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; get state")
 	get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
 	if [ "$get_result" != "empty;value jose-$i-1" ]; then

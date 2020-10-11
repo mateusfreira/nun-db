@@ -2,10 +2,9 @@ use futures::channel::mpsc::Sender;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-
 
 use bo::*;
 use disk_ops::*;
@@ -62,12 +61,13 @@ pub fn election_win(dbs: Arc<Databases>) -> Response {
         .start_replication_sender
         .clone()
         .try_send(format!("election-win self"))
-        {
-            Ok(_n) => (),
-            Err(e) => println!("Request::ElectionWin sender.send Error: {}", e),
-        }
+    {
+        Ok(_n) => (),
+        Err(e) => println!("Request::ElectionWin sender.send Error: {}", e),
+    }
 
-    dbs.node_state.swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+    dbs.node_state
+        .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
     Response::Ok {}
 }
 

@@ -1,10 +1,24 @@
 use futures::channel::mpsc::Sender;
 use std::fmt;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize,  Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use std::collections::HashMap;
+
+pub struct Client {
+    pub auth: Arc<AtomicBool>,
+    pub cluster_member: Mutex<Option<ClusterMember>>,
+}
+
+impl Client {
+    pub fn new_empty() -> Client {
+        Client {
+            auth: Arc::new(AtomicBool::new(false)),
+            cluster_member: Mutex::new(None),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct ClusterMember {
@@ -13,10 +27,9 @@ pub struct ClusterMember {
     pub sender: Option<Sender<String>>,
 }
 
-#[derive(Clone)]
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq, Copy)]
 pub enum ClusterRole {
-    StartingUp  = 0,
+    StartingUp = 0,
     Primary = 1,
     Secoundary = 2,
 }
@@ -38,7 +51,7 @@ impl fmt::Display for ClusterRole {
         match *self {
             ClusterRole::Primary => write!(f, "Primary"),
             ClusterRole::Secoundary => write!(f, "Secoundary"),
-            ClusterRole::StartingUp  => write!(f, "StartingUp"),
+            ClusterRole::StartingUp => write!(f, "StartingUp"),
         }
     }
 }
@@ -83,24 +96,31 @@ impl Databases {
         return self.get_role() == ClusterRole::StartingUp;
     }
 
-    pub fn add_cluster_member(&self, member: ClusterMember) {//todo receive the data separated!!!
+    pub fn add_cluster_member(&self, member: ClusterMember) {
+        //todo receive the data separated!!!
         let cluster_state = (*self).cluster_state.lock().unwrap();
         let mut members = cluster_state.members.lock().unwrap();
-        if member.role  == ClusterRole::Primary {
+        if member.role == ClusterRole::Primary {
             println!("New primary added channging all old to secundary");
             for (name, old_member) in members.clone().iter() {
-                members.insert(name.to_string(), ClusterMember {
-                    name: name.clone(),
-                    role: ClusterRole::Secoundary,
-                    sender: old_member.sender.clone(),
-                });
+                members.insert(
+                    name.to_string(),
+                    ClusterMember {
+                        name: name.clone(),
+                        role: ClusterRole::Secoundary,
+                        sender: old_member.sender.clone(),
+                    },
+                );
             }
         }
-        members.insert(member.name.to_string(), ClusterMember {
-            name: member.name.clone(),
-            role: member.role,
-            sender: member.sender.clone(),
-        });
+        members.insert(
+            member.name.to_string(),
+            ClusterMember {
+                name: member.name.clone(),
+                role: member.role,
+                sender: member.sender.clone(),
+            },
+        );
     }
 
     pub fn remove_cluster_member(&self, name: &String) {
@@ -151,7 +171,12 @@ pub enum Request {
     ReplicateSnapshot {
         db: String,
     },
-
+    Leave {
+        name: String,
+    },
+    ReplicateLeave {
+        name: String,
+    },
     Join {
         name: String,
     },
@@ -162,10 +187,13 @@ pub enum Request {
     SetPrimary {
         name: String,
     },
+    SetScoundary {
+        name: String,
+    },
     ClusterState {},
     ElectionWin {},
     Election {
-      id: u128
+        id: u128,
     },
     ElectionActive {},
 }
