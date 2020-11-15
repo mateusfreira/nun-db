@@ -27,58 +27,62 @@ pub fn replicate_request(
     replication_sender: &Sender<String>,
     is_primary: bool,
 ) -> Response {
-    match reponse {
-        Response::Error { msg: _ } => reponse,
-        _ => match input {
-            Request::CreateDb { name, token } => {
-                println!("Will replicate command a created database name {}", name);
-                replicate_web(replication_sender, format!("create-db {} {}", name, token));
-                Response::Ok {}
-            }
-            Request::Snapshot {} => {
-                println!("Will replicate a snapshot to the database {}", db_name);
-                replicate_web(
-                    replication_sender,
-                    format!("replicate-snapshot {}", db_name),
-                );
-                Response::Ok {}
-            }
-            Request::Set { value, key } => {
-                println!("Will replicate the set of the key {} to {} ", key, value);
-                replicate_web(
-                    replication_sender,
-                    get_replicate_message(db_name.to_string(), key, value),
-                );
-                Response::Ok {}
-            }
-
-            Request::Election { id } => {
-                replicate_web(replication_sender, format!("election cadidate {}", id));
-                Response::Ok {}
-            }
-
-            Request::ElectionActive {} => {
-                replicate_web(replication_sender, format!("election active"));
-                Response::Ok {}
-            }
-
-            Request::Leave { name } => {
-                replicate_web(replication_sender, format!("replicate-leave {}", name));
-                Response::Ok {}
-            }
-
-            Request::ReplicateSet { db, value, key } => {
-                if is_primary {
+    if is_primary {
+        match reponse {
+            Response::Error { msg: _ } => reponse,
+            _ => match input {
+                Request::CreateDb { name, token } => {
+                    println!("Will replicate command a created database name {}", name);
+                    replicate_web(replication_sender, format!("create-db {} {}", name, token));
+                    Response::Ok {}
+                }
+                Request::Snapshot {} => {
+                    println!("Will replicate a snapshot to the database {}", db_name);
+                    replicate_web(
+                        replication_sender,
+                        format!("replicate-snapshot {}", db_name),
+                    );
+                    Response::Ok {}
+                }
+                Request::Set { value, key } => {
                     println!("Will replicate the set of the key {} to {} ", key, value);
                     replicate_web(
                         replication_sender,
-                        get_replicate_message(db.to_string(), key, value),
+                        get_replicate_message(db_name.to_string(), key, value),
                     );
+                    Response::Ok {}
                 }
-                Response::Ok {}
-            }
-            _ => reponse,
-        },
+
+                Request::Election { id } => {
+                    replicate_web(replication_sender, format!("election cadidate {}", id));
+                    Response::Ok {}
+                }
+
+                Request::ElectionActive {} => {
+                    replicate_web(replication_sender, format!("election active"));
+                    Response::Ok {}
+                }
+
+                Request::Leave { name } => {
+                    replicate_web(replication_sender, format!("replicate-leave {}", name));
+                    Response::Ok {}
+                }
+
+                Request::ReplicateSet { db, value, key } => {
+                    if is_primary {
+                        println!("Will replicate the set of the key {} to {} ", key, value);
+                        replicate_web(
+                            replication_sender,
+                            get_replicate_message(db.to_string(), key, value),
+                        );
+                    }
+                    Response::Ok {}
+                }
+                _ => reponse,
+            },
+        }
+    } else {
+        reponse
     }
 }
 
@@ -242,7 +246,7 @@ fn add_sencoundary_to_secoundary(
     tcp_addr: &String,
     dbs: Arc<Databases>,
     receiver: Receiver<String>,
-) -> () {
+) -> std::thread::JoinHandle<()> {
     let user = dbs.user.to_string();
     let pwd = dbs.pwd.to_string();
     dbs.add_cluster_member(ClusterMember {
@@ -251,7 +255,7 @@ fn add_sencoundary_to_secoundary(
         sender: Some(sender.clone()),
     });
 
-   /* let tcp_addr = tcp_addr.clone();
+    let tcp_addr = tcp_addr.clone();
     let dbs = dbs.clone();
     let guard = thread::spawn(move || {
         start_replication(
@@ -260,13 +264,13 @@ fn add_sencoundary_to_secoundary(
             user,
             pwd,
             tcp_addr.to_string(),
-            true,
+            false,
         );
 
         println!("Removing member {} from cluster!", name);
         dbs.remove_cluster_member(&name);
     });
-    (guard)*/
+    (guard)
 }
 
 /**
@@ -317,6 +321,10 @@ pub fn start_replication_creator_thread(
                         }
 
                         Some("leave") => {
+                            println!(
+                                "[start_replication_creator_thread] removing {} from the cluster!!",
+                                name
+                            );
                             dbs.remove_cluster_member(&name);
                         }
                         // Add primary to secoundary
@@ -334,16 +342,18 @@ pub fn start_replication_creator_thread(
                         }
                         // Add secoundary to secoundary
                         Some("new-secoundary") => {
-                            // Notify the members in the cluster about the new member
-                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                            let _guard = add_sencoundary_to_secoundary(
-                                &sender,
-                                name.clone(),
-                                &tcp_addr,
-                                dbs.clone(),
-                                receiver,
-                            );
-                            //guards.push(guard);
+                            if !dbs.has_cluster_memeber(&name) {
+                                // Notify the members in the cluster about the new member
+                                send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                                let guard = add_sencoundary_to_secoundary(
+                                    &sender,
+                                    name.clone(),
+                                    &tcp_addr,
+                                    dbs.clone(),
+                                    receiver,
+                                );
+                                guards.push(guard);
+                            }
                         }
                         // Add primary to primary
                         Some("election-win") => {

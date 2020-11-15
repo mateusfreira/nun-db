@@ -1,7 +1,7 @@
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::sync::atomic::{Ordering};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 use std::time;
@@ -47,12 +47,16 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                 match buf.as_ref() {
                     "" => {
                         println!("killing socket client, because of disconnected!!");
-                        let member = &*client.cluster_member.lock().unwrap(); 
-                        match  member{
+                        let member = &*client.cluster_member.lock().unwrap();
+                        match member {
                             Some(m) => {
                                 match m.role {
-                                    ClusterRole::Primary => {//New elections are only needed if the primary fails
-                                        println!("Cluster member disconnected role : {} name {} : ", m.role, m.name);
+                                    ClusterRole::Primary => {
+                                        //New elections are only needed if the primary fails
+                                        println!(
+                                            "Cluster member disconnected role : {} name {} : ",
+                                            m.role, m.name
+                                        );
                                         // Need this fake_client here because client is borrow in
                                         // `&*client.cluster_member.lock().unwrap()` as immutable
                                         // leave request does not use the client, therefore this is safe!
@@ -60,22 +64,29 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                                         // Fake client needs to be auth
                                         let mut fake_client = Client::new_empty();
                                         fake_client.auth.store(true, Ordering::Relaxed);
-                                        match process_request(&format!("leave {}", m.name), 
-                                            &mut sender, &db, &dbs, &mut fake_client) {
+                                        match process_request(
+                                            &format!("leave {}", m.name),
+                                            &mut sender,
+                                            &db,
+                                            &dbs,
+                                            &mut fake_client,
+                                        ) {
                                             Response::Error { msg } => {
                                                 println!("Error: {}", msg);
-                                                sender.try_send(format!("error {} \n", msg)).unwrap();
+                                                sender
+                                                    .try_send(format!("error {} \n", msg))
+                                                    .unwrap();
                                             }
                                             _ => {
                                                 sender.try_send(format!("ok \n")).unwrap();
                                                 println!("Success processed");
                                             }
                                         }
-                                    },
-                                    _ =>()
+                                    }
+                                    _ => (),
                                 }
-                            },
-                            None => ()
+                            }
+                            None => (),
                         };
                         //Implement leave
                         /*process_request(

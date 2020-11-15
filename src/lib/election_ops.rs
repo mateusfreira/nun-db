@@ -1,6 +1,6 @@
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::{thread, time};
-use std::sync::atomic::{Ordering};
 
 use bo::*;
 use db_ops::*;

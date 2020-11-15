@@ -1,6 +1,6 @@
 use futures::channel::mpsc::Sender;
 use std::mem;
-use std::sync::atomic::{Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -169,9 +169,14 @@ pub fn process_request(
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
         Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(dbs.clone())),
         Request::Election { id } => apply_if_auth(&client.auth, &|| {
-            if id < dbs.process_id {
+            println!("Election received");
+            if id == dbs.process_id {
+                println!("Ignoring same node election");
+            } else if id < dbs.process_id {
+                println!("Will run the start_election");
                 start_election(dbs);
             } else {
+                println!("Won't run the start_election");
                 match dbs
                     .replication_sender
                     .clone()
@@ -199,12 +204,11 @@ pub fn process_request(
             dbs.node_state
                 .swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
             let member = Some(ClusterMember {
-                    name: name.clone(),
-                    role: ClusterRole::Primary,
-                    sender: None,
+                name: name.clone(),
+                role: ClusterRole::Primary,
+                sender: None,
             });
-            let mut  member_lock = client
-                .cluster_member.lock().unwrap();
+            let mut member_lock = client.cluster_member.lock().unwrap();
             *member_lock = member;
             Response::Ok {}
         }),
@@ -212,12 +216,11 @@ pub fn process_request(
         Request::SetScoundary { name } => apply_if_auth(&client.auth, &|| {
             println!("Setting {} as primary!", name);
             let member = Some(ClusterMember {
-                    name: name.clone(),
-                    role: ClusterRole::Secoundary,
-                    sender: None,
+                name: name.clone(),
+                role: ClusterRole::Secoundary,
+                sender: None,
             });
-            let mut  member_lock = client
-                .cluster_member.lock().unwrap();
+            let mut member_lock = client.cluster_member.lock().unwrap();
             *member_lock = member;
             Response::Ok {}
         }),
@@ -260,7 +263,6 @@ pub fn process_request(
             start_election(dbs);
             Response::Ok {}
         }),
-
 
         Request::ReplicateJoin { name } => apply_if_auth(&client.auth, &|| {
             match dbs

@@ -1,6 +1,6 @@
 use futures::channel::mpsc::Sender;
 use std::fmt;
-use std::sync::atomic::{AtomicBool, AtomicUsize,  Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -127,6 +127,12 @@ impl Databases {
         let cluster_state = (*self).cluster_state.lock().unwrap();
         let mut members = cluster_state.members.lock().unwrap();
         members.remove(&name.to_string());
+    }
+
+    pub fn has_cluster_memeber(&self, name: &String) -> bool {
+        let cluster_state = (*self).cluster_state.lock().unwrap();
+        let members = cluster_state.members.lock().unwrap();
+        return members.contains_key(name);
     }
 }
 
