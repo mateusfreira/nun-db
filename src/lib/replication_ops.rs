@@ -23,13 +23,13 @@ pub fn get_replicate_message(db_name: String, key: String, value: String) -> Str
 pub fn replicate_request(
     input: Request,
     db_name: &String,
-    reponse: Response,
+    response: Response,
     replication_sender: &Sender<String>,
     is_primary: bool,
 ) -> Response {
     if is_primary {
-        match reponse {
-            Response::Error { msg: _ } => reponse,
+        match response {
+            Response::Error { msg: _ } => response,
             _ => match input {
                 Request::CreateDb { name, token } => {
                     println!("Will replicate command a created database name {}", name);
@@ -78,11 +78,11 @@ pub fn replicate_request(
                     }
                     Response::Ok {}
                 }
-                _ => reponse,
+                _ => response,
             },
         }
     } else {
-        reponse
+        response
     }
 }
 
@@ -237,7 +237,7 @@ fn add_sencoundary_to_primary(
         println!("Removing member {} from cluster!", name);
         dbs.remove_cluster_member(&name);
     });
-    (guard)
+    guard
 }
 
 fn add_sencoundary_to_secoundary(
@@ -270,7 +270,7 @@ fn add_sencoundary_to_secoundary(
         println!("Removing member {} from cluster!", name);
         dbs.remove_cluster_member(&name);
     });
-    (guard)
+    guard
 }
 
 /**
@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn should_replicate_if_the_command_is_a_set() {
+    fn should_replicate_if_the_command_is_a_set_and_node_is_primary() {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         let resp_set = Response::Set {
             key: "any_key".to_string(),
@@ -488,13 +488,35 @@ mod tests {
             value: "any_value".to_string(),
         };
         let db_name = "some".to_string();
-        let result = match replicate_request(req_set, &db_name, resp_set, &sender, false) {
+        let result = match replicate_request(req_set, &db_name, resp_set, &sender, true) {
             Response::Ok {} => true,
             _ => false,
         };
         assert!(result, "should have returned an ok response!");
         let replicate_command = receiver.try_next().unwrap().unwrap();
         assert_eq!(replicate_command, "replicate some any_key any_value")
+    }
+
+    #[test]
+    fn should_not_replicate_if_the_command_is_a_set_and_node_is_not_the_primary() {
+        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
+        let resp_set = Response::Set {
+            key: "any_key".to_string(),
+            value: "any_value".to_string(),
+        };
+
+        let req_set = Request::Set {
+            key: "any_key".to_string(),
+            value: "any_value".to_string(),
+        };
+        let db_name = "some".to_string();
+        let _ = match replicate_request(req_set, &db_name, resp_set, &sender, false) {
+            Response::Set {
+                key: _key,
+                value: _value,
+            } => true,
+            _ => false,
+        };
     }
 
     #[test]
@@ -524,14 +546,14 @@ mod tests {
     }
 
     #[test]
-    fn should_replicate_if_the_command_is_a_snapshot() {
+    fn should_replicate_if_the_command_is_a_snapshot_and_node_is_primary() {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         let request = Request::Snapshot {};
 
         let resp_get = Response::Ok {};
 
         let db_name = "some_db_name".to_string();
-        let result = match replicate_request(request, &db_name, resp_get, &sender, false) {
+        let result = match replicate_request(request, &db_name, resp_get, &sender, true) {
             Response::Ok {} => true,
             _ => false,
         };
@@ -540,7 +562,7 @@ mod tests {
         assert_eq!(receiver_replicate_result, "replicate-snapshot some_db_name");
     }
     #[test]
-    fn should_replicate_if_the_command_is_a_create_db() {
+    fn should_replicate_if_the_command_is_a_create_db_and_node_is_primary() {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         let request = Request::CreateDb {
             name: "mateus_db".to_string(),
@@ -550,7 +572,7 @@ mod tests {
         let resp_get = Response::Ok {};
 
         let db_name = "some".to_string();
-        let result = match replicate_request(request, &db_name, resp_get, &sender, false) {
+        let result = match replicate_request(request, &db_name, resp_get, &sender, true) {
             Response::Ok {} => true,
             _ => false,
         };

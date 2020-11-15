@@ -121,7 +121,7 @@ pub fn process_request(
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => {
                     if is_valid_token(&token, db) {
-                        mem::replace(&mut *db_name_state, name.clone());
+                        let _ = mem::replace(&mut *db_name_state, name.clone());
                         Response::Ok {}
                     } else {
                         Response::Error {
