@@ -202,6 +202,7 @@ pub enum Request {
         id: u128,
     },
     ElectionActive {},
+    Keys {},
 }
 
 #[derive(PartialEq)]

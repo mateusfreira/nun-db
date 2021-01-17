@@ -12,6 +12,7 @@ impl Request {
                 Ok(Request::Watch { key })
             }
             Some("unwatch-all") => Ok(Request::UnWatchAll {}),
+            Some("keys") => Ok(Request::Keys {}),
             Some("snapshot") => Ok(Request::Snapshot {}),
             Some("replicate-snapshot") => {
                 let db_name = match command.next() {
@@ -427,6 +428,15 @@ mod tests {
     fn should_parse_election_win() -> Result<(), String> {
         match Request::parse("election win") {
             Ok(Request::ElectionWin {}) => Ok(()),
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+
+    #[test]
+    fn should_parse_keys() -> Result<(), String> {
+        match Request::parse("keys") {
+            Ok(Request::Keys {}) => Ok(()),
             _ => Err(String::from("wrong command parsed")),
         }
     }

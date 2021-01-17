@@ -305,6 +305,33 @@ pub fn process_request(
                 value: String::from(cluster_state_str),
             }
         }),
+
+        Request::Keys {} => apply_to_database(&dbs, &db, &sender, &|db| {
+            let keys: Vec<String> = db
+                .map
+                .lock()
+                .unwrap()
+                .keys()
+                .filter(|key| !key.starts_with("$$"))// filter the secret keys
+                .map(|key| format!("{}", key))
+                .collect();
+            let keys = keys.iter().fold(String::from(""), |current, acc| {
+                format!("{},{}", current, acc)
+            });
+            match sender
+                .clone()
+                .try_send(format_args!("keys {}\n", keys).to_string())
+            {
+                Err(e) => println!("Request::ClusterState sender.send Error: {}", e),
+                _ => (),
+            }
+
+            println!("DBKeys {}", keys);
+            Response::Value {
+                key: String::from("keys"),
+                value: String::from(keys),
+            }
+        }),
     };
 
     let elapsed = start.elapsed();
