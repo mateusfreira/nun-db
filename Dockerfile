@@ -1,4 +1,4 @@
-FROM rust:1.40 as builder
+FROM rust:1.49 as builder
 WORKDIR /usr/src/nun-db
 COPY . .
 RUN cargo install --path .
