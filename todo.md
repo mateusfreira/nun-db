@@ -1,3 +1,4 @@
+- [ ] Get Keys
 - [ ] Data Replication
      - Lazy Centralized Protocols using algorithm Single Master with limited Transparency 
      - Write only on master, reads from anywhere (One point writes mutiple points reads)
