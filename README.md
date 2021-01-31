@@ -1,6 +1,4 @@
-# Nun DB 
-
-## Experimentation Repository (I do not recommend it for production YET)
+# <img src="./logo-nundb.png" width="50" />  NunDB
 
 ## What is Nun DB
 
@@ -26,9 +24,7 @@ Running Nun-db from docker is probably the faster way to do it, the simples step
 docker is bu running and container using all the default ports like the next example shows.
 
 ```
-
 docker run --env NUN_USER=user-name --env NUN_PWD=user-pwd -it --rm -p 3013:3013 -p 3012:3012 -p 3014:3014 --name nun-test mateusfreira/nun-db
-
 
 ```
 
@@ -181,4 +177,13 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 
 ```
 
+
+
+## Having any issue or needs help?
+
+Open an issue I will follow as soon as possible.
+
+## Want to use it in production ?
+
+Talk to me @mateusfreira I will help you get it to the scale you need.
 
