@@ -7,6 +7,7 @@ use std::thread;
 use std::time;
 
 use bo::*;
+use security::*;
 use db_ops::*;
 use process_request::*;
 
@@ -43,7 +44,7 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
         stream.set_nonblocking(true).unwrap();
         match read_line {
             Ok(_) => {
-                println!("Command print: {}", buf);
+                println!("Command print: {}", clean_string_to_log(&buf, &dbs));
                 match buf.as_ref() {
                     "" => {
                         println!("killing socket client, because of disconnected!!");

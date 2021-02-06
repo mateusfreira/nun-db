@@ -34,7 +34,7 @@ fn main() -> Result<(), String> {
             start_match.value_of("ws-address").unwrap_or("0.0.0.0:3012"),
             start_match
                 .value_of("http-address")
-                .unwrap_or("0.0.0.0:3012"),
+                .unwrap_or("0.0.0.0:3013"),
         );
     } else {
         return lib::commad_line::commands::exec_command(&matches);
