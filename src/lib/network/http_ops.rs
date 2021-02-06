@@ -4,6 +4,7 @@ use std::thread;
 use tiny_http;
 
 use bo::*;
+use security::*;
 use db_ops::*;
 use process_request::*;
 
@@ -69,7 +70,7 @@ pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
             match server.recv() {
                 Ok(mut rq) => match rq.as_reader().read_to_string(&mut body) {
                     Ok(_) => {
-                        println!("Body {}", body);
+                        println!("[http] body {}", clean_string_to_log(&body, &dbs));
                         let commands: Vec<&str> = body.split(';').collect();
                         let responses = process_commands(
                             &commands,
@@ -84,7 +85,7 @@ pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
                             Ok(_) => {}
                             Err(e) => println!("http_ops response error {}", e),
                         }
-                        println!("[http] Processing the body{}", body);
+                        println!("[http] Processing the body{}", clean_string_to_log(&body, &dbs));
                     }
                     Err(e) => println!("error {}", e),
                 },

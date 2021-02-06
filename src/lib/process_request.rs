@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use bo::*;
+use security::*;
 use db_ops::*;
 use election_ops::*;
 use replication_ops::*;
@@ -16,10 +17,11 @@ pub fn process_request(
     dbs: &Arc<Databases>,
     client: &mut Client,
 ) -> Response {
+    let input_to_log = clean_string_to_log(input, &dbs);
     println!(
         "[{}] process_request got message '{}'. ",
         thread_id::get(),
-        input
+        input_to_log
     );
     let db_name_state = db.name.lock().expect("Could not lock name mutex").clone();
     let is_primary = dbs.is_primary();
@@ -32,7 +34,7 @@ pub fn process_request(
     println!(
         "[{}] process_request parsed message '{}'. ",
         thread_id::get(),
-        input
+        input_to_log
     );
     let result = match request.clone() {
         Request::Auth { user, password } => {
@@ -338,7 +340,7 @@ pub fn process_request(
     println!(
         "[{}] Server processed message '{}' in {:?}",
         thread_id::get(),
-        input,
+        input_to_log,
         elapsed
     );
     let replication_result = replicate_request(

@@ -1,4 +1,5 @@
 pub mod bo;
+pub mod security;
 pub mod commad_line;
 pub mod db_ops;
 pub mod disk_ops;

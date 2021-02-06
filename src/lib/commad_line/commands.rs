@@ -105,7 +105,7 @@ pub fn exec_command(matches: &ArgMatches) -> Result<(), String> {
         );
         let client = reqwest::blocking::Client::new();
         let res = client
-            .post(matches.value_of("host").unwrap_or("http://localhost:3013"))
+            .post(matches.value_of("host").unwrap_or("http://127.0.0.1:3013"))
             .body(body)
             .send()
             .unwrap()
