@@ -4,9 +4,9 @@ use std::thread;
 use tiny_http;
 
 use bo::*;
-use security::*;
 use db_ops::*;
 use process_request::*;
+use security::*;
 
 fn process_commands(
     commands: &Vec<&str>,
@@ -23,7 +23,7 @@ fn process_commands(
             match process_request(clean_command, sender, db, dbs, client) {
                 Response::Error { msg } => {
                     responses.push(msg.clone());
-                    println!("Error: {}", msg);
+                    println!("Http response Error: {}", msg);
                 }
                 _ => {
                     println!("[http] - success processed");
@@ -34,12 +34,12 @@ fn process_commands(
                             }
                             _ => {
                                 responses.push("empty".to_string());
-                                println!("http_ops::process_message::Empty message")
+                                println!("http_ops::process_message::Empty message");
                             }
                         },
-                        _ => {
+                        Err(e) => {
                             responses.push("empty".to_string());
-                            println!("http_ops::process_message::Error")
+                            println!("http_ops::receiver.try_next empty for {}, message {}", clean_command, e)
                         }
                     }
                 }
@@ -51,7 +51,7 @@ fn process_commands(
 pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
     let http_address = http_address.to_string();
     println!(
-        "Starting the http client with 4 threads in the addr: {}",
+        "Starting the http client with 10 threads in the addr: {}",
         http_address
     );
     let http_server = tiny_http::Server::http(http_address).unwrap();
@@ -85,7 +85,10 @@ pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
                             Ok(_) => {}
                             Err(e) => println!("http_ops response error {}", e),
                         }
-                        println!("[http] Processing the body{}", clean_string_to_log(&body, &dbs));
+                        println!(
+                            "[http] Processing the body{}",
+                            clean_string_to_log(&body, &dbs)
+                        );
                     }
                     Err(e) => println!("error {}", e),
                 },

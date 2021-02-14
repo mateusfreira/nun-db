@@ -6,9 +6,9 @@ use thread_id;
 use ws::{CloseCode, Handler, Message};
 
 use bo::*;
-use security::*;
 use db_ops::*;
 use process_request::*;
+use security::*;
 
 const TO_CLOSE: &'static str = "##CLOSE##";
 
@@ -53,7 +53,11 @@ impl Handler for Server {
 
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
         let message = msg.as_text().unwrap();
-        println!("[{}] Server got message '{}'. ", thread_id::get(), clean_string_to_log(&message, &self.dbs));
+        println!(
+            "[{}] Server got message '{}'. ",
+            thread_id::get(),
+            clean_string_to_log(&message, &self.dbs)
+        );
         match process_request(
             &message,
             &mut self.sender,

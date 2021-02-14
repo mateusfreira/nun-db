@@ -432,7 +432,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn should_parse_keys() -> Result<(), String> {
         match Request::parse("keys") {
