@@ -5,10 +5,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use bo::*;
-use security::*;
 use db_ops::*;
 use election_ops::*;
 use replication_ops::*;
+use security::*;
 
 pub fn process_request(
     input: &str,
@@ -314,7 +314,7 @@ pub fn process_request(
                 .lock()
                 .unwrap()
                 .keys()
-                .filter(|key| !key.starts_with("$$"))// filter the secret keys
+                .filter(|key| !key.starts_with("$$")) // filter the secret keys
                 .map(|key| format!("{}", key))
                 .collect();
             let keys = keys.iter().fold(String::from(""), |current, acc| {

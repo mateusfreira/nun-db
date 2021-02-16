@@ -7,9 +7,9 @@ use std::thread;
 use std::time;
 
 use bo::*;
-use security::*;
 use db_ops::*;
 use process_request::*;
+use security::*;
 
 pub fn start_tcp_client(dbs: Arc<Databases>, tcp_addressed: &str) {
     println!("starting tcp client in the addr: {}", tcp_addressed);
