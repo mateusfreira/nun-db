@@ -1,10 +1,9 @@
 use futures::channel::mpsc::Sender;
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
-
-use std::collections::HashMap;
 
 pub struct Client {
     pub auth: Arc<AtomicBool>,
@@ -68,6 +67,7 @@ pub struct Database {
     pub map: Mutex<HashMap<String, String>>,
     pub name: Mutex<String>,
     pub watchers: Watchers,
+    pub connections: Mutex<AtomicUsize>,
 }
 
 pub struct Databases {
@@ -82,6 +82,22 @@ pub struct Databases {
     pub pwd: String,
 }
 
+impl Database {
+    pub fn inc_connections(&self) {
+        let mut connections = self.connections.lock().expect("Error getting the db.connections.lock to increment");
+        *connections.get_mut() = *connections.get_mut() + 1;
+    }
+
+    pub fn dec_connections(&self) {
+        let mut connections = self.connections.lock().expect("Error getting the db.connections.lock to decrement");
+        *connections.get_mut() = *connections.get_mut() - 1;
+    }
+
+    pub fn connections_count(&self) -> usize {
+        let connections = self.connections.lock().expect("Error getting the db.connections.lock to decrement");
+        return connections.load(Ordering::Relaxed);
+    }
+}
 impl Databases {
     pub fn get_role(&self) -> ClusterRole {
         let role_int = (*self.node_state).load(Ordering::SeqCst);
@@ -211,4 +227,58 @@ pub enum Response {
     Ok {},
     Set { key: String, value: String },
     Error { msg: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connection_count_should_start_at_0() {
+        let db = Database {
+            map: Mutex::new(HashMap::new()),
+            connections: Mutex::new(AtomicUsize::new(0)),
+            name: Mutex::new(String::from("some")),
+            watchers: Watchers {
+                map: Mutex::new(HashMap::new()),
+            },
+        };
+        assert_eq!(db.connections_count(), 0);
+    }
+
+    #[test]
+    fn connection_count_should_increment() {
+        let db = Database {
+            map: Mutex::new(HashMap::new()),
+            connections: Mutex::new(AtomicUsize::new(0)),
+            name: Mutex::new(String::from("some")),
+            watchers: Watchers {
+                map: Mutex::new(HashMap::new()),
+            },
+        };
+        assert_eq!(db.connections_count(), 0);
+
+        db.inc_connections();
+
+        assert_eq!(db.connections_count(), 1);
+    }
+
+    #[test]
+    fn connection_count_should_decrement() {
+        let db = Database {
+            map: Mutex::new(HashMap::new()),
+            connections: Mutex::new(AtomicUsize::new(0)),
+            name: Mutex::new(String::from("some")),
+            watchers: Watchers {
+                map: Mutex::new(HashMap::new()),
+            },
+        };
+        assert_eq!(db.connections_count(), 0);
+
+        db.inc_connections();
+        db.inc_connections();
+        db.dec_connections();
+
+        assert_eq!(db.connections_count(), 1);
+    }
 }
