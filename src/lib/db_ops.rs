@@ -10,6 +10,7 @@ use bo::*;
 use disk_ops::*;
 
 pub const TOKEN_KEY: &'static str = "$$token";
+pub const CONNECTIONS_KEY: &'static str = "$connections";
 
 pub fn apply_to_database(
     dbs: &Arc<Databases>,
@@ -101,6 +102,11 @@ pub fn is_valid_token(token: &String, db: &Database) -> bool {
     }
 }
 
+
+pub fn set_connection_counter(db: &Database) -> Response {
+    let value = db.connections_count().to_string();
+    return set_key_value(CONNECTIONS_KEY.to_string(), value, db);
+}
 pub fn set_key_value(key: String, value: String, db: &Database) -> Response {
     let mut watchers = db.watchers.map.lock().unwrap();
     let mut db = db.map.lock().unwrap();
@@ -176,6 +182,7 @@ pub fn create_db_from_hash(name: String, data: HashMap<String, String>) -> Datab
     return Database {
         map: Mutex::new(data),
         name: Mutex::new(name),
+        connections: Mutex::new(AtomicUsize::new(0)),
         watchers: Watchers {
             map: Mutex::new(HashMap::new()),
         },

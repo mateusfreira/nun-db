@@ -39,13 +39,19 @@ fn process_commands(
                         },
                         Err(e) => {
                             responses.push("empty".to_string());
-                            println!("http_ops::receiver.try_next empty for {}, message {}", clean_command, e)
+                            println!(
+                                "http_ops::receiver.try_next empty for {}, message {}",
+                                clean_command, e
+                            )
                         }
                     }
                 }
             }
         }
     }
+
+    process_request("unwatch-all", sender, db, dbs, client);//To dicsconect
+
     return responses;
 }
 pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
