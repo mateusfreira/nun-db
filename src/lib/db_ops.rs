@@ -102,7 +102,6 @@ pub fn is_valid_token(token: &String, db: &Database) -> bool {
     }
 }
 
-
 pub fn set_connection_counter(db: &Database) -> Response {
     let value = db.connections_count().to_string();
     return set_key_value(CONNECTIONS_KEY.to_string(), value, db);
@@ -207,20 +206,7 @@ pub fn create_init_dbs(
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
 
-    let initial_dbs = HashMap::new();
-    return Arc::new(Databases {
-        map: Mutex::new(initial_dbs),
-        to_snapshot: Mutex::new(Vec::new()),
-        cluster_state: Mutex::new(ClusterState {
-            members: Mutex::new(HashMap::new()),
-        }),
-        start_replication_sender: start_replication_sender,
-        replication_sender: replication_sender,
-        user: user,
-        pwd: pwd,
-        node_state: Arc::new(AtomicUsize::new(ClusterRole::StartingUp as usize)),
-        process_id: since_the_epoch.as_millis(),
-    });
+    return Arc::new(Databases::new(user, pwd, start_replication_sender, replication_sender, since_the_epoch.as_millis()));
 }
 
 pub fn get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {

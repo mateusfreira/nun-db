@@ -83,22 +83,63 @@ pub struct Databases {
 }
 
 impl Database {
+    pub fn new(name: String) -> Database {
+        return Database {
+            map: Mutex::new(HashMap::new()),
+            connections: Mutex::new(AtomicUsize::new(0)),
+            name: Mutex::new(name),
+            watchers: Watchers {
+                map: Mutex::new(HashMap::new()),
+            },
+        };
+    }
     pub fn inc_connections(&self) {
-        let mut connections = self.connections.lock().expect("Error getting the db.connections.lock to increment");
+        let mut connections = self
+            .connections
+            .lock()
+            .expect("Error getting the db.connections.lock to increment");
         *connections.get_mut() = *connections.get_mut() + 1;
     }
 
     pub fn dec_connections(&self) {
-        let mut connections = self.connections.lock().expect("Error getting the db.connections.lock to decrement");
+        let mut connections = self
+            .connections
+            .lock()
+            .expect("Error getting the db.connections.lock to decrement");
         *connections.get_mut() = *connections.get_mut() - 1;
     }
 
     pub fn connections_count(&self) -> usize {
-        let connections = self.connections.lock().expect("Error getting the db.connections.lock to decrement");
+        let connections = self
+            .connections
+            .lock()
+            .expect("Error getting the db.connections.lock to decrement");
         return connections.load(Ordering::Relaxed);
     }
 }
 impl Databases {
+    pub fn new(user: String, pwd: String, start_replication_sender: Sender<String>, replication_sender: Sender<String>, process_id: u128) -> Databases {
+        let initial_dbs = HashMap::new();
+        Databases {
+            map: Mutex::new(initial_dbs),
+            to_snapshot: Mutex::new(Vec::new()),
+            cluster_state: Mutex::new(ClusterState {
+                members: Mutex::new(HashMap::new()),
+            }),
+            start_replication_sender: start_replication_sender,
+            replication_sender: replication_sender,
+            user: user,
+            pwd: pwd,
+            node_state: Arc::new(AtomicUsize::new(ClusterRole::StartingUp as usize)),
+            process_id: process_id,
+        }
+    }
+
+    pub fn add_database(&self, name: &String, database: Database) {
+        let mut dbs = self.map.lock().unwrap();
+        dbs.insert(name.to_string(), database);
+    }
+
     pub fn get_role(&self) -> ClusterRole {
         let role_int = (*self.node_state).load(Ordering::SeqCst);
         return ClusterRole::from(role_int);
@@ -232,30 +273,17 @@ pub enum Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::channel::mpsc::{Sender, Receiver, channel};
 
     #[test]
     fn connection_count_should_start_at_0() {
-        let db = Database {
-            map: Mutex::new(HashMap::new()),
-            connections: Mutex::new(AtomicUsize::new(0)),
-            name: Mutex::new(String::from("some")),
-            watchers: Watchers {
-                map: Mutex::new(HashMap::new()),
-            },
-        };
+        let db = Database::new(String::from("some"));
         assert_eq!(db.connections_count(), 0);
     }
 
     #[test]
     fn connection_count_should_increment() {
-        let db = Database {
-            map: Mutex::new(HashMap::new()),
-            connections: Mutex::new(AtomicUsize::new(0)),
-            name: Mutex::new(String::from("some")),
-            watchers: Watchers {
-                map: Mutex::new(HashMap::new()),
-            },
-        };
+        let db = Database::new(String::from("some"));
         assert_eq!(db.connections_count(), 0);
 
         db.inc_connections();
@@ -265,14 +293,7 @@ mod tests {
 
     #[test]
     fn connection_count_should_decrement() {
-        let db = Database {
-            map: Mutex::new(HashMap::new()),
-            connections: Mutex::new(AtomicUsize::new(0)),
-            name: Mutex::new(String::from("some")),
-            watchers: Watchers {
-                map: Mutex::new(HashMap::new()),
-            },
-        };
+        let db = Database::new(String::from("some"));
         assert_eq!(db.connections_count(), 0);
 
         db.inc_connections();
@@ -280,5 +301,18 @@ mod tests {
         db.dec_connections();
 
         assert_eq!(db.connections_count(), 1);
+    }
+
+    #[test]
+    fn add_database_should_add_a_database() {
+        let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let dbs = Databases::new(String::from(""), String::from(""), sender, sender1, 1 as u128);
+        assert_eq!(dbs.map.lock().expect("error to lock").keys().len(), 0);
+
+        let db = Database::new(String::from("some"));
+
+        dbs.add_database(&String::from("jose"), db);
+        assert_eq!(dbs.map.lock().expect("error to lock").keys().len(), 1);
     }
 }

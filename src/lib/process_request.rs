@@ -109,7 +109,7 @@ pub fn process_request(
 
         Request::UnWatchAll {} => apply_to_database(&dbs, &db, &sender, &|_db| {
             unwatch_all(&sender, _db);
-            _db.dec_connections();//todo put it in a better methods
+            _db.dec_connections(); //todo put it in a better methods
             set_connection_counter(_db);
             Response::Ok {}
         }),
@@ -126,7 +126,7 @@ pub fn process_request(
                 Some(db) => {
                     if is_valid_token(&token, db) {
                         let _ = mem::replace(&mut *db_name_state, name.clone());
-                        db.inc_connections();//Increment the number of connections 
+                        db.inc_connections(); //Increment the number of connections
                         set_connection_counter(db);
                         Response::Ok {}
                     } else {
