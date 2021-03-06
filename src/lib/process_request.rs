@@ -146,13 +146,12 @@ pub fn process_request(
         }
 
         Request::CreateDb { name, token } => apply_if_auth(&client.auth, &|| {
-            let mut dbs = dbs.map.lock().unwrap();
             let empty_db_box = create_temp_db(name.clone());
             let empty_db = Arc::try_unwrap(empty_db_box);
             match empty_db {
                 Ok(db) => {
                     set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);
-                    dbs.insert(name.to_string(), db);
+                    dbs.add_database(&name.to_string(), db);
                     match sender.clone().try_send("create-db success\n".to_string()) {
                         Ok(_n) => (),
                         Err(e) => println!("Request::CreateDb  Error: {}", e),
