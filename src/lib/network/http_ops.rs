@@ -50,7 +50,7 @@ fn process_commands(
         }
     }
 
-    process_request("unwatch-all", sender, db, dbs, client);//To dicsconect
+    process_request("unwatch-all", sender, db, dbs, client); //To dicsconect
 
     return responses;
 }

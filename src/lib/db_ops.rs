@@ -9,7 +9,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bo::*;
 use disk_ops::*;
 
-pub const TOKEN_KEY: &'static str = "$$token";
 pub const CONNECTIONS_KEY: &'static str = "$connections";
 
 pub fn apply_to_database(
@@ -102,29 +101,12 @@ pub fn is_valid_token(token: &String, db: &Database) -> bool {
     }
 }
 
-
 pub fn set_connection_counter(db: &Database) -> Response {
     let value = db.connections_count().to_string();
     return set_key_value(CONNECTIONS_KEY.to_string(), value, db);
 }
 pub fn set_key_value(key: String, value: String, db: &Database) -> Response {
-    let mut watchers = db.watchers.map.lock().unwrap();
-    let mut db = db.map.lock().unwrap();
-    db.insert(key.clone(), value.clone());
-    match watchers.get_mut(&key) {
-        Some(senders) => {
-            for sender in senders {
-                println!("Sending to another client");
-                match sender.try_send(
-                    format_args!("changed {} {}\n", key.to_string(), value.to_string()).to_string(),
-                ) {
-                    Ok(_n) => (),
-                    Err(e) => println!("Request::Set sender.send Error: {}", e),
-                }
-            }
-        }
-        _ => {}
-    }
+    db.set_value(key.to_string(), value.to_string());
     Response::Set {
         key: key.clone(),
         value: value.to_string(),
@@ -207,20 +189,13 @@ pub fn create_init_dbs(
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
 
-    let initial_dbs = HashMap::new();
-    return Arc::new(Databases {
-        map: Mutex::new(initial_dbs),
-        to_snapshot: Mutex::new(Vec::new()),
-        cluster_state: Mutex::new(ClusterState {
-            members: Mutex::new(HashMap::new()),
-        }),
-        start_replication_sender: start_replication_sender,
-        replication_sender: replication_sender,
-        user: user,
-        pwd: pwd,
-        node_state: Arc::new(AtomicUsize::new(ClusterRole::StartingUp as usize)),
-        process_id: since_the_epoch.as_millis(),
-    });
+    return Arc::new(Databases::new(
+        user,
+        pwd,
+        start_replication_sender,
+        replication_sender,
+        since_the_epoch.as_millis(),
+    ));
 }
 
 pub fn get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {

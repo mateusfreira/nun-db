@@ -146,6 +146,18 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 * Web Socket
     Port: 3012
 
+## Special keys
+
+All special keys will have a `$` symbol in the first letter of the name.
+
+### $connections 
+
+Count the number of connections to a databse.
+
+```
+$connections
+```
+
 ## Diagram
 
 ```bash

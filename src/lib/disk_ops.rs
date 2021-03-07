@@ -31,13 +31,12 @@ pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
 }
 
 fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::DirEntry>) {
-    let mut dbs = dbs.map.lock().unwrap();
     if let Ok(entry) = entry {
         let full_name = entry.file_name().into_string().unwrap();
         let db_name = db_name_from_file_name(full_name);
         let db_data = load_db_from_disck_or_empty(db_name.to_string());
-        dbs.insert(
-            db_name.to_string(),
+        dbs.add_database(
+            &db_name.to_string(),
             create_db_from_hash(db_name.to_string(), db_data),
         );
     }

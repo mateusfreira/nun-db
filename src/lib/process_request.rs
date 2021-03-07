@@ -109,7 +109,7 @@ pub fn process_request(
 
         Request::UnWatchAll {} => apply_to_database(&dbs, &db, &sender, &|_db| {
             unwatch_all(&sender, _db);
-            _db.dec_connections();//todo put it in a better methods
+            _db.dec_connections(); //todo put it in a better methods
             set_connection_counter(_db);
             Response::Ok {}
         }),
@@ -126,7 +126,7 @@ pub fn process_request(
                 Some(db) => {
                     if is_valid_token(&token, db) {
                         let _ = mem::replace(&mut *db_name_state, name.clone());
-                        db.inc_connections();//Increment the number of connections 
+                        db.inc_connections(); //Increment the number of connections
                         set_connection_counter(db);
                         Response::Ok {}
                     } else {
@@ -146,13 +146,12 @@ pub fn process_request(
         }
 
         Request::CreateDb { name, token } => apply_if_auth(&client.auth, &|| {
-            let mut dbs = dbs.map.lock().unwrap();
             let empty_db_box = create_temp_db(name.clone());
             let empty_db = Arc::try_unwrap(empty_db_box);
             match empty_db {
                 Ok(db) => {
                     set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);
-                    dbs.insert(name.to_string(), db);
+                    dbs.add_database(&name.to_string(), db);
                     match sender.clone().try_send("create-db success\n".to_string()) {
                         Ok(_n) => (),
                         Err(e) => println!("Request::CreateDb  Error: {}", e),
