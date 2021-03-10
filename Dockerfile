@@ -2,7 +2,7 @@ FROM ekidd/rust-musl-builder:stable as builder
 
 RUN USER=root cargo new --bin nun-db
 WORKDIR ./nun-db
-COPY ./Cargo.lock ./Cargo.lock
+
 COPY ./Cargo.toml ./Cargo.toml
 RUN cargo build --release
 RUN rm src/*.rs
