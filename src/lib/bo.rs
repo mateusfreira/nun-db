@@ -270,6 +270,10 @@ pub enum Request {
     Remove {
         key: String,
     },
+    ReplicateRemove {
+        db: String,
+        key: String,
+    },
     Set {
         key: String,
         value: String,

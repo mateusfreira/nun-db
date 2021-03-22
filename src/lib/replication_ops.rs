@@ -16,6 +16,10 @@ pub fn replicate_web(replication_sender: &Sender<String>, message: String) {
     }
 }
 
+pub fn get_replicate_remove_message(db_name: String, key: String) -> String {
+    return format!("replicate-remove {} {}", db_name, key);
+}
+
 pub fn get_replicate_message(db_name: String, key: String, value: String) -> String {
     return format!("replicate {} {} {}", db_name, key, value);
 }
@@ -49,6 +53,15 @@ pub fn replicate_request(
                     replicate_web(
                         replication_sender,
                         get_replicate_message(db_name.to_string(), key, value),
+                    );
+                    Response::Ok {}
+                }
+
+                Request::Remove { key } => {
+                    println!("Will replicate the remove of the key {} ", key);
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_remove_message(db_name.to_string(), key),
                     );
                     Response::Ok {}
                 }

@@ -91,8 +91,7 @@ pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Re
 }
 
 pub fn remove_key(key: &String, db: &Database) -> Response {
-    db.remove_value(key.to_string());
-    Responst::Ok {}
+    db.remove_value(key.to_string())
 }
 
 pub fn is_valid_token(token: &String, db: &Database) -> bool {

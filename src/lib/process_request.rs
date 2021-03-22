@@ -77,6 +77,23 @@ pub fn process_request(
             }
         }),
 
+        Request::ReplicateRemove {
+            db: name,
+            key,
+        } => apply_if_auth(&client.auth, &|| {
+            let dbs = dbs.map.lock().expect("Could not lock the dbs mutex");
+            let respose: Response = match dbs.get(&name.to_string()) {
+                Some(db) => remove_key(&key, db),
+                _ => {
+                    println!("Not a valid database name");
+                    Response::Error {
+                        msg: "Not a valid database name".to_string(),
+                    }
+                }
+            };
+            respose
+        }),
+
         Request::ReplicateSet {
             db: name,
             key,
