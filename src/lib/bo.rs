@@ -141,6 +141,28 @@ impl Database {
             _ => {}
         }
     }
+
+    pub fn remove_value(&self, key: String) -> Response {
+        let mut watchers = self.watchers.map.lock().unwrap();
+        let mut db = self.map.lock().unwrap();
+        db.remove(&key.to_string());
+        match watchers.get_mut(&key) {
+            Some(senders) => {
+                for sender in senders {
+                    println!("Sending to another client");
+                    match sender.try_send(
+                        format_args!("changed {} <Empty>\n", key.to_string())
+                            .to_string(),
+                    ) {
+                        Ok(_n) => (),
+                        Err(e) => println!("Request::Remove sender.send Error: {}", e)
+                    }
+                }
+            }
+            _ => {}
+        }
+        Response::Ok {}
+    }
 }
 impl Databases {
     pub fn new(
@@ -243,6 +265,9 @@ pub struct Watchers {
 #[derive(Clone)]
 pub enum Request {
     Get {
+        key: String,
+    },
+    Remove {
         key: String,
     },
     Set {

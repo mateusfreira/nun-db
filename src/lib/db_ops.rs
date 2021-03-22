@@ -90,6 +90,11 @@ pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Re
     }
 }
 
+pub fn remove_key(key: &String, db: &Database) -> Response {
+    db.remove_value(key.to_string());
+    Responst::Ok {}
+}
+
 pub fn is_valid_token(token: &String, db: &Database) -> bool {
     let db = db.map.lock().unwrap();
     match db.get(&TOKEN_KEY.to_string()) {
@@ -214,6 +219,33 @@ pub fn get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {
 mod tests {
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
+
+    #[test]
+    fn should_unset_a_value() {
+        let key = String::from("key");
+        let value = String::from("This is the value");
+        let hash = HashMap::new();
+        let db = create_db_from_hash(String::from("test"), hash);
+        set_key_value(key.clone(), value.clone(), &db);
+
+        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+
+        let _value_in_hash = get_key_value(&key, &sender, &db);
+        let message = receiver.try_next().unwrap().unwrap();
+        assert_eq!(
+            message.to_string(),
+            format_args!("value {}\n", value.to_string()).to_string()
+        );
+
+        remove_key(&key, &db);
+
+        let _value_in_hash = get_key_value(&key, &sender, &db);
+        let message = receiver.try_next().unwrap().unwrap();
+        assert_eq!(
+            message.to_string(),
+            "value <Empty>\n".to_string()
+        );
+    }
     #[test]
     fn should_set_a_value() {
         let key = String::from("key");

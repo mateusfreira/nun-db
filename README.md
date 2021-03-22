@@ -88,6 +88,12 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 - [x] Require db auth
 - [x] Replicate? How? (replicate)
 
+### Remove
+#### Context
+- [ ] Require admin auth
+- [x] Require db auth
+- [x] Replicate? How? (replicate)
+
 ### Snapshot
 #### Context
 - [x] Require admin auth

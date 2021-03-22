@@ -114,6 +114,19 @@ impl Request {
                     value: value.to_string(),
                 })
             }
+
+            Some("remove") => {
+                let key = match command.next() {
+                    Some(key) => key,
+                    None => {
+                        println!("REMOVE must be followed by a key");
+                        ""
+                    }
+                };
+                Ok(Request::Remove {
+                    key: key.to_string(),
+                })
+            }
             Some("auth") => {
                 let user = match command.next() {
                     Some(key) => key,

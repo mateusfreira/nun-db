@@ -60,6 +60,10 @@ pub fn process_request(
             apply_to_database(&dbs, &db, &sender, &|_db| get_key_value(&key, &sender, _db))
         }
 
+        Request::Remove { key } => {
+            apply_to_database(&dbs, &db, &sender, &|_db| remove_key(&key, _db))
+        }
+
         Request::Set { key, value } => apply_to_database(&dbs, &db, &sender, &|_db| {
             if dbs.is_primary() {
                 set_key_value(key.clone(), value.clone(), _db)
