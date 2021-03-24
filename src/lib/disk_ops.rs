@@ -89,8 +89,10 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
             let mut dbs_to_snapshot = dbs.to_snapshot.lock().unwrap();
+            dbs_to_snapshot.dedup();
             while let Some(database_name) = dbs_to_snapshot.pop() {
                 println!("Will snapshot the database {}", database_name);
+                let dbs = dbs.clone();
                 let dbs = dbs.map.lock().unwrap();
                 let db_opt = dbs.get(&database_name);
                 match db_opt {
