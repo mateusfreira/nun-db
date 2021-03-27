@@ -114,6 +114,19 @@ impl Request {
                     value: value.to_string(),
                 })
             }
+
+            Some("remove") => {
+                let key = match command.next() {
+                    Some(key) => key,
+                    None => {
+                        println!("REMOVE must be followed by a key");
+                        ""
+                    }
+                };
+                Ok(Request::Remove {
+                    key: key.to_string(),
+                })
+            }
             Some("auth") => {
                 let user = match command.next() {
                     Some(key) => key,
@@ -174,6 +187,25 @@ impl Request {
                     name: name.to_string(),
                     token: token.to_string(),
                 })
+            }
+
+            Some("replicate-remove") => {
+                let db = match command.next() {
+                    Some(key) => key,
+                    None => {
+                        println!("replicate-remove needs to provide an db name");
+                        ""
+                    }
+                };
+
+                let key = match command.next() {
+                    Some(key) => String::from(key).replace("\n", ""),
+                    None => {
+                        println!("replicate remove needs key");
+                        "".to_string()
+                    }
+                };
+                Ok(Request::ReplicateRemove { db: db.to_string(), key : key })
             }
             Some("replicate") => {
                 let db = match command.next() {

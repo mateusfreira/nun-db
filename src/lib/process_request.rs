@@ -60,6 +60,10 @@ pub fn process_request(
             apply_to_database(&dbs, &db, &sender, &|_db| get_key_value(&key, &sender, _db))
         }
 
+        Request::Remove { key } => {
+            apply_to_database(&dbs, &db, &sender, &|_db| remove_key(&key, _db))
+        }
+
         Request::Set { key, value } => apply_to_database(&dbs, &db, &sender, &|_db| {
             if dbs.is_primary() {
                 set_key_value(key.clone(), value.clone(), _db)
@@ -71,6 +75,23 @@ pub fn process_request(
                 );
                 Response::Ok {}
             }
+        }),
+
+        Request::ReplicateRemove {
+            db: name,
+            key,
+        } => apply_if_auth(&client.auth, &|| {
+            let dbs = dbs.map.lock().expect("Could not lock the dbs mutex");
+            let respose: Response = match dbs.get(&name.to_string()) {
+                Some(db) => remove_key(&key, db),
+                _ => {
+                    println!("Not a valid database name");
+                    Response::Error {
+                        msg: "Not a valid database name".to_string(),
+                    }
+                }
+            };
+            respose
         }),
 
         Request::ReplicateSet {
