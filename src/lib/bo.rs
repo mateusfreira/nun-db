@@ -150,12 +150,11 @@ impl Database {
             Some(senders) => {
                 for sender in senders {
                     println!("Sending to another client");
-                    match sender.try_send(
-                        format_args!("changed {} <Empty>\n", key.to_string())
-                            .to_string(),
-                    ) {
+                    match sender
+                        .try_send(format_args!("changed {} <Empty>\n", key.to_string()).to_string())
+                    {
                         Ok(_n) => (),
-                        Err(e) => println!("Request::Remove sender.send Error: {}", e)
+                        Err(e) => println!("Request::Remove sender.send Error: {}", e),
                     }
                 }
             }
@@ -190,10 +189,7 @@ impl Databases {
         let admin_db_name = String::from(ADMIN_DB);
         let admin_db = Database::new(admin_db_name.to_string());
         admin_db.set_value(String::from(TOKEN_KEY), pwd.to_string());
-        dbs.add_database(
-            &admin_db_name.to_string(),
-            admin_db
-        );
+        dbs.add_database(&admin_db_name.to_string(), admin_db);
 
         dbs
     }
@@ -202,7 +198,9 @@ impl Databases {
         println!("add_database {}", name.to_string());
         let mut dbs = self.map.lock().unwrap();
         dbs.insert(name.to_string(), database);
-        dbs.get(&String::from(ADMIN_DB)).unwrap().set_value(name.to_string(), String::from("{}"));
+        dbs.get(&String::from(ADMIN_DB))
+            .unwrap()
+            .set_value(name.to_string(), String::from("{}"));
     }
 
     pub fn get_role(&self) -> ClusterRole {
@@ -386,11 +384,11 @@ mod tests {
             sender1,
             1 as u128,
         );
-        assert_eq!(dbs.map.lock().expect("error to lock").keys().len(), 1);//Admin db
+        assert_eq!(dbs.map.lock().expect("error to lock").keys().len(), 1); //Admin db
 
         let db = Database::new(String::from("some"));
 
         dbs.add_database(&String::from("jose"), db);
-        assert_eq!(dbs.map.lock().expect("error to lock").keys().len(), 2);// Admin db and the db
+        assert_eq!(dbs.map.lock().expect("error to lock").keys().len(), 2); // Admin db and the db
     }
 }

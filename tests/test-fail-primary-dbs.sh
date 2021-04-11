@@ -1,31 +1,59 @@
 #!/bin/bash
-trap "kill 0" EXIT
 
-echo "Starting the primary"
+command=$1
+echo $command;
+
 primaryHttpAddress="127.0.0.1:9092"
 primaryTcpAddress="127.0.0.1:3017"
 secoundary1HttpAddress="127.0.0.1:9093"
 secoundary2HttpAddress="127.0.0.1:9094"
 user="mateus"
 password="$user"
-timeoutSpeep=1
+timeoutSpeep=3
 
 cargo build
+
+if [ $command = "all" ]
+then
+    echo "Add trap if all"
+    trap "kill 0" EXIT
+fi
+
+if [ $command = "start-1" ] || [ $command = "all" ]
+then
+echo "Starting the primary"
 RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "127.0.0.1:3058">primary.log&
 PRIMARY_PID=$!
+echo $PRIMARY_PID >> .primary.pid
+sleep $timeoutSpeep
+fi
 
+if [ $command = "start-2" ] || [ $command = "all" ]
+then
 echo "Starting secoundary 1"
-
 RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$secoundary1HttpAddress" --tcp-address "127.0.0.1:3016" --ws-address "127.0.0.1:3057">secoundary.log&
 SECOUNDARY_PID=$!
+echo $SECOUNDARY_PID >> .secoundary.pid
+sleep $timeoutSpeep
+fi
 
 
+if [ $command = "start-3" ] || [ $command = "all" ]
+then
 echo "Starting secoundary 2"
-
 ./target/debug/nun-db --user $user -p $user start --http-address "$secoundary2HttpAddress" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059">secoundary.2.log&
 SECOUNDARY_2_PID=$!
+echo $SECOUNDARY_2_PID >> .secoundary.pid
 sleep $timeoutSpeep
+fi
 
+if [ $command = "all" ]
+then
+    echo "Giving time to election!!!"
+    sleep 10
+fi
+if [ $command = "election" ] || [ $command = "all" ]
+then
 echo "Will Connect the secoundaries to the primary"
 echo "Election result: $electionResult"
 joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; join 127.0.0.1:3016")
@@ -64,105 +92,111 @@ fi
 
 echo "Change cluster state primary : $clusterStatePrimary"
 echo "Change cluster state secoundary : $clusterStateSecoundary"
+fi # if [ $command = "election" ] || [ $command = "all" ]    
 
-curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; create-db test-db test-db-key;"
-echo "Will test write in the primary read from secoundaries"
-sleep $timeoutSpeep
-start_time="$(date -u +%s)"
+if [ $command = "all" ]
+then
+    curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; create-db test-db test-db-key;"
+    echo "Will test write in the primary read from secoundaries"
+    sleep $timeoutSpeep
+    start_time="$(date -u +%s)"
 
-for i in {1..20}
-do
-	echo "Set in the primary"
-	r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1;")
-	echo "Read from the secoundary"
-	get_result=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "use-db test-db test-db-key; get state")
-	get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
-	if [ "$get_result" != "empty;value jose-$i-1" ]; then
-		echo "Invalid value value in the secoundary 1: $get_result $i"
-		exit 2
-	else
-		if [ "$get_result2" != "empty;value jose-$i-1" ]; then
-			echo "Invalid value value in the secoundary 2: $get_result $i"
-			exit 3
-		else
-			echo "Request $i Ok"
-		fi 
-	fi
+    for i in {1..20}
+    do
+        echo "Set in the primary"
+        r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1;")
+        echo "Read from the secoundary"
+        get_result=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "use-db test-db test-db-key; get state")
+        get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
+        if [ "$get_result" != "empty;value jose-$i-1" ]; then
+            echo "Invalid value value in the secoundary 1: $get_result $i"
+            exit 2
+        else
+            if [ "$get_result2" != "empty;value jose-$i-1" ]; then
+                echo "Invalid value value in the secoundary 2: $get_result $i"
+                exit 3
+            else
+                echo "Request $i Ok"
+            fi 
+        fi
 
-    echo "Delete testing"
+        echo "Delete testing"
 
-	deleteResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; remove state jose-$i-1;")
-	echo "Read from the secoundary"
-	get_result=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "use-db test-db test-db-key; get state")
-	get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
-	if [ "$get_result" != "empty;value <Empty>" ]; then
-		echo "Invalid value value in the secoundary 1: $get_result $i"
-		exit 2
-	else
-		if [ "$get_result2" != "empty;value <Empty>" ]; then
-			echo "Invalid value value in the secoundary 2: $get_result $i"
-			exit 3
-		else
-			echo "Request $i Ok"
-		fi 
-	fi
-done
-end_time="$(date -u +%s)"
-elapsed="$(($end_time-$start_time))"
-echo "Total of $elapsed seconds elapsed for process"
-
-
-
-
-echo "Will start the tests of failure"
-
-kill -9 $PRIMARY_PID
-sleep $timeoutSpeep
-echo 'Rebuilding the cluster'
-sleep $timeoutSpeep
-clusterStatePrimary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth $user $user; cluster-state;")
-echo $clusterStatePrimary
+        deleteResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; remove state jose-$i-1;")
+        echo "Read from the secoundary"
+        get_result=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "use-db test-db test-db-key; get state")
+        get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
+        if [ "$get_result" != "empty;value <Empty>" ]; then
+            echo "Invalid value value in the secoundary 1: $get_result $i"
+            exit 2
+        else
+            if [ "$get_result2" != "empty;value <Empty>" ]; then
+                echo "Invalid value value in the secoundary 2: $get_result $i"
+                exit 3
+            else
+                echo "Request $i Ok"
+            fi 
+        fi
+    done
+    end_time="$(date -u +%s)"
+    elapsed="$(($end_time-$start_time))"
+    echo "Total of $elapsed seconds elapsed for process"
 
 
-r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state $user;")
-get_result=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
-
-echo "Check the log..."
-sleep $timeoutSpeep
-
-echo  "Result: $get_result"
-
-if [ "$get_result" != "empty;value $user" ]; then
-    echo "Invalid value value in the secoundary 1."
-    exit 2
-fi
 
 
-for i in {1..20}
-do
-    echo "Set in the primary"
-    r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1;")
-    echo "Read from the secoundary"
-	get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
-    if [ "$get_result2" != "empty;value jose-$i-1" ]; then
-        echo "Invalid value value in the secoundary 2: $get_result $i"
-        exit 3
-    else
-        echo "Request $i Ok"
+    echo "Will start the tests of failure"
+
+    kill -9 $PRIMARY_PID
+    echo 'Rebuilding the cluster'
+    sleep 10
+    sleep $timeoutSpeep
+    clusterStatePrimary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth $user $user; cluster-state;")
+    echo $clusterStatePrimary
+
+
+    r=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; set state $user;")
+    sleep $timeoutSpeep
+    get_result=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "use-db test-db test-db-key; get state")
+
+    echo "Check the log..."
+    sleep $timeoutSpeep
+
+    echo  "Result: $get_result"
+
+    if [ "$get_result" != "empty;value $user" ]; then
+        echo "Invalid value value in the secoundary 1."
+        exit 2
     fi
-done
 
-clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
-expectedCluster="valid auth
-;cluster-state  127.0.0.1:3017:Primary, 127.0.0.1:3018:Secoundary,"
-echo "Cluster state $clusterStatePrimary - $expectedCluster"
 
-if [ "$clusterStatePrimary" !=  "$expectedCluster" ]; then
-    echo "Invalid cluster state after kill"
-    exit 4
-else
-    echo "Request Ok"
+    for i in {1..20}
+    do
+        echo "Set in the primary"
+        r=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1;")
+        echo "Read from the secoundary"
+        get_result2=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "use-db test-db test-db-key; get state")
+        if [ "$get_result2" != "empty;value jose-$i-1" ]; then
+            echo "Invalid value value in the secoundary 2: $get_result $i"
+            exit 3
+        else
+            echo "Request $i Ok"
+        fi
+    done
+
+    clusterStatePrimary=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth $user $user; cluster-state;")
+    expectedCluster="valid auth
+;cluster-state  127.0.0.1:3016:Secoundary, 127.0.0.1:3018:Primary,"
+    echo "Cluster state $clusterStatePrimary - $expectedCluster"
+
+    if [ "$clusterStatePrimary" !=  "$expectedCluster" ]; then
+        echo "Invalid cluster state after kill"
+        exit 4
+    else
+        echo "Request Ok"
+    fi
+    rm .primary.pid
+    rm .secoundary.pid
 fi
-
 exit 0
 

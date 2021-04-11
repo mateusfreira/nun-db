@@ -247,7 +247,10 @@ fn add_sencoundary_to_primary(
             true,
         );
 
-        println!("Removing member {} from cluster!", name);
+        println!(
+            "Removing member {} from cluster add_sencoundary_to_primary died!",
+            name
+        );
         dbs.remove_cluster_member(&name);
     });
     guard
@@ -269,7 +272,8 @@ fn add_sencoundary_to_secoundary(
     });
 
     let tcp_addr = tcp_addr.clone();
-    let dbs = dbs.clone();
+    // let dbs = dbs.clone();
+
     let guard = thread::spawn(move || {
         start_replication(
             name.clone(),
@@ -280,8 +284,15 @@ fn add_sencoundary_to_secoundary(
             false,
         );
 
-        println!("Removing member {} from cluster!", name);
-        dbs.remove_cluster_member(&name);
+        println!(
+            "Removing member {} from cluster add_sencoundary_to_secoundary!",
+            name
+        );
+
+        // I think I don't need to do this here but still not sure
+        // this fixed the issue #10 on github
+        // Primary should tell the secoundary that one of them leave
+        //dbs.remove_cluster_member(&name);
     });
     guard
 }

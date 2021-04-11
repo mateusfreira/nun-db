@@ -240,10 +240,7 @@ mod tests {
 
         let _value_in_hash = get_key_value(&key, &sender, &db);
         let message = receiver.try_next().unwrap().unwrap();
-        assert_eq!(
-            message.to_string(),
-            "value <Empty>\n".to_string()
-        );
+        assert_eq!(message.to_string(), "value <Empty>\n".to_string());
     }
     #[test]
     fn should_set_a_value() {

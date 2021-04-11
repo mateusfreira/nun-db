@@ -205,7 +205,10 @@ impl Request {
                         "".to_string()
                     }
                 };
-                Ok(Request::ReplicateRemove { db: db.to_string(), key : key })
+                Ok(Request::ReplicateRemove {
+                    db: db.to_string(),
+                    key: key,
+                })
             }
             Some("replicate") => {
                 let db = match command.next() {
