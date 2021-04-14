@@ -1,4 +1,4 @@
-- [ ] Get Keys
+- [x] Get Keys
 - [ ] Data Replication
      - Lazy Centralized Protocols using algorithm Single Master with limited Transparency 
      - Write only on master, reads from anywhere (One point writes mutiple points reads)
@@ -19,8 +19,8 @@
                 If P receives a Coordinator message, it treats the sender as the coordinator.
      - [x] Add Join command
      - [x] Wire from secoundary
-     - [ ] Primary disconnection
-     - [ ] Implement replication transaction
+     - [x] Primary disconnection
+     - [ ] Implement replication transaction (Log based)
      - [ ] Implement ping command
      - [ ] Update library to use the cluster (Js)
 - [ ] Read https://jepsen.io/analyses/redis-raft-1b3fbf6

@@ -190,29 +190,8 @@ pub fn process_request(
         }),
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
-        Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(dbs.clone())),
-        Request::Election { id } => apply_if_auth(&client.auth, &|| {
-            println!("Election received");
-            if id == dbs.process_id {
-                println!("Ignoring same node election");
-            } else if id < dbs.process_id {
-                println!("Will run the start_election");
-                start_election(dbs);
-            } else {
-                println!("Won't run the start_election");
-                match dbs
-                    .replication_sender
-                    .clone()
-                    .try_send(format!("election alive"))
-                {
-                    Ok(_) => (),
-                    Err(_) => println!("Error election alive"),
-                }
-                dbs.node_state
-                    .swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
-            }
-            Response::Ok {}
-        }),
+        Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(&dbs)),
+        Request::Election { id } => apply_if_auth(&client.auth, &|| election_eval(&dbs, id)),
 
         Request::SetPrimary { name } => apply_if_auth(&client.auth, &|| {
             println!("Setting {} as primary!", name);

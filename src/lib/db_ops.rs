@@ -55,21 +55,6 @@ pub fn snapshot_db(db: &Database, dbs: &Databases) -> Response {
     Response::Ok {}
 }
 
-pub fn election_win(dbs: Arc<Databases>) -> Response {
-    println!("Setting this server as a primary!");
-    match dbs
-        .start_replication_sender
-        .clone()
-        .try_send(format!("election-win self"))
-    {
-        Ok(_n) => (),
-        Err(e) => println!("Request::ElectionWin sender.send Error: {}", e),
-    }
-
-    dbs.node_state
-        .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
-    Response::Ok {}
-}
 
 pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Response {
     let db = db.map.lock().unwrap();
