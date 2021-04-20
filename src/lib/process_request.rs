@@ -23,7 +23,7 @@ pub fn process_request(
         thread_id::get(),
         input_to_log
     );
-    let db_name_state = db.name.lock().expect("Could not lock name mutex").clone();
+    let db_name_state = db.name.read().unwrap();
     let is_primary = dbs.is_primary();
     let start = Instant::now();
     let request = match Request::parse(String::from(input).trim_matches('\n')) {
@@ -68,7 +68,7 @@ pub fn process_request(
             if dbs.is_primary() {
                 set_key_value(key.clone(), value.clone(), _db)
             } else {
-                let db_name_state = _db.name.lock().expect("Could not lock name mutex");
+                let db_name_state = _db.name.clone();
                 send_message_to_primary(
                     get_replicate_message(db_name_state.to_string(), key.clone(), value.clone()),
                     dbs,
@@ -78,7 +78,7 @@ pub fn process_request(
         }),
 
         Request::ReplicateRemove { db: name, key } => apply_if_auth(&client.auth, &|| {
-            let dbs = dbs.map.lock().expect("Could not lock the dbs mutex");
+            let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => remove_key(&key, db),
                 _ => {
@@ -96,7 +96,7 @@ pub fn process_request(
             key,
             value,
         } => apply_if_auth(&client.auth, &|| {
-            let dbs = dbs.map.lock().expect("Could not lock the dbs mutex");
+            let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => set_key_value(key.clone(), value.clone(), db),
                 _ => {
@@ -138,8 +138,8 @@ pub fn process_request(
         }),
 
         Request::UseDb { name, token } => {
-            let mut db_name_state = db.name.lock().expect("Could not lock name mutex");
-            let dbs = dbs.map.lock().expect("Could not lock the mao mutex");
+            let mut db_name_state = db.name.write().unwrap();
+            let dbs = dbs.map.read().expect("Could not lock the mao mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => {
                     if is_valid_token(&token, db) {
@@ -164,7 +164,7 @@ pub fn process_request(
         }
 
         Request::CreateDb { name, token } => apply_if_auth(&client.auth, &|| {
-            let empty_db_box = create_temp_db(name.clone());
+            let empty_db_box = create_temp_db(name.clone(), &dbs);
             let empty_db = Arc::try_unwrap(empty_db_box);
             match empty_db {
                 Ok(db) => {
@@ -311,7 +311,7 @@ pub fn process_request(
         Request::Keys {} => apply_to_database(&dbs, &db, &sender, &|db| {
             let keys: Vec<String> = db
                 .map
-                .lock()
+                .read()
                 .unwrap()
                 .keys()
                 .filter(|key| !key.starts_with("$$")) // filter the secret keys

@@ -6,6 +6,7 @@ use std::io::{BufWriter, Write};
 use std::sync::Arc;
 
 use bo::*;
+use disk_ops::*;
 
 use std::time;
 
@@ -141,6 +142,14 @@ pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
         }
     }
 }
+
+fn get_db_id(db_name:String, dbs: &Arc<Databases>) -> u64 {
+  dbs.map.read().unwrap().get(&db_name).unwrap().metadata.id as u64
+}
+
+fn  get_key_id(key: String, db_id: u64) -> u64 {
+    1 as u64
+}
 /**
  *
  * This function will wait for  requests to replicates the messages to the menbers receiver
@@ -148,10 +157,28 @@ pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
  *
  */
 pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs: Arc<Databases>) {
+    let mut op_log_stream  = get_log_file_append_mode();
     loop {
         match replication_receiver.try_next() {
             Ok(message_opt) => match message_opt {
-                Some(message) => replicate_message_to_secoundary(message, &dbs),
+                Some(message) => {
+                    replicate_message_to_secoundary(message.to_string(), &dbs);
+                    let request = Request::parse(&message.to_string()).unwrap();
+                    match request {
+                        Request::ReplicateSet { db, key, value: _ } => {
+                            let db_id = get_db_id(db, &dbs);
+                            let key_id = get_key_id(key, db_id);
+                            write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
+                        },
+
+                        Request::ReplicateRemove { db, key } => {
+                            let db_id = get_db_id(db, &dbs);
+                            let key_id = get_key_id(key, db_id);
+                            write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove);
+                        },
+                        _ => ()
+                    }
+                },
                 None => println!("replication::try_next::Empty message"),
             },
             _ => thread::sleep(time::Duration::from_millis(2)),

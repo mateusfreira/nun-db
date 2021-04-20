@@ -4,6 +4,8 @@ use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::RwLock;
+
 
 pub const TOKEN_KEY: &'static str = "$$token";
 pub const ADMIN_DB: &'static str = "$admin";
@@ -63,18 +65,29 @@ pub struct ClusterState {
 }
 
 pub struct SelectedDatabase {
-    pub name: Mutex<String>,
+    pub name: RwLock<String>,
+}
+
+pub struct DatabaseMataData {
+    pub id: usize,
+}
+
+impl DatabaseMataData {
+    pub fn new(id: usize) -> DatabaseMataData {
+        return DatabaseMataData { id: id };
+    }
 }
 
 pub struct Database {
-    pub map: Mutex<HashMap<String, String>>,
-    pub name: Mutex<String>,
+    pub map: std::sync::RwLock<HashMap<String, String>>,
+    pub name: String,
     pub watchers: Watchers,
-    pub connections: Mutex<AtomicUsize>,
+    pub connections: RwLock<AtomicUsize>,
+    pub metadata: DatabaseMataData,
 }
 
 pub struct Databases {
-    pub map: Mutex<HashMap<String, Database>>,
+    pub map: std::sync::RwLock<HashMap<String, Database>>,
     pub to_snapshot: Mutex<Vec<String>>,
     pub cluster_state: Mutex<ClusterState>,
     pub start_replication_sender: Sender<String>,
@@ -86,13 +99,30 @@ pub struct Databases {
 }
 
 impl Database {
-    pub fn new(name: String) -> Database {
+    pub fn new(name: String, metadata: DatabaseMataData) -> Database {
         return Database {
-            map: Mutex::new(HashMap::new()),
-            connections: Mutex::new(AtomicUsize::new(0)),
-            name: Mutex::new(name),
+            metadata: metadata,
+            map: std::sync::RwLock::new(HashMap::new()),
+            connections: RwLock::new(AtomicUsize::new(0)),
+            name: name,
             watchers: Watchers {
-                map: Mutex::new(HashMap::new()),
+                map: RwLock::new(HashMap::new()),
+            },
+        };
+    }
+
+    pub fn create_db_from_hash(
+        name: String,
+        data: HashMap<String, String>,
+        metadata: DatabaseMataData,
+    ) -> Database {
+        return Database {
+            metadata: metadata,
+            map: RwLock::new(data),
+            name: name,
+            connections: RwLock::new(AtomicUsize::new(0)),
+            watchers: Watchers {
+                map: RwLock::new(HashMap::new()),
             },
         };
     }
@@ -100,7 +130,7 @@ impl Database {
     pub fn inc_connections(&self) {
         let mut connections = self
             .connections
-            .lock()
+            .write()
             .expect("Error getting the db.connections.lock to increment");
         *connections.get_mut() = *connections.get_mut() + 1;
     }
@@ -108,7 +138,7 @@ impl Database {
     pub fn dec_connections(&self) {
         let mut connections = self
             .connections
-            .lock()
+            .write()
             .expect("Error getting the db.connections.lock to decrement");
         *connections.get_mut() = *connections.get_mut() - 1;
     }
@@ -116,15 +146,15 @@ impl Database {
     pub fn connections_count(&self) -> usize {
         let connections = self
             .connections
-            .lock()
+            .read()
             .expect("Error getting the db.connections.lock to decrement");
         return connections.load(Ordering::Relaxed);
     }
 
     pub fn set_value(&self, key: String, value: String) {
-        let mut watchers = self.watchers.map.lock().unwrap();
-        let mut db = self.map.lock().unwrap();
+        let mut db = self.map.write().unwrap();
         db.insert(key.clone(), value.clone());
+        let mut watchers = self.watchers.map.write().unwrap();
         match watchers.get_mut(&key) {
             Some(senders) => {
                 for sender in senders {
@@ -143,8 +173,8 @@ impl Database {
     }
 
     pub fn remove_value(&self, key: String) -> Response {
-        let mut watchers = self.watchers.map.lock().unwrap();
-        let mut db = self.map.lock().unwrap();
+        let mut watchers = self.watchers.map.write().unwrap();
+        let mut db = self.map.write().unwrap();
         db.remove(&key.to_string());
         match watchers.get_mut(&key) {
             Some(senders) => {
@@ -173,7 +203,7 @@ impl Databases {
     ) -> Databases {
         let initial_dbs = HashMap::new();
         let dbs = Databases {
-            map: Mutex::new(initial_dbs),
+            map: std::sync::RwLock::new(initial_dbs),
             to_snapshot: Mutex::new(Vec::new()),
             cluster_state: Mutex::new(ClusterState {
                 members: Mutex::new(HashMap::new()),
@@ -187,7 +217,7 @@ impl Databases {
         };
 
         let admin_db_name = String::from(ADMIN_DB);
-        let admin_db = Database::new(admin_db_name.to_string());
+        let admin_db = Database::new(admin_db_name.to_string(), DatabaseMataData::new(0)); // id 0 adnmin db
         admin_db.set_value(String::from(TOKEN_KEY), pwd.to_string());
         dbs.add_database(&admin_db_name.to_string(), admin_db);
 
@@ -196,7 +226,7 @@ impl Databases {
 
     pub fn add_database(&self, name: &String, database: Database) {
         println!("add_database {}", name.to_string());
-        let mut dbs = self.map.lock().unwrap();
+        let mut dbs = self.map.write().unwrap();
         dbs.insert(name.to_string(), database);
         dbs.get(&String::from(ADMIN_DB))
             .unwrap()
@@ -257,7 +287,25 @@ impl Databases {
 }
 
 pub struct Watchers {
-    pub map: Mutex<HashMap<String, Vec<Sender<String>>>>,
+    pub map: RwLock<HashMap<String, Vec<Sender<String>>>>,
+}
+
+pub enum ReplicateOpp {
+    Update = 0,
+    Remove = 1,
+    CreateDb = 2,
+}
+
+impl From<u8> for ReplicateOpp {
+    fn from(val: u8) -> Self {
+        use self::ReplicateOpp::*;
+        match val {
+            0 => Update,
+            1 => Remove,
+            2 => CreateDb,
+            _ => Update,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -347,13 +395,13 @@ mod tests {
 
     #[test]
     fn connection_count_should_start_at_0() {
-        let db = Database::new(String::from("some"));
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
         assert_eq!(db.connections_count(), 0);
     }
 
     #[test]
     fn connection_count_should_increment() {
-        let db = Database::new(String::from("some"));
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
         assert_eq!(db.connections_count(), 0);
 
         db.inc_connections();
@@ -363,7 +411,7 @@ mod tests {
 
     #[test]
     fn connection_count_should_decrement() {
-        let db = Database::new(String::from("some"));
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
         assert_eq!(db.connections_count(), 0);
 
         db.inc_connections();
@@ -384,11 +432,11 @@ mod tests {
             sender1,
             1 as u128,
         );
-        assert_eq!(dbs.map.lock().expect("error to lock").keys().len(), 1); //Admin db
+        assert_eq!(dbs.map.read().expect("error to lock").keys().len(), 1); //Admin db
 
-        let db = Database::new(String::from("some"));
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
 
         dbs.add_database(&String::from("jose"), db);
-        assert_eq!(dbs.map.lock().expect("error to lock").keys().len(), 2); // Admin db and the db
+        assert_eq!(dbs.map.read().expect("error to lock").keys().len(), 2); // Admin db and the db
     }
 }

@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use std::sync::RwLock;
+
 use bo::*;
 use disk_ops::*;
 
@@ -17,11 +19,8 @@ pub fn apply_to_database(
     sender: &Sender<String>,
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
-    let db_name = selected_db
-        .name
-        .lock()
-        .expect("Error getting the selected_db.name.lock");
-    let dbs = dbs.map.lock().expect("Error getting the dbs.map.lock");
+    let db_name = selected_db.name.read().unwrap();
+    let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => opp(db),
         None => {
@@ -50,14 +49,13 @@ pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Resp
     }
 }
 pub fn snapshot_db(db: &Database, dbs: &Databases) -> Response {
-    let name = db.name.lock().unwrap().clone();
+    let name = db.name.clone();
     dbs.to_snapshot.lock().unwrap().push(name);
     Response::Ok {}
 }
 
-
 pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Response {
-    let db = db.map.lock().unwrap();
+    let db = db.map.read().unwrap();
     let value = match db.get(&key.to_string()) {
         Some(value) => value,
         None => "<Empty>",
@@ -80,7 +78,7 @@ pub fn remove_key(key: &String, db: &Database) -> Response {
 }
 
 pub fn is_valid_token(token: &String, db: &Database) -> bool {
-    let db = db.map.lock().unwrap();
+    let db = db.map.read().unwrap();
     match db.get(&TOKEN_KEY.to_string()) {
         Some(value) => {
             println!("[is_valid_token] Token {} value {}", value, token);
@@ -107,13 +105,13 @@ pub fn unwatch_key(key: &String, sender: &Sender<String>, db: &Database) -> Resp
     println!("Senders before unwatch {:?}", senders.len());
     senders.retain(|x| !x.same_receiver(&sender));
     println!("Senders after unwatch {:?}", senders.len());
-    let mut watchers = db.watchers.map.lock().expect("db.watchers.map.lock");
+    let mut watchers = db.watchers.map.write().expect("db.watchers.map.lock");
     watchers.insert(key.clone(), senders);
     Response::Ok {}
 }
 
 pub fn watch_key(key: &String, sender: &Sender<String>, db: &Database) -> Response {
-    let mut watchers = db.watchers.map.lock().unwrap();
+    let mut watchers = db.watchers.map.write().unwrap();
     let mut senders: Vec<Sender<String>> = match watchers.get(key) {
         Some(watchers_vec) => watchers_vec.clone(),
         _ => Vec::new(),
@@ -128,7 +126,7 @@ pub fn unwatch_all(sender: &Sender<String>, db: &Database) -> Response {
     let watchers = db
         .watchers
         .map
-        .lock()
+        .write()
         .expect("Error on db.watchers.map.lock")
         .clone();
     for (key, _val) in watchers.iter() {
@@ -138,31 +136,18 @@ pub fn unwatch_all(sender: &Sender<String>, db: &Database) -> Response {
     Response::Ok {}
 }
 
-pub fn create_temp_db(name: String) -> Arc<Database> {
-    let mut initial_db = HashMap::new();
-    let db_file_name = file_name_from_db_name(name.clone());
-    if Path::new(&db_file_name).exists() {
-        // May I should move this out of here
-        let mut file = File::open(db_file_name).unwrap();
-        initial_db = bincode::deserialize_from(&mut file).unwrap();
-    }
-    return Arc::new(create_db_from_hash(name, initial_db));
-}
-
-pub fn create_db_from_hash(name: String, data: HashMap<String, String>) -> Database {
-    return Database {
-        map: Mutex::new(data),
-        name: Mutex::new(name),
-        connections: Mutex::new(AtomicUsize::new(0)),
-        watchers: Watchers {
-            map: Mutex::new(HashMap::new()),
-        },
-    };
+pub fn create_temp_db(name: String, dbs: &Arc<Databases>) -> Arc<Database> {
+    let initial_db = HashMap::new();
+    return Arc::new(Database::create_db_from_hash(
+        name,
+        initial_db,
+        DatabaseMataData::new(dbs.map.read().expect("could not get lock").len()),
+    ));
 }
 
 pub fn create_temp_selected_db(name: String) -> Arc<SelectedDatabase> {
     let tmpdb = Arc::new(SelectedDatabase {
-        name: Mutex::new(name),
+        name: RwLock::new(name),
     });
     return tmpdb;
 }
@@ -190,7 +175,7 @@ pub fn create_init_dbs(
 pub fn get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {
     let watchers = watchers
         .map
-        .lock()
+        .read()
         .expect("Error on get_senders watchers.map.lock")
         .clone();
     return match watchers.get(key) {
@@ -209,7 +194,8 @@ mod tests {
         let key = String::from("key");
         let value = String::from("This is the value");
         let hash = HashMap::new();
-        let db = create_db_from_hash(String::from("test"), hash);
+        let db =
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
         set_key_value(key.clone(), value.clone(), &db);
 
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -232,7 +218,8 @@ mod tests {
         let key = String::from("key");
         let value = String::from("This is the value");
         let hash = HashMap::new();
-        let db = create_db_from_hash(String::from("test"), hash);
+        let db =
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
         set_key_value(key.clone(), value.clone(), &db);
 
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -249,7 +236,8 @@ mod tests {
     fn should_unwatch_a_value() {
         let key = String::from("key");
         let hash = HashMap::new();
-        let db = create_db_from_hash(String::from("test"), hash);
+        let db =
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
         let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         watch_key(&key, &sender, &db);
         let senders = get_senders(&key, &db.watchers);
@@ -264,7 +252,8 @@ mod tests {
         let key = String::from("key");
         let key1 = String::from("key1");
         let hash = HashMap::new();
-        let db = create_db_from_hash(String::from("test"), hash);
+        let db =
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
         let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         watch_key(&key, &sender, &db);
         watch_key(&key1, &sender, &db);
@@ -287,7 +276,8 @@ mod tests {
         let token = String::from("key");
         let token_invalid = String::from("invalid");
         let hash = HashMap::new();
-        let db = create_db_from_hash(String::from("test"), hash);
+        let db =
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
         set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);
 
         assert_eq!(is_valid_token(&token, &db), true);
