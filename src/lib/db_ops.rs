@@ -19,7 +19,10 @@ pub fn apply_to_database(
     sender: &Sender<String>,
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
-    let db_name = selected_db.name.read().unwrap();
+    let db_name = {
+        let name = selected_db.name.read().unwrap();
+        name.clone()
+    };
     let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => opp(db),
@@ -50,7 +53,9 @@ pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Resp
 }
 pub fn snapshot_db(db: &Database, dbs: &Databases) -> Response {
     let name = db.name.clone();
-    dbs.to_snapshot.lock().unwrap().push(name);
+    {
+        dbs.to_snapshot.write().unwrap().push(name);
+    };
     Response::Ok {}
 }
 
@@ -157,6 +162,7 @@ pub fn create_init_dbs(
     pwd: String,
     start_replication_sender: Sender<String>,
     replication_sender: Sender<String>,
+    keys_map: HashMap<String, u64>,
 ) -> Arc<Databases> {
     let start = SystemTime::now();
     let since_the_epoch = start
@@ -168,6 +174,7 @@ pub fn create_init_dbs(
         pwd,
         start_replication_sender,
         replication_sender,
+        keys_map,
         since_the_epoch.as_millis(),
     ));
 }

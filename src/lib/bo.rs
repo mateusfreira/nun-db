@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
 
-
 pub const TOKEN_KEY: &'static str = "$$token";
 pub const ADMIN_DB: &'static str = "$admin";
 
@@ -88,7 +87,8 @@ pub struct Database {
 
 pub struct Databases {
     pub map: std::sync::RwLock<HashMap<String, Database>>,
-    pub to_snapshot: Mutex<Vec<String>>,
+    pub keys_map: std::sync::RwLock<HashMap<String, u64>>,
+    pub to_snapshot: RwLock<Vec<String>>,
     pub cluster_state: Mutex<ClusterState>,
     pub start_replication_sender: Sender<String>,
     pub replication_sender: Sender<String>,
@@ -199,12 +199,14 @@ impl Databases {
         pwd: String,
         start_replication_sender: Sender<String>,
         replication_sender: Sender<String>,
+        keys_map: HashMap<String, u64>,
         process_id: u128,
     ) -> Databases {
         let initial_dbs = HashMap::new();
         let dbs = Databases {
             map: std::sync::RwLock::new(initial_dbs),
-            to_snapshot: Mutex::new(Vec::new()),
+            keys_map: std::sync::RwLock::new(keys_map),
+            to_snapshot: RwLock::new(Vec::new()),
             cluster_state: Mutex::new(ClusterState {
                 members: Mutex::new(HashMap::new()),
             }),

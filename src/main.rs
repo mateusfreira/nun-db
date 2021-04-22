@@ -53,12 +53,15 @@ fn start_db(
 
     let (start_replication_sender, start_replication_receiver): (Sender<String>, Receiver<String>) =
         channel(100);
+    let keys_map = disk_ops::load_keys_map_from_disk();
+    println!("Keys {}", keys_map.len());
 
     let dbs = lib::db_ops::create_init_dbs(
         user.to_string(),
         pwd.to_string(),
         start_replication_sender,
         replication_sender.clone(),
+        keys_map,
     );
 
     let db_replication_start = dbs.clone();

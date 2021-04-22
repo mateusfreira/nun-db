@@ -103,11 +103,16 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                     _ => match process_request(&buf, &mut sender, &db, &dbs, &mut client) {
                         Response::Error { msg } => {
                             println!("Error: {}", msg);
-                            sender.try_send(format!("error {} \n", msg)).unwrap();
+                            match sender.try_send(format!("error {} \n", msg)) {
+                                Ok(_)  => (),
+                                _ => println!("Error on sending and error request")
+                            }
                         }
                         _ => {
-                            sender.try_send(format!("ok \n")).unwrap();
-                            println!("Success processed");
+                            match sender.try_send(format!("ok \n")) {
+                                Ok(_)  => println!("Success processed"),
+                                _ => println!("Success processed! error on sender")
+                            }
                         }
                     },
                 }

@@ -20,7 +20,12 @@
      - [x] Add Join command
      - [x] Wire from secoundary
      - [x] Primary disconnection
+     - [x] not recovering the keys file
+     - [ ] Create a database from secundary
      - [ ] Implement replication transaction (Log based)
+     - [ ] Implement self election 
+     - [ ] Op log file reading as database
+     - [ ] Document how to backup the admin datatabase
      - [ ] Implement ping command
      - [ ] Update library to use the cluster (Js)
 - [ ] Read https://jepsen.io/analyses/redis-raft-1b3fbf6

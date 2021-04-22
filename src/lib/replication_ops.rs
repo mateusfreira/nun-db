@@ -2,6 +2,7 @@ use std::net::TcpStream;
 use std::thread;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
+use std::collections::HashMap;
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
 
@@ -143,12 +144,21 @@ pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
     }
 }
 
-fn get_db_id(db_name:String, dbs: &Arc<Databases>) -> u64 {
-  dbs.map.read().unwrap().get(&db_name).unwrap().metadata.id as u64
+fn get_db_id(db_name: String, dbs: &Arc<Databases>) -> u64 {
+    dbs.map.read().unwrap().get(&db_name).unwrap().metadata.id as u64
 }
 
-fn  get_key_id(key: String, db_id: u64) -> u64 {
-    1 as u64
+fn get_key_id(key: String, dbs: &Arc<Databases>) -> u64 {
+    let keys_map = { dbs.keys_map.read().unwrap().clone() };
+    if keys_map.contains_key(&key) {
+        *keys_map.get(&key).unwrap()
+    } else {
+        let id = keys_map.len();
+        let mut keys_map = { dbs.keys_map.write().unwrap() };
+        keys_map.insert(key.clone(), id as u64);
+        println!("Key {}, id {}", key, id);
+        id as u64
+    }
 }
 /**
  *
@@ -157,7 +167,7 @@ fn  get_key_id(key: String, db_id: u64) -> u64 {
  *
  */
 pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs: Arc<Databases>) {
-    let mut op_log_stream  = get_log_file_append_mode();
+    let mut op_log_stream = get_log_file_append_mode();
     loop {
         match replication_receiver.try_next() {
             Ok(message_opt) => match message_opt {
@@ -167,18 +177,18 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
                     match request {
                         Request::ReplicateSet { db, key, value: _ } => {
                             let db_id = get_db_id(db, &dbs);
-                            let key_id = get_key_id(key, db_id);
+                            let key_id = get_key_id(key, &dbs);
                             write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
-                        },
+                        }
 
                         Request::ReplicateRemove { db, key } => {
                             let db_id = get_db_id(db, &dbs);
-                            let key_id = get_key_id(key, db_id);
+                            let key_id = get_key_id(key, &dbs);
                             write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove);
-                        },
-                        _ => ()
+                        }
+                        _ => (),
                     }
-                },
+                }
                 None => println!("replication::try_next::Empty message"),
             },
             _ => thread::sleep(time::Duration::from_millis(2)),

@@ -23,7 +23,10 @@ pub fn process_request(
         thread_id::get(),
         input_to_log
     );
-    let db_name_state = db.name.read().unwrap();
+    let db_name_state = {
+        let name = db.name.read().unwrap();
+        name.clone()
+    };
     let is_primary = dbs.is_primary();
     let start = Instant::now();
     let request = match Request::parse(String::from(input).trim_matches('\n')) {
@@ -138,7 +141,9 @@ pub fn process_request(
         }),
 
         Request::UseDb { name, token } => {
+            println!("here");
             let mut db_name_state = db.name.write().unwrap();
+            println!("here1");
             let dbs = dbs.map.read().expect("Could not lock the mao mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => {
@@ -328,7 +333,6 @@ pub fn process_request(
                 _ => (),
             }
 
-            println!("DBKeys {}", keys);
             Response::Value {
                 key: String::from("keys"),
                 value: String::from(keys),
