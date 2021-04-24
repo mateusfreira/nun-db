@@ -1,15 +1,12 @@
 use futures::channel::mpsc::Sender;
 use std::collections::HashMap;
-use std::fs::File;
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use std::sync::RwLock;
 
 use bo::*;
-use disk_ops::*;
 
 pub const CONNECTIONS_KEY: &'static str = "$connections";
 

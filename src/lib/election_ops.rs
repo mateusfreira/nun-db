@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::{thread, time};
 
 use bo::*;
-use db_ops::*;
 
 pub fn start_inital_election(dbs: Arc<Databases>) {
     println!("will run start_inital_election");

@@ -88,6 +88,7 @@ pub struct Database {
 pub struct Databases {
     pub map: std::sync::RwLock<HashMap<String, Database>>,
     pub keys_map: std::sync::RwLock<HashMap<String, u64>>,
+    pub id_keys_map: std::sync::RwLock<HashMap<u64, String>>,
     pub to_snapshot: RwLock<Vec<String>>,
     pub cluster_state: Mutex<ClusterState>,
     pub start_replication_sender: Sender<String>,
@@ -202,10 +203,15 @@ impl Databases {
         keys_map: HashMap<String, u64>,
         process_id: u128,
     ) -> Databases {
+        let mut id_keys_map: HashMap<u64, String> = HashMap::new();
         let initial_dbs = HashMap::new();
+        for (key, val) in keys_map.iter() {
+            id_keys_map.insert(*val, (*key).to_string());
+        }
         let dbs = Databases {
             map: std::sync::RwLock::new(initial_dbs),
             keys_map: std::sync::RwLock::new(keys_map),
+            id_keys_map: std::sync::RwLock::new(id_keys_map),
             to_snapshot: RwLock::new(Vec::new()),
             cluster_state: Mutex::new(ClusterState {
                 members: Mutex::new(HashMap::new()),
@@ -427,11 +433,13 @@ mod tests {
     fn add_database_should_add_a_database() {
         let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
         let dbs = Databases::new(
             String::from(""),
             String::from(""),
             sender,
             sender1,
+            keys_map,
             1 as u128,
         );
         assert_eq!(dbs.map.read().expect("error to lock").keys().len(), 1); //Admin db

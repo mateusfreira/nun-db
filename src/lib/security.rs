@@ -14,17 +14,20 @@ mod tests {
     use super::*;
     use db_ops::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
+    use std::collections::HashMap;
 
     #[test]
     fn should_clean_user_and_pwd() -> Result<(), String> {
         let (start_replication_sender, _receiver): (Sender<String>, Receiver<String>) =
             channel(100);
         let (replication_sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
         let dbs = create_init_dbs(
             String::from("mateus"),
             String::from("mateus-123"),
             start_replication_sender,
             replication_sender,
+            keys_map,
         );
 
         let clean_input = clean_string_to_log("auth mateus mateus-123;", &dbs);

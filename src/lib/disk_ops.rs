@@ -2,12 +2,14 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::OpenOptions;
 use std::fs::{create_dir_all, read_dir, File};
+use std::io::prelude::*;
 use std::io::BufWriter;
 use std::io::Read;
+use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use bo::*;
 
@@ -214,6 +216,23 @@ pub fn get_log_file_append_mode() -> BufWriter<File> {
     )
 }
 
+pub fn get_log_file_read_mode() -> File {
+    match OpenOptions::new()
+        .read(true)
+        .open(get_op_log_file_name())
+    {
+        Err(e) => {
+            eprint!("{:?}", e);
+            OpenOptions::new()
+                .read(true)
+                .create(true)
+                .open(get_op_log_file_name())
+                .unwrap()
+        }
+        Ok(f) => f,
+    }
+}
+
 pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: ReplicateOpp) {
     let start = SystemTime::now();
     let since_the_epoch = start
@@ -227,6 +246,72 @@ pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: Rep
     stream.write(&key.to_le_bytes()).unwrap(); // 8
     stream.write(&db_id.to_le_bytes()).unwrap(); // 8
     stream.write(&[opp_to_write]).unwrap(); // 1
+}
+
+pub fn read_operations_since(since: u64) -> HashMap<u64, ReplicateOpp> {
+    let mut opps_since = HashMap::new();
+    let mut f = get_log_file_read_mode();
+    let total_size = f.metadata().unwrap().len();
+    let size_as_u64 = OP_RECORD_SIZE as u64;
+    let mut max = total_size;
+    let min = 0;
+    let mut seek_point = (total_size / size_as_u64 / 2) * size_as_u64;
+    let records = total_size / size_as_u64;
+
+    println!("Total size {}, Recoreds {} in opfile", total_size, records);
+    let mut time_buffer = [0; OP_TIME_SIZE];
+    let mut key_buffer = [0; OP_KEY_SIZE];
+    let mut db_id_buffer = [0; OP_DB_ID_SIZE];
+    let mut oop_buffer = [0; 1];
+    f.seek(SeekFrom::Start(seek_point)).unwrap();
+    let now = Instant::now();
+    while let Ok(i) = f.read(&mut time_buffer) {
+        //Read key from disk
+        let possible_records = (max - min) / size_as_u64;
+        let mut n = u64::from_le_bytes(time_buffer);
+        println!("n: {} since{}", n, since);
+        if n == since || n < since {
+            let e = now.elapsed();
+            while let Ok(byte_read) = f.read(&mut key_buffer) {
+                if byte_read == 0 { break; }
+                f.read(&mut db_id_buffer);
+                f.read(&mut oop_buffer).unwrap();
+                let key: u64 = u64::from_le_bytes(key_buffer);
+                let db_id: u64 = u64::from_le_bytes(key_buffer);
+                let opp = ReplicateOpp::from(oop_buffer[0]);
+                opps_since.insert(key, opp);//Needs to be one by database
+
+                if let Err(_) = f.read(&mut time_buffer) {//Next time
+                    //To skip time key
+                    break;
+                }
+                n = u64::from_le_bytes(time_buffer);
+                println!("Here key:{} db:{} n:{} opp:{:?}", key, db_id, n, oop_buffer);
+
+            }
+            break;
+        }
+
+        if n > since {
+            max = seek_point;
+            //println!( "seach smaller {} in {:?} {} {}", n, now.elapsed(), seek_point, possible_records );
+            let n_recors: u64 = ((seek_point - min) / 2) / size_as_u64;
+            seek_point = seek_point - (n_recors * size_as_u64);
+        }
+
+        if possible_records <= 1 {
+            println!(" Did not found {:?} {}, {}", now.elapsed(), max, seek_point);
+            break;
+        }
+
+        if i != OP_TIME_SIZE as usize {
+            println!(" End of the file{:?} ms", now.elapsed());
+            break;
+        }
+
+        f.seek(SeekFrom::Start(seek_point)).unwrap(); // Repoint disk seek
+    }
+    opps_since
 }
 
 #[cfg(test)]

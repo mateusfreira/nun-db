@@ -2,7 +2,6 @@ use std::net::TcpStream;
 use std::thread;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
-use std::collections::HashMap;
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
 
@@ -172,6 +171,10 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
         match replication_receiver.try_next() {
             Ok(message_opt) => match message_opt {
                 Some(message) => {
+                    if message == "exit" {
+                        println!("will exist!");
+                        break;
+                    }
                     replicate_message_to_secoundary(message.to_string(), &dbs);
                     let request = Request::parse(&message.to_string()).unwrap();
                     match request {
@@ -507,11 +510,83 @@ pub fn auth_on_replication(
     }
 }
 
+pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<String> {
+    let id_keys_map = { dbs.id_keys_map.read().unwrap().clone() };
+    let db_name = "";
+    let value = "";
+    let opps = read_operations_since(timestamp);
+    let mut opps_vec = Vec::new();
+
+    for (key, opp) in &opps {
+        println!("read_operations_since sucess {:?}, {}", id_keys_map, key);
+        let key_str = id_keys_map.get(&key).unwrap();
+        let opp = match opp {
+            ReplicateOpp::Update => format!("replicate {} {} {}", db_name, key_str, value),
+            ReplicateOpp::Remove => format!("replicate-remove {} {} {}", db_name, key_str, value),
+            ReplicateOpp::CreateDb => format!("create-db {}", db_name),
+        };
+        opps_vec.push(opp);
+    }
+    opps_vec
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
+    use std::collections::HashMap;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
+    #[test]
+    fn should_return_the_pedding_ops() {
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let test_start =
+            since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+        let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
+
+        let mut keys_map = HashMap::new();
+        keys_map.insert(String::from("key"), 1);
+        let dbs = Arc::new(Databases::new(
+            String::from(""),
+            String::from(""),
+            sender.clone(),
+            sender.clone(),
+            keys_map,
+            1 as u128,
+        ));
+
+        let dbs_to_thread = dbs.clone();
+
+        let replication_thread = thread::spawn(|| {
+            start_replication_thread(replication_receiver, dbs_to_thread);
+        });
+
+        sender
+            .try_send("replicate $admin key value".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate $admin key value1".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate $admin key value3".to_string())
+            .unwrap();
+        thread::sleep(time::Duration::from_millis(10));
+        let commands = get_pendding_opps_since(test_start, &dbs);
+        println!("{:?}", commands);
+        assert!(commands.len() == 1, "Only one command expected");
+        assert!(
+            commands[0] == "replicate db key value3",
+            "Only one command expected"
+        );
+
+        sender
+            .try_send("exit".to_string())
+            .unwrap();
+        replication_thread.join().expect("thread died");
+    }
     #[test]
     fn should_not_replicate_error_messages() {
         let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
