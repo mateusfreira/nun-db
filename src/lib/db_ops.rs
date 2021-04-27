@@ -75,6 +75,18 @@ pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Re
     }
 }
 
+pub fn get_key_value_new(key: &String, db: &Database) -> Response {
+    let db = db.map.read().unwrap();
+    let value = match db.get(&key.to_string()) {
+        Some(value) => value,
+        None => "<Empty>",
+    };
+    Response::Value {
+        key: key.clone(),
+        value: value.to_string(),
+    }
+}
+
 pub fn remove_key(key: &String, db: &Database) -> Response {
     db.remove_value(key.to_string())
 }

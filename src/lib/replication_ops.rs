@@ -6,6 +6,7 @@ use std::io::{BufWriter, Write};
 use std::sync::Arc;
 
 use bo::*;
+use db_ops::*;
 use disk_ops::*;
 
 use std::time;
@@ -152,11 +153,13 @@ fn get_key_id(key: String, dbs: &Arc<Databases>) -> u64 {
     if keys_map.contains_key(&key) {
         *keys_map.get(&key).unwrap()
     } else {
-        let id = keys_map.len();
+        let id = keys_map.len() as u64;
         let mut keys_map = { dbs.keys_map.write().unwrap() };
-        keys_map.insert(key.clone(), id as u64);
+        let mut id_keys_map = { dbs.id_keys_map.write().unwrap() };
+        keys_map.insert(key.clone(), id);
+        id_keys_map.insert(id, key.to_string());
         println!("Key {}, id {}", key, id);
-        id as u64
+        id
     }
 }
 /**
@@ -512,18 +515,42 @@ pub fn auth_on_replication(
 
 pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<String> {
     let id_keys_map = { dbs.id_keys_map.read().unwrap().clone() };
-    let db_name = "";
-    let value = "";
+    let id_name_db_map = { dbs.id_name_db_map.read().unwrap().clone() };
     let opps = read_operations_since(timestamp);
     let mut opps_vec = Vec::new();
+    let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock"); // Will lock db creation I think
+    let mut last_db = "$admin";
+    let mut db: &Database = dbs_map.get(last_db).unwrap();
+    for (key, op_record) in &opps {
+        // todo sort by key to optmize speed
+        println!(
+            "read_operations_since sucess {:?}, oppKey:{} key_id: {}",
+            id_keys_map, key, op_record.key
+        );
 
-    for (key, opp) in &opps {
-        println!("read_operations_since sucess {:?}, {}", id_keys_map, key);
-        let key_str = id_keys_map.get(&key).unwrap();
-        let opp = match opp {
-            ReplicateOpp::Update => format!("replicate {} {} {}", db_name, key_str, value),
-            ReplicateOpp::Remove => format!("replicate-remove {} {} {}", db_name, key_str, value),
-            ReplicateOpp::CreateDb => format!("create-db {}", db_name),
+        let opp = match op_record.opp {
+            ReplicateOpp::Update => {
+                let db_name = id_name_db_map.get(&op_record.db).unwrap();
+                let key_str = id_keys_map.get(&op_record.key).unwrap();
+                if last_db != db_name {
+                    db = dbs_map.get(db_name).unwrap();
+                    last_db = db_name;
+                }
+                let value = match get_key_value_new(key_str, &db) {
+                    Response::Value { key: _key, value } => value,
+                    _ => String::from(""),
+                };
+                format!("replicate {} {} {}", db_name, key_str, value)
+            }
+            ReplicateOpp::Remove => {
+                let db_name = id_name_db_map.get(&op_record.db).unwrap();
+                let key_str = id_keys_map.get(&op_record.key).unwrap();
+                format!("replicate-remove {} {}", db_name, key_str)
+            }
+            ReplicateOpp::CreateDb => {
+                let db_name = id_name_db_map.get(&op_record.db).unwrap();
+                format!("create-db {}", db_name)
+            }
         };
         opps_vec.push(opp);
     }
@@ -547,8 +574,7 @@ mod tests {
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
         let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
 
-        let mut keys_map = HashMap::new();
-        keys_map.insert(String::from("key"), 1);
+        let keys_map = HashMap::new();
         let dbs = Arc::new(Databases::new(
             String::from(""),
             String::from(""),
@@ -563,6 +589,13 @@ mod tests {
         let replication_thread = thread::spawn(|| {
             start_replication_thread(replication_receiver, dbs_to_thread);
         });
+        {
+            let map = dbs.map.read().unwrap();
+            let db = map.get("$admin").unwrap();
+            set_key_value("key".to_string(), "value".to_string(), db);
+            set_key_value("key".to_string(), "value1".to_string(), db);
+            set_key_value("key".to_string(), "value3".to_string(), db);
+        }
 
         sender
             .try_send("replicate $admin key value".to_string())
@@ -578,13 +611,11 @@ mod tests {
         println!("{:?}", commands);
         assert!(commands.len() == 1, "Only one command expected");
         assert!(
-            commands[0] == "replicate db key value3",
+            commands[0] == "replicate $admin key value3",
             "Only one command expected"
         );
 
-        sender
-            .try_send("exit".to_string())
-            .unwrap();
+        sender.try_send("exit".to_string()).unwrap();
         replication_thread.join().expect("thread died");
     }
     #[test]

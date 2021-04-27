@@ -217,10 +217,7 @@ pub fn get_log_file_append_mode() -> BufWriter<File> {
 }
 
 pub fn get_log_file_read_mode() -> File {
-    match OpenOptions::new()
-        .read(true)
-        .open(get_op_log_file_name())
-    {
+    match OpenOptions::new().read(true).open(get_op_log_file_name()) {
         Err(e) => {
             eprint!("{:?}", e);
             OpenOptions::new()
@@ -234,6 +231,7 @@ pub fn get_log_file_read_mode() -> File {
 }
 
 pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: ReplicateOpp) {
+    println!("will write :  db: {db}", db = db_id);
     let start = SystemTime::now();
     let since_the_epoch = start
         .duration_since(UNIX_EPOCH)
@@ -248,7 +246,7 @@ pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: Rep
     stream.write(&[opp_to_write]).unwrap(); // 1
 }
 
-pub fn read_operations_since(since: u64) -> HashMap<u64, ReplicateOpp> {
+pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     let mut opps_since = HashMap::new();
     let mut f = get_log_file_read_mode();
     let total_size = f.metadata().unwrap().len();
@@ -271,23 +269,29 @@ pub fn read_operations_since(since: u64) -> HashMap<u64, ReplicateOpp> {
         let mut n = u64::from_le_bytes(time_buffer);
         println!("n: {} since{}", n, since);
         if n == since || n < since {
-            let e = now.elapsed();
+            //let e = now.elapsed();
             while let Ok(byte_read) = f.read(&mut key_buffer) {
-                if byte_read == 0 { break; }
-                f.read(&mut db_id_buffer);
+                if byte_read == 0 {
+                    break;
+                }
+                f.read(&mut db_id_buffer).unwrap();
                 f.read(&mut oop_buffer).unwrap();
-                let key: u64 = u64::from_le_bytes(key_buffer);
-                let db_id: u64 = u64::from_le_bytes(key_buffer);
+                let key_id: u64 = u64::from_le_bytes(key_buffer);
+                let db_id: u64 = u64::from_le_bytes(db_id_buffer);
                 let opp = ReplicateOpp::from(oop_buffer[0]);
-                opps_since.insert(key, opp);//Needs to be one by database
+                let op_log = OpLogRecord::new(db_id, key_id, opp);
+                opps_since.insert(op_log.to_key(), op_log); //Needs to be one by database
 
-                if let Err(_) = f.read(&mut time_buffer) {//Next time
-                    //To skip time key
+                if let Err(_) = f.read(&mut time_buffer) {
+                    //Next time
+                    //To skip time value
                     break;
                 }
                 n = u64::from_le_bytes(time_buffer);
-                println!("Here key:{} db:{} n:{} opp:{:?}", key, db_id, n, oop_buffer);
-
+                println!(
+                    "Here key:{} db:{} n:{} opp:{:?}",
+                    key_id, db_id, n, oop_buffer
+                );
             }
             break;
         }

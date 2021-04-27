@@ -87,6 +87,7 @@ pub struct Database {
 
 pub struct Databases {
     pub map: std::sync::RwLock<HashMap<String, Database>>,
+    pub id_name_db_map: std::sync::RwLock<HashMap<u64, String>>,
     pub keys_map: std::sync::RwLock<HashMap<String, u64>>,
     pub id_keys_map: std::sync::RwLock<HashMap<u64, String>>,
     pub to_snapshot: RwLock<Vec<String>>,
@@ -205,11 +206,13 @@ impl Databases {
     ) -> Databases {
         let mut id_keys_map: HashMap<u64, String> = HashMap::new();
         let initial_dbs = HashMap::new();
+        let id_name_db_map = HashMap::new();
         for (key, val) in keys_map.iter() {
             id_keys_map.insert(*val, (*key).to_string());
         }
         let dbs = Databases {
             map: std::sync::RwLock::new(initial_dbs),
+            id_name_db_map: std::sync::RwLock::new(id_name_db_map),
             keys_map: std::sync::RwLock::new(keys_map),
             id_keys_map: std::sync::RwLock::new(id_keys_map),
             to_snapshot: RwLock::new(Vec::new()),
@@ -235,6 +238,8 @@ impl Databases {
     pub fn add_database(&self, name: &String, database: Database) {
         println!("add_database {}", name.to_string());
         let mut dbs = self.map.write().unwrap();
+        let mut id_name_db_map = self.id_name_db_map.write().unwrap();
+        id_name_db_map.insert(database.metadata.id as u64, name.to_string());
         dbs.insert(name.to_string(), database);
         dbs.get(&String::from(ADMIN_DB))
             .unwrap()
@@ -313,6 +318,26 @@ impl From<u8> for ReplicateOpp {
             2 => CreateDb,
             _ => Update,
         }
+    }
+}
+
+pub struct OpLogRecord {
+    pub db: u64,
+    pub key: u64,
+    pub opp: ReplicateOpp,
+}
+
+impl OpLogRecord {
+    pub fn new(db: u64, key: u64, opp: ReplicateOpp) -> OpLogRecord {
+        OpLogRecord {
+            db: db,
+            key: key,
+            opp: opp,
+        }
+    }
+
+    pub fn to_key(&self) -> String {
+        format!("{}_{}", self.db, self.key)
     }
 }
 
