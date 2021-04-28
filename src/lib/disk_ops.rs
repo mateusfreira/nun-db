@@ -231,7 +231,7 @@ pub fn get_log_file_read_mode() -> File {
 }
 
 pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: ReplicateOpp) {
-    println!("will write :  db: {db}", db = db_id);
+    //println!("will write :  db: {db}", db = db_id);
     let start = SystemTime::now();
     let since_the_epoch = start
         .duration_since(UNIX_EPOCH)
@@ -252,11 +252,10 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     let total_size = f.metadata().unwrap().len();
     let size_as_u64 = OP_RECORD_SIZE as u64;
     let mut max = total_size;
-    let min = 0;
+    let mut min = 0;
     let mut seek_point = (total_size / size_as_u64 / 2) * size_as_u64;
-    let records = total_size / size_as_u64;
-
-    println!("Total size {}, Recoreds {} in opfile", total_size, records);
+    //let records = total_size / size_as_u64;
+    //println!("Total size {}, Recoreds {} in opfile", total_size, records);
     let mut time_buffer = [0; OP_TIME_SIZE];
     let mut key_buffer = [0; OP_KEY_SIZE];
     let mut db_id_buffer = [0; OP_DB_ID_SIZE];
@@ -266,10 +265,17 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     while let Ok(i) = f.read(&mut time_buffer) {
         //Read key from disk
         let possible_records = (max - min) / size_as_u64;
-        let mut n = u64::from_le_bytes(time_buffer);
-        println!("n: {} since{}", n, since);
-        if n == since || n < since {
-            //let e = now.elapsed();
+        let opp_time = u64::from_le_bytes(time_buffer);
+        /*
+        println!(
+            "opp_time: {} since: {} seek_point: {}",
+            opp_time, since, seek_point
+        );
+        */
+        let read_all = possible_records == 1 && seek_point == size_as_u64;
+            let no_more_smaller = opp_time < since && possible_records <= 1;
+        if opp_time == since || no_more_smaller || read_all {
+            println!("found!");
             while let Ok(byte_read) = f.read(&mut key_buffer) {
                 if byte_read == 0 {
                     break;
@@ -287,24 +293,53 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
                     //To skip time value
                     break;
                 }
-                n = u64::from_le_bytes(time_buffer);
+                // let opp_time =
+                u64::from_le_bytes(time_buffer);
+                /*
                 println!(
                     "Here key:{} db:{} n:{} opp:{:?}",
-                    key_id, db_id, n, oop_buffer
+                    key_id, db_id, opp_time, oop_buffer
                 );
+                */
             }
             break;
         }
 
-        if n > since {
+        if opp_time < since {
+            min = seek_point;
+            let n_recors: u64 = ((max - seek_point) / 2) / size_as_u64;
+            println!(
+                "search bigger {} in {:?} {} {}",
+                opp_time,
+                now.elapsed(),
+                seek_point,
+                possible_records
+            );
+            seek_point = (n_recors * size_as_u64) + seek_point;
+        }
+
+        if opp_time > since {
             max = seek_point;
-            //println!( "seach smaller {} in {:?} {} {}", n, now.elapsed(), seek_point, possible_records );
+            println!(
+                "seach smaller op: {} since: {} in {:?} {} possible_records: {}, no_more_smaller: {}",
+                opp_time,
+                since,
+                now.elapsed(),
+                seek_point,
+                possible_records,
+                no_more_smaller
+            );
             let n_recors: u64 = ((seek_point - min) / 2) / size_as_u64;
             seek_point = seek_point - (n_recors * size_as_u64);
         }
 
         if possible_records <= 1 {
-            println!(" Did not found {:?} {}, {}", now.elapsed(), max, seek_point);
+            println!(
+                " Did not found {:?} {}, {} any record!",
+                now.elapsed(),
+                max,
+                seek_point
+            );
             break;
         }
 

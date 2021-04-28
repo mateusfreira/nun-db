@@ -175,7 +175,7 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
             Ok(message_opt) => match message_opt {
                 Some(message) => {
                     if message == "exit" {
-                        println!("will exist!");
+                        println!("replication_ops::start_replication_thread will exist!");
                         break;
                     }
                     replicate_message_to_secoundary(message.to_string(), &dbs);
@@ -521,13 +521,8 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
     let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock"); // Will lock db creation I think
     let mut last_db = "$admin";
     let mut db: &Database = dbs_map.get(last_db).unwrap();
-    for (key, op_record) in &opps {
+    for (_key, op_record) in &opps {
         // todo sort by key to optmize speed
-        println!(
-            "read_operations_since sucess {:?}, oppKey:{} key_id: {}",
-            id_keys_map, key, op_record.key
-        );
-
         let opp = match op_record.opp {
             ReplicateOpp::Update => {
                 let db_name = id_name_db_map.get(&op_record.db).unwrap();
@@ -606,7 +601,7 @@ mod tests {
         sender
             .try_send("replicate $admin key value3".to_string())
             .unwrap();
-        thread::sleep(time::Duration::from_millis(10));
+        thread::sleep(time::Duration::from_millis(20));
         let commands = get_pendding_opps_since(test_start, &dbs);
         println!("{:?}", commands);
         assert!(commands.len() == 1, "Only one command expected");
