@@ -587,7 +587,7 @@ mod tests {
         {
             let map = dbs.map.read().unwrap();
             let db = map.get("$admin").unwrap();
-            set_key_value("key".to_string(), "value".to_string(), db);
+            //set_key_value("key".to_string(), "value".to_string(), db);
             set_key_value("key".to_string(), "value1".to_string(), db);
             set_key_value("key".to_string(), "value3".to_string(), db);
         }
@@ -613,6 +613,67 @@ mod tests {
         sender.try_send("exit".to_string()).unwrap();
         replication_thread.join().expect("thread died");
     }
+
+    #[test]
+    fn should_not_fail_with_a_prime_number_of_records(){
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let test_start =
+            since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+        let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
+
+        let keys_map = HashMap::new();
+        let dbs = Arc::new(Databases::new(
+            String::from(""),
+            String::from(""),
+            sender.clone(),
+            sender.clone(),
+            keys_map,
+            1 as u128,
+        ));
+
+        let dbs_to_thread = dbs.clone();
+
+        let replication_thread = thread::spawn(|| {
+            start_replication_thread(replication_receiver, dbs_to_thread);
+        });
+        {
+            let map = dbs.map.read().unwrap();
+            let db = map.get("$admin").unwrap();
+            set_key_value("key".to_string(), "value".to_string(), db);
+            set_key_value("key".to_string(), "value1".to_string(), db);
+            set_key_value("key".to_string(), "value3".to_string(), db);
+            set_key_value("key".to_string(), "value4".to_string(), db);
+            set_key_value("key".to_string(), "value5".to_string(), db);
+            set_key_value("key".to_string(), "value6".to_string(), db);
+            set_key_value("key".to_string(), "value7".to_string(), db);
+            set_key_value("key".to_string(), "value8".to_string(), db);// 11 recoreds on the op log
+        }
+
+        sender
+            .try_send("replicate $admin key value".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate $admin key value1".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate $admin key value3".to_string())
+            .unwrap();
+        thread::sleep(time::Duration::from_millis(20));
+        let commands = get_pendding_opps_since(test_start, &dbs);
+        println!("{:?}", commands);
+        assert!(commands.len() == 1, "Only one command expected");
+        assert!(
+            commands[0] == "replicate $admin key value8",
+            "Only one command expected"
+        );
+
+        sender.try_send("exit".to_string()).unwrap();
+        replication_thread.join().expect("thread died");
+    }
+
     #[test]
     fn should_not_replicate_error_messages() {
         let (sender, _): (Sender<String>, Receiver<String>) = channel(100);

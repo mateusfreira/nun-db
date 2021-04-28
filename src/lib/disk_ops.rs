@@ -273,7 +273,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
         );
         */
         let read_all = possible_records == 1 && seek_point == size_as_u64;
-            let no_more_smaller = opp_time < since && possible_records <= 1;
+        let no_more_smaller = possible_records <= 2 && (opp_time > since);
         if opp_time == since || no_more_smaller || read_all {
             println!("found!");
             while let Ok(byte_read) = f.read(&mut key_buffer) {
@@ -307,13 +307,14 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
 
         if opp_time < since {
             min = seek_point;
-            let n_recors: u64 = ((max - seek_point) / 2) / size_as_u64;
+            let n_recors: u64 = std::cmp::max(((max - seek_point) / 2) / size_as_u64, 1);
             println!(
-                "search bigger {} in {:?} {} {}",
+                "search bigger {} in {:?} {} {} {}",
                 opp_time,
                 now.elapsed(),
                 seek_point,
-                possible_records
+                possible_records,
+                n_recors
             );
             seek_point = (n_recors * size_as_u64) + seek_point;
         }
@@ -329,7 +330,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
                 possible_records,
                 no_more_smaller
             );
-            let n_recors: u64 = ((seek_point - min) / 2) / size_as_u64;
+            let n_recors: u64 = std::cmp::max(((seek_point - min) / 2) / size_as_u64, 1);
             seek_point = seek_point - (n_recors * size_as_u64);
         }
 
@@ -340,7 +341,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
                 max,
                 seek_point
             );
-            break;
+            //break;
         }
 
         if i != OP_TIME_SIZE as usize {
