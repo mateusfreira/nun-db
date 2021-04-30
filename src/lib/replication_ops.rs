@@ -560,6 +560,57 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
+    fn should_return_0_if_no_pending_ops() {
+        let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
+
+        let keys_map = HashMap::new();
+        let dbs = Arc::new(Databases::new(
+            String::from(""),
+            String::from(""),
+            sender.clone(),
+            sender.clone(),
+            keys_map,
+            1 as u128,
+        ));
+
+        let dbs_to_thread = dbs.clone();
+
+        let replication_thread = thread::spawn(|| {
+            start_replication_thread(replication_receiver, dbs_to_thread);
+        });
+        {
+            let map = dbs.map.read().unwrap();
+            let db = map.get("$admin").unwrap();
+            set_key_value("key".to_string(), "value1".to_string(), db);
+            set_key_value("key".to_string(), "value3".to_string(), db);
+        }
+
+        sender
+            .try_send("replicate $admin key value".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate $admin key value1".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate $admin key value3".to_string())
+            .unwrap();
+        thread::sleep(time::Duration::from_millis(20));
+
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let test_start =
+            since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+        let commands = get_pendding_opps_since(test_start, &dbs);
+        println!("{:?}", commands);
+        assert!(commands.len() == 0, "Only one command expected");
+        sender.try_send("exit".to_string()).unwrap();
+        replication_thread.join().expect("thread died");
+    }
+
+
+    #[test]
     fn should_return_the_pedding_ops() {
         let start = SystemTime::now();
         let since_the_epoch = start
@@ -602,6 +653,7 @@ mod tests {
             .try_send("replicate $admin key value3".to_string())
             .unwrap();
         thread::sleep(time::Duration::from_millis(20));
+
         let commands = get_pendding_opps_since(test_start, &dbs);
         println!("{:?}", commands);
         assert!(commands.len() == 1, "Only one command expected");

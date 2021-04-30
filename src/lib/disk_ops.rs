@@ -307,7 +307,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
 
         if opp_time < since {
             min = seek_point;
-            let n_recors: u64 = std::cmp::max(((max - seek_point) / 2) / size_as_u64, 1);
+            let n_recors: u64 = std::cmp::max(((std::cmp::max(max, seek_point) - seek_point) / 2) / size_as_u64, 1);
             println!(
                 "search bigger {} in {:?} {} {} {}",
                 opp_time,
