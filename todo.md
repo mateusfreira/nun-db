@@ -21,13 +21,15 @@
      - [x] Wire from secoundary
      - [x] Primary disconnection
      - [x] not recovering the keys file
+     - [x] Implement replication transaction (Log based)
+     - [ ] Implement recovery message 
      - [ ] Create a database from secundary
-     - [ ] Implement replication transaction (Log based)
      - [ ] Implement self election 
      - [ ] Op log file reading as database
      - [ ] Document how to backup the admin datatabase
      - [ ] Implement ping command
      - [ ] Update library to use the cluster (Js)
+     - [ ] Compare performance with old version (argo + https://k6.io/open-source)
 - [ ] Read https://jepsen.io/analyses/redis-raft-1b3fbf6
 - [x] Add cli interface
 - [x] Remove the need to admin auth to use an database  

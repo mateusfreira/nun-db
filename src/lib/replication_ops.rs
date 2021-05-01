@@ -422,6 +422,28 @@ pub fn start_replication_creator_thread(
                                 guards.push(guard);
                             }
                         }
+                        // Add secoundary to secoundary
+                        Some("replicate-since-to") => {
+                            let mut parts = name.splitn(2, " ");
+                            let name = String::from(parts.next().unwrap());
+                            let start_at_str = String::from(parts.next().unwrap());
+                            let start_at = start_at_str.parse::<u64>().unwrap();
+
+                            //send missing data to primary
+                            let cluster_state = dbs.cluster_state.lock().unwrap();
+                            let members = cluster_state.members.lock().unwrap();
+                            match members.get(&name) {
+                                Some(member) => {
+                                    let commands = get_pendding_opps_since(start_at, &dbs);
+                                    println!("Will replicate {} messages to {}", commands.len(), member.name);
+                                    for message in  commands{
+                                       replicate_if_some(&member.sender, &message, &member.name);
+                                    }
+                                }
+                                _ => eprintln!("Error tryting to replicate to a nonexistest member"),
+                            }
+
+                        }
                         // Add primary to primary
                         Some("election-win") => {
                             dbs.add_cluster_member(ClusterMember {
@@ -552,6 +574,13 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
     opps_vec
 }
 
+
+pub fn start_sync_process(dbs: &Arc<Databases>){
+    send_message_to_primary(
+        format!("replicate-since {} {}", dbs.tcp_address.to_string(), last_op_time()),
+        dbs,
+    );
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -565,6 +594,7 @@ mod tests {
 
         let keys_map = HashMap::new();
         let dbs = Arc::new(Databases::new(
+            String::from(""),
             String::from(""),
             String::from(""),
             sender.clone(),
@@ -624,6 +654,7 @@ mod tests {
         let dbs = Arc::new(Databases::new(
             String::from(""),
             String::from(""),
+            String::from(""),
             sender.clone(),
             sender.clone(),
             keys_map,
@@ -678,6 +709,7 @@ mod tests {
 
         let keys_map = HashMap::new();
         let dbs = Arc::new(Databases::new(
+            String::from(""),
             String::from(""),
             String::from(""),
             sender.clone(),

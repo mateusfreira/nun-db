@@ -217,11 +217,12 @@ pub fn process_request(
             });
             let mut member_lock = client.cluster_member.lock().unwrap();
             *member_lock = member;
+            start_sync_process(&dbs);
             Response::Ok {}
         }),
 
         Request::SetScoundary { name } => apply_if_auth(&client.auth, &|| {
-            println!("Setting {} as primary!", name);
+            println!("Setting {} as secoundary!", name);
             let member = Some(ClusterMember {
                 name: name.clone(),
                 role: ClusterRole::Secoundary,
@@ -276,6 +277,18 @@ pub fn process_request(
                 .start_replication_sender
                 .clone()
                 .try_send(format!("new-secoundary {}", name))
+            {
+                Ok(_n) => (),
+                Err(e) => println!("Request::ReplicateJoin sender.send Error: {}", e),
+            }
+            Response::Ok {}
+        }),
+
+        Request::ReplicateSince { node_name, start_at } => apply_if_auth(&client.auth, &|| {
+            match dbs
+                .start_replication_sender
+                .clone()
+                .try_send(format!("replicate-since-to {} {}", node_name, start_at))
             {
                 Ok(_n) => (),
                 Err(e) => println!("Request::ReplicateJoin sender.send Error: {}", e),

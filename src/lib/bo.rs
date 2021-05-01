@@ -95,6 +95,7 @@ pub struct Databases {
     pub start_replication_sender: Sender<String>,
     pub replication_sender: Sender<String>,
     pub node_state: Arc<AtomicUsize>,
+    pub tcp_address: String,
     pub process_id: u128,
     pub user: String,
     pub pwd: String,
@@ -199,6 +200,7 @@ impl Databases {
     pub fn new(
         user: String,
         pwd: String,
+        tcp_address: String,
         start_replication_sender: Sender<String>,
         replication_sender: Sender<String>,
         keys_map: HashMap<String, u64>,
@@ -223,6 +225,7 @@ impl Databases {
             replication_sender: replication_sender,
             user: user,
             pwd: pwd.to_string(),
+            tcp_address : tcp_address,
             node_state: Arc::new(AtomicUsize::new(ClusterRole::StartingUp as usize)),
             process_id: process_id,
         };
@@ -404,6 +407,10 @@ pub enum Request {
     SetScoundary {
         name: String,
     },
+    ReplicateSince {
+        node_name: String,
+        start_at: u64,
+    },
     ClusterState {},
     ElectionWin {},
     Election {
@@ -460,6 +467,7 @@ mod tests {
         let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         let keys_map = HashMap::new();
         let dbs = Databases::new(
+            String::from(""),
             String::from(""),
             String::from(""),
             sender,

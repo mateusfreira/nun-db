@@ -246,6 +246,19 @@ pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: Rep
     stream.write(&[opp_to_write]).unwrap(); // 1
 }
 
+pub fn last_op_time() -> u64 {
+    let mut f = get_log_file_read_mode();
+    let total_size = f.metadata().unwrap().len();
+    let size_as_u64 = OP_RECORD_SIZE as u64;
+    let last_record_position = total_size - size_as_u64;
+    let mut time_buffer = [0; OP_TIME_SIZE];
+    f.seek(SeekFrom::Start(last_record_position)).unwrap();
+    if let Ok(_) = f.read(&mut time_buffer) {
+        u64::from_le_bytes(time_buffer)
+    } else {
+        0
+    }
+}
 pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     let mut opps_since = HashMap::new();
     let mut f = get_log_file_read_mode();
@@ -254,8 +267,6 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     let mut max = total_size;
     let mut min = 0;
     let mut seek_point = (total_size / size_as_u64 / 2) * size_as_u64;
-    //let records = total_size / size_as_u64;
-    //println!("Total size {}, Recoreds {} in opfile", total_size, records);
     let mut time_buffer = [0; OP_TIME_SIZE];
     let mut key_buffer = [0; OP_KEY_SIZE];
     let mut db_id_buffer = [0; OP_DB_ID_SIZE];
@@ -266,12 +277,6 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
         //Read key from disk
         let possible_records = (max - min) / size_as_u64;
         let opp_time = u64::from_le_bytes(time_buffer);
-        /*
-        println!(
-            "opp_time: {} since: {} seek_point: {}",
-            opp_time, since, seek_point
-        );
-        */
         let read_all = possible_records == 1 && seek_point == size_as_u64;
         let no_more_smaller = possible_records <= 2 && (opp_time > since);
         if opp_time == since || no_more_smaller || read_all {

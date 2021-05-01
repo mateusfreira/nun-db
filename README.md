@@ -143,6 +143,12 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 - [ ] Require db auth
 - [x] Replicate? How? (replicate-join)
 
+### ReplicateSince
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [ ] Replicate? How? 
+
 ## Connectors 
 * Http
     Port: 3013

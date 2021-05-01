@@ -21,10 +21,12 @@ mod tests {
         let (start_replication_sender, _receiver): (Sender<String>, Receiver<String>) =
             channel(100);
         let (replication_sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let tcp_addr = String::from("127.0.0.1");
         let keys_map = HashMap::new();
         let dbs = create_init_dbs(
             String::from("mateus"),
             String::from("mateus-123"),
+            tcp_addr,
             start_replication_sender,
             replication_sender,
             keys_map,

@@ -59,6 +59,7 @@ fn start_db(
     let dbs = lib::db_ops::create_init_dbs(
         user.to_string(),
         pwd.to_string(),
+        tcp_address.to_string(),
         start_replication_sender,
         replication_sender.clone(),
         keys_map,
@@ -102,7 +103,7 @@ fn start_db(
 
     lib::network::tcp_ops::start_tcp_client(dbs.clone(), tcp_address);
 
-    ws_thread.join().expect("ws thread died");
+    ws_thread.join().expect("Ws thread died");
     replication_thread
         .join()
         .expect("replication_thread thread died");
