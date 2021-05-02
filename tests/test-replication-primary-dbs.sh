@@ -21,31 +21,32 @@ fi
 
 if [ $command = "start-1" ] || [ $command = "all" ]
 then
-echo "Starting the primary"
-NUN_DBS_DIR=./dbs RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "127.0.0.1:3058">primary.log&
-PRIMARY_PID=$!
-echo $PRIMARY_PID >> .primary.pid
-sleep $timeoutSpeep
+    echo "Starting the primary"
+    NUN_DBS_DIR=./dbs RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "127.0.0.1:3058">primary.log&
+    PRIMARY_PID=$!
+    echo $PRIMARY_PID >> .primary.pid
+    sleep $timeoutSpeep
 fi
 
 if [ $command = "start-2" ] || [ $command = "all" ]
 then
-echo "Starting secoundary 1"
-NUN_DBS_DIR=./dbs1 RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$secoundary1HttpAddress" --tcp-address "127.0.0.1:3016" --ws-address "127.0.0.1:3057">secoundary.log&
-SECOUNDARY_PID=$!
-echo $SECOUNDARY_PID >> .secoundary.pid
-sleep $timeoutSpeep
+    echo "Starting secoundary 1"
+    NUN_DBS_DIR=./dbs1 RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$secoundary1HttpAddress" --tcp-address "127.0.0.1:3016" --ws-address "127.0.0.1:3057">secoundary.log&
+    SECOUNDARY_PID=$!
+    echo $SECOUNDARY_PID >> .secoundary.pid
+    sleep $timeoutSpeep
 fi
 
 
 if [ $command = "start-3" ] || [ $command = "all" ]
 then
-echo "Starting secoundary 2"
-NUN_DBS_DIR=./dbs2 RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$secoundary2HttpAddress" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059">secoundary.2.log&
-SECOUNDARY_2_PID=$!
-echo $SECOUNDARY_2_PID >> .secoundary.pid
-sleep $timeoutSpeep
+    echo "Starting secoundary 2"
+    NUN_DBS_DIR=./dbs2 RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$secoundary2HttpAddress" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059">secoundary.2.log&
+    SECOUNDARY_2_PID=$!
+    echo $SECOUNDARY_2_PID >> .secoundary.pid
+    sleep $timeoutSpeep
 fi
+
 
 if [ $command = "all" ]
 then
@@ -54,45 +55,50 @@ then
 fi
 if [ $command = "election" ] || [ $command = "all" ]
 then
-echo "Will Connect the secoundaries to the primary"
-echo "Election result: $electionResult"
-joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; join 127.0.0.1:3016")
-echo "Join 1 done"
+    echo "Will Connect the secoundaries to the primary"
+    echo "Election result: $electionResult"
+    joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; join 127.0.0.1:3016")
+    echo "Join 1 done"
 
-clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Primary: $clusterStatePrimary"
+    clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
+    echo "Final Primary: $clusterStatePrimary"
 
-joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; join 127.0.0.1:3018")
-echo "Join 2 done"
-sleep $timeoutSpeep
-clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Primary: $clusterStatePrimary"
-sleep $timeoutSpeep
-clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Secoundary: $clusterStateSecoundary"
+    joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; join 127.0.0.1:3018")
+    echo "Join 2 done"
+    sleep $timeoutSpeep
+    clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
+    echo "Final Primary: $clusterStatePrimary"
+    sleep $timeoutSpeep
+    clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth $user $user; cluster-state;")
+    echo "Final Secoundary: $clusterStateSecoundary"
 
-clusterStateSecoundary2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Secoundary2: $clusterStateSecoundary2"
-sleep 1
-clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
-clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth $user $user; cluster-state;")
-clusterStateSecoundary2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth $user $user; cluster-state;")
+    clusterStateSecoundary2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth $user $user; cluster-state;")
+    echo "Final Secoundary2: $clusterStateSecoundary2"
+    sleep 1
+    clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
+    clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth $user $user; cluster-state;")
+    clusterStateSecoundary2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth $user $user; cluster-state;")
 
-if [ "$clusterStatePrimary" != "$clusterStateSecoundary" ]; then
-    echo "Cluster state should be the same in all the cluster members! "
-    echo "Primary: $clusterStatePrimary \n Secoundary: $clusterStateSecoundary"
-    exit 1
-fi
+    if [ "$clusterStatePrimary" != "$clusterStateSecoundary" ]; then
+        echo "Cluster state should be the same in all the cluster members! "
+        echo "Primary: $clusterStatePrimary \n Secoundary: $clusterStateSecoundary"
+        exit 1
+    fi
 
-if [ "$clusterStatePrimary" != "$clusterStateSecoundary2" ]; then
-    echo "Cluster state should be the same in all the cluster members! "
-    echo "Primary: $clusterStatePrimary \n Secoundary2: $clusterStateSecoundary2"
-    exit 1
-fi
+    if [ "$clusterStatePrimary" != "$clusterStateSecoundary2" ]; then
+        echo "Cluster state should be the same in all the cluster members! "
+        echo "Primary: $clusterStatePrimary \n Secoundary2: $clusterStateSecoundary2"
+        exit 1
+    fi
 
-echo "Change cluster state primary : $clusterStatePrimary"
-echo "Change cluster state secoundary : $clusterStateSecoundary"
+    echo "Change cluster state primary : $clusterStatePrimary"
+    echo "Change cluster state secoundary : $clusterStateSecoundary"
 fi # if [ $command = "election" ] || [ $command = "all" ]    
+
+if [ $command = "save-admin" ] || [ $command = "all" ]
+then
+    RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$primaryHttpAddress" exec "auth mateus mateus; use-db \$admin mateus; snapshot;"
+fi
 
 if [ $command = "all" ]
 then

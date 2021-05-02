@@ -231,25 +231,31 @@ pub fn get_log_file_read_mode() -> File {
 }
 
 pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: ReplicateOpp) {
-    //println!("will write :  db: {db}", db = db_id);
     let start = SystemTime::now();
     let since_the_epoch = start
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
-    let in_ms =
-        since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+    let in_ms:u64 = since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+
+
     let opp_to_write = opp as u8;
 
     stream.write(&in_ms.to_le_bytes()).unwrap(); //8
     stream.write(&key.to_le_bytes()).unwrap(); // 8
     stream.write(&db_id.to_le_bytes()).unwrap(); // 8
     stream.write(&[opp_to_write]).unwrap(); // 1
+    stream.flush().unwrap();
+    println!("will write :  db: {db}", db = db_id);
 }
 
 pub fn last_op_time() -> u64 {
     let mut f = get_log_file_read_mode();
     let total_size = f.metadata().unwrap().len();
     let size_as_u64 = OP_RECORD_SIZE as u64;
+    // if the file is empty return 0 to avoid  attempt to subtract with overflow error
+    if total_size < size_as_u64 {
+        return 0 as u64;
+    }
     let last_record_position = total_size - size_as_u64;
     let mut time_buffer = [0; OP_TIME_SIZE];
     f.seek(SeekFrom::Start(last_record_position)).unwrap();
@@ -276,11 +282,11 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     while let Ok(i) = f.read(&mut time_buffer) {
         //Read key from disk
         let possible_records = (max - min) / size_as_u64;
-        let opp_time = u64::from_le_bytes(time_buffer);
+        let mut opp_time = u64::from_le_bytes(time_buffer);
         let read_all = possible_records == 1 && seek_point == size_as_u64;
-        let no_more_smaller = possible_records <= 2 && (opp_time > since);
+        let no_more_smaller = possible_records <= 1 && (opp_time > since);
         if opp_time == since || no_more_smaller || read_all {
-            println!("found!");
+            println!("found! {} {} {} {}", possible_records, seek_point, total_size, no_more_smaller);
             while let Ok(byte_read) = f.read(&mut key_buffer) {
                 if byte_read == 0 {
                     break;
@@ -290,7 +296,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
                 let key_id: u64 = u64::from_le_bytes(key_buffer);
                 let db_id: u64 = u64::from_le_bytes(db_id_buffer);
                 let opp = ReplicateOpp::from(oop_buffer[0]);
-                let op_log = OpLogRecord::new(db_id, key_id, opp);
+                let op_log = OpLogRecord::new(db_id, key_id, opp_time, opp, );
                 opps_since.insert(op_log.to_key(), op_log); //Needs to be one by database
 
                 if let Err(_) = f.read(&mut time_buffer) {
@@ -298,8 +304,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
                     //To skip time value
                     break;
                 }
-                // let opp_time =
-                u64::from_le_bytes(time_buffer);
+                opp_time = u64::from_le_bytes(time_buffer);
                 /*
                 println!(
                     "Here key:{} db:{} n:{} opp:{:?}",
@@ -362,6 +367,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn should_return_the_db_name() {
@@ -374,5 +380,14 @@ mod tests {
     #[test]
     fn should_return_the_correct_op_log_name() {
         assert_eq!(get_op_log_file_name(), "dbs/oplog-nun.op");
+    }
+
+    #[test]
+    fn should_return_0_if_the_op_log_is_empty() {
+        let _f = get_log_file_append_mode();//Get here to ensure the file exists
+        fs::remove_file(get_op_log_file_name()).unwrap();//clean file
+        let _f = get_log_file_append_mode();//Get here to ensure the file exists
+        let last_op = last_op_time();
+        assert_eq!(last_op, 0);
     }
 }

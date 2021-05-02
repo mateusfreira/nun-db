@@ -181,6 +181,18 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
                     replicate_message_to_secoundary(message.to_string(), &dbs);
                     let request = Request::parse(&message.to_string()).unwrap();
                     match request {
+                        Request::CreateDb { name, token: _ } => {
+                            let db_id = get_db_id(name, &dbs);
+                            let key_id = 1;
+                            println!("Will write CreateDb");
+                            write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::CreateDb);
+                        }
+                        Request::ReplicateSnapshot { db } => {
+                            let db_id = get_db_id(db, &dbs);
+                            let key_id = 2;//has to be different
+                            println!("Will write ReplicateSnapshot");
+                            write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot);
+                        }
                         Request::ReplicateSet { db, key, value: _ } => {
                             let db_id = get_db_id(db, &dbs);
                             let key_id = get_key_id(key, &dbs);
@@ -192,7 +204,7 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
                             let key_id = get_key_id(key, &dbs);
                             write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove);
                         }
-                        _ => (),
+                        _ => println!("Ignoring command {} in replication oplog register! not unimplemented!", message),
                     }
                 }
                 None => println!("replication::try_next::Empty message"),
@@ -528,6 +540,8 @@ pub fn auth_on_replication(
         writer
             .write_fmt(format_args!("set-secoundary {}\n", tcp_addr))
             .unwrap();
+
+        start_sync_process(writer, &tcp_addr);
     }
     match writer.flush() {
         Err(e) => println!("auth replication error: {}", e),
@@ -543,7 +557,10 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
     let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock"); // Will lock db creation I think
     let mut last_db = "$admin";
     let mut db: &Database = dbs_map.get(last_db).unwrap();
-    for (_key, op_record) in &opps {
+    let mut vec_ops_to_process:Vec<&OpLogRecord> = opps.values().collect();
+    vec_ops_to_process.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));//sort by timestamp
+    for op_record in vec_ops_to_process {
+        println!("{}", op_record.to_string()); 
         // todo sort by key to optmize speed
         let opp = match op_record.opp {
             ReplicateOpp::Update => {
@@ -565,8 +582,20 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
                 format!("replicate-remove {} {}", db_name, key_str)
             }
             ReplicateOpp::CreateDb => {
+
                 let db_name = id_name_db_map.get(&op_record.db).unwrap();
-                format!("create-db {}", db_name)
+                let db = dbs_map.get(db_name).unwrap();
+                let key_str = String::from(TOKEN_KEY);
+                let token = match get_key_value_new(&key_str, &db) {
+                    Response::Value { key: _key, value } => value,
+                    _ => String::from("none"),
+                };
+                format!("create-db {} {}", db_name, token)
+            }
+
+            ReplicateOpp::Snapshot => {
+                let db_name = id_name_db_map.get(&op_record.db).unwrap();
+                format!("replicate-snapshot {}", db_name)
             }
         };
         opps_vec.push(opp);
@@ -575,11 +604,10 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
 }
 
 
-pub fn start_sync_process(dbs: &Arc<Databases>){
-    send_message_to_primary(
-        format!("replicate-since {} {}", dbs.tcp_address.to_string(), last_op_time()),
-        dbs,
-    );
+fn start_sync_process(writer:&mut std::io::BufWriter<&std::net::TcpStream>, tcp_addr: &String){
+    writer
+        .write_fmt(format_args!("replicate-since {} {}\n", tcp_addr.to_string(), last_op_time()))
+        .unwrap();
 }
 #[cfg(test)]
 mod tests {
@@ -587,6 +615,16 @@ mod tests {
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::collections::HashMap;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use std::fs;
+
+    fn clean_env() {
+        fs::remove_file(get_op_log_file_name()).unwrap();//clean file
+        let _f = get_log_file_append_mode();//Get here to ensure the file exists
+    }
+
+    fn prep_env(){
+        thread::sleep(time::Duration::from_millis(50));//give it time to the opperation to happen
+    }
 
     #[test]
     fn should_return_0_if_no_pending_ops() {
@@ -630,18 +668,20 @@ mod tests {
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
-        let test_start =
+        let test_start = 
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
         let commands = get_pendding_opps_since(test_start, &dbs);
         println!("{:?}", commands);
         assert!(commands.len() == 0, "Only one command expected");
         sender.try_send("exit".to_string()).unwrap();
         replication_thread.join().expect("thread died");
+        clean_env();
     }
 
 
     #[test]
     fn should_return_the_pedding_ops() {
+        prep_env();
         let start = SystemTime::now();
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
@@ -649,6 +689,7 @@ mod tests {
         let test_start =
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
         let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender_fake, _): (Sender<String>, Receiver<String>) = channel(100);
 
         let keys_map = HashMap::new();
         let dbs = Arc::new(Databases::new(
@@ -662,39 +703,62 @@ mod tests {
         ));
 
         let dbs_to_thread = dbs.clone();
-
         let replication_thread = thread::spawn(|| {
             start_replication_thread(replication_receiver, dbs_to_thread);
         });
+
+        let name = String::from("sample");
+        let token = String::from("sample");
+        create_db(&name, &token,  &sender_fake, &dbs);
         {
             let map = dbs.map.read().unwrap();
-            let db = map.get("$admin").unwrap();
+            let db = map.get(&name).unwrap();
             //set_key_value("key".to_string(), "value".to_string(), db);
             set_key_value("key".to_string(), "value1".to_string(), db);
             set_key_value("key".to_string(), "value3".to_string(), db);
         }
 
         sender
-            .try_send("replicate $admin key value".to_string())
-            .unwrap();
-        sender
-            .try_send("replicate $admin key value1".to_string())
-            .unwrap();
-        sender
-            .try_send("replicate $admin key value3".to_string())
+            .try_send("create-db sample sample".to_string())
             .unwrap();
         thread::sleep(time::Duration::from_millis(20));
+        sender
+            .try_send("replicate sample key value".to_string())
+            .unwrap();
 
-        let commands = get_pendding_opps_since(test_start, &dbs);
-        println!("{:?}", commands);
-        assert!(commands.len() == 1, "Only one command expected");
-        assert!(
-            commands[0] == "replicate $admin key value3",
-            "Only one command expected"
-        );
+        sender
+            .try_send("replicate sample key value1".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate sample key value3".to_string())
+            .unwrap();
+
+        thread::sleep(time::Duration::from_millis(20));
+        sender
+            .try_send("replicate-snapshot sample".to_string())
+            .unwrap();
 
         sender.try_send("exit".to_string()).unwrap();
         replication_thread.join().expect("thread died");
+        let commands = get_pendding_opps_since(test_start, &dbs);
+        println!("{:?}", commands);
+        assert!(commands.len() == 3, "Only 3 command expected");
+        assert!(
+            commands[0] == "create-db sample sample",
+            "Create sample comman error"
+        );
+
+        assert!(
+            commands[1] == "replicate sample key value3",
+            "Expected secound message to be sample key value3"
+        );
+        
+        assert!(
+            commands[2] == "replicate-snapshot sample",
+            "Replicate message expected"
+        );
+
+        clean_env();
     }
 
     #[test]
@@ -735,6 +799,7 @@ mod tests {
             set_key_value("key".to_string(), "value7".to_string(), db);
             set_key_value("key".to_string(), "value8".to_string(), db);// 11 recoreds on the op log
         }
+        //thread::sleep(time::Duration::from_millis(20));
 
         sender
             .try_send("replicate $admin key value".to_string())
@@ -745,7 +810,9 @@ mod tests {
         sender
             .try_send("replicate $admin key value3".to_string())
             .unwrap();
-        thread::sleep(time::Duration::from_millis(20));
+
+        sender.try_send("exit".to_string()).unwrap();
+        replication_thread.join().expect("thread died");
         let commands = get_pendding_opps_since(test_start, &dbs);
         println!("{:?}", commands);
         assert!(commands.len() == 1, "Only one command expected");
@@ -754,8 +821,7 @@ mod tests {
             "Only one command expected"
         );
 
-        sender.try_send("exit".to_string()).unwrap();
-        replication_thread.join().expect("thread died");
+        clean_env();
     }
 
     #[test]

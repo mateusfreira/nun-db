@@ -310,6 +310,7 @@ pub enum ReplicateOpp {
     Update = 0,
     Remove = 1,
     CreateDb = 2,
+    Snapshot = 3,
 }
 
 impl From<u8> for ReplicateOpp {
@@ -319,6 +320,7 @@ impl From<u8> for ReplicateOpp {
             0 => Update,
             1 => Remove,
             2 => CreateDb,
+            3 => Snapshot,
             _ => Update,
         }
     }
@@ -327,20 +329,26 @@ impl From<u8> for ReplicateOpp {
 pub struct OpLogRecord {
     pub db: u64,
     pub key: u64,
+    pub timestamp: u64,
     pub opp: ReplicateOpp,
 }
 
 impl OpLogRecord {
-    pub fn new(db: u64, key: u64, opp: ReplicateOpp) -> OpLogRecord {
+    pub fn new(db: u64, key: u64, timestamp: u64, opp: ReplicateOpp) -> OpLogRecord {
         OpLogRecord {
             db: db,
             key: key,
             opp: opp,
+            timestamp: timestamp,
         }
     }
 
     pub fn to_key(&self) -> String {
         format!("{}_{}", self.db, self.key)
+    }
+
+    pub fn to_string(&self) -> String {
+        format!("{}_{}_{}", self.db, self.key, self.timestamp)
     }
 }
 
