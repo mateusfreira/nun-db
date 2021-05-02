@@ -23,11 +23,12 @@
      - [x] not recovering the keys file
      - [x] Implement replication transaction (Log based)
      - [x] Implement recovery message 
-     - [ ] Implement self election 
+     - [x] Implement self election 
      - [ ] What if oplog file became too big? We need a command to clean oplog file
      - [ ] Create a database from secundary
      - [ ] Op log file reading as database
      - [ ] Document how to backup the admin datatabase
+     - [ ] Document only snapshoted dbs are restored from disaster??? Should we change it?
      - [ ] Implement ping command
      - [ ] Update library to use the cluster (Js)
      - [ ] Compare performance with old version (argo + https://k6.io/open-source)

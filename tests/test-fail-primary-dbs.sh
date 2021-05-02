@@ -10,6 +10,7 @@ secoundary2HttpAddress="127.0.0.1:9094"
 user="mateus"
 password="$user"
 timeoutSpeep=3
+replicaSetAddrs="127.0.0.1:3017,127.0.0.1:3016,127.0.0.1:3018"
 
 cargo build
 
@@ -17,12 +18,15 @@ if [ $command = "all" ]
 then
     echo "Add trap if all"
     trap "kill 0" EXIT
+    echo "Will clean up the dbs"
+     ./tests/test-replication-primary-dbs.sh kill
+     ./tests/test-replication-primary-dbs.sh clean 
 fi
 
 if [ $command = "start-1" ] || [ $command = "all" ]
 then
 echo "Starting the primary"
-NUN_DBS_DIR=./dbs RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "127.0.0.1:3058">primary.log&
+NUN_DBS_DIR=./dbs RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "127.0.0.1:3058" --replicate-address "$replicaSetAddrs" >primary.log&
 PRIMARY_PID=$!
 echo $PRIMARY_PID >> .primary.pid
 sleep $timeoutSpeep
@@ -31,7 +35,7 @@ fi
 if [ $command = "start-2" ] || [ $command = "all" ]
 then
 echo "Starting secoundary 1"
-NUN_DBS_DIR=./dbs1 RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$secoundary1HttpAddress" --tcp-address "127.0.0.1:3016" --ws-address "127.0.0.1:3057">secoundary.log&
+NUN_DBS_DIR=./dbs1 RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$secoundary1HttpAddress" --tcp-address "127.0.0.1:3016" --ws-address "127.0.0.1:3057" --replicate-address "$replicaSetAddrs" >secoundary.log&
 SECOUNDARY_PID=$!
 echo $SECOUNDARY_PID >> .secoundary.pid
 sleep $timeoutSpeep
@@ -41,7 +45,7 @@ fi
 if [ $command = "start-3" ] || [ $command = "all" ]
 then
 echo "Starting secoundary 2"
-NUN_DBS_DIR=./dbs2 RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$secoundary2HttpAddress" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059">secoundary.2.log&
+NUN_DBS_DIR=./dbs2 RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$secoundary2HttpAddress" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059" --replicate-address "$replicaSetAddrs" >secoundary.2.log&
 SECOUNDARY_2_PID=$!
 echo $SECOUNDARY_2_PID >> .secoundary.pid
 sleep $timeoutSpeep
@@ -54,26 +58,6 @@ then
 fi
 if [ $command = "election" ] || [ $command = "all" ]
 then
-echo "Will Connect the secoundaries to the primary"
-echo "Election result: $electionResult"
-joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; join 127.0.0.1:3016")
-echo "Join 1 done"
-
-clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Primary: $clusterStatePrimary"
-
-joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; join 127.0.0.1:3018")
-echo "Join 2 done"
-sleep $timeoutSpeep
-clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Primary: $clusterStatePrimary"
-sleep $timeoutSpeep
-clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Secoundary: $clusterStateSecoundary"
-
-clusterStateSecoundary2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Secoundary2: $clusterStateSecoundary2"
-sleep 1
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
 clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth $user $user; cluster-state;")
 clusterStateSecoundary2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth $user $user; cluster-state;")
@@ -142,8 +126,10 @@ then
     elapsed="$(($end_time-$start_time))"
     echo "Total of $elapsed seconds elapsed for process"
 
-
-
+    echo  "Will snapshot all admin dbs before killing them and the test database"
+    snapshotResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; use-db test-db test-db-key; snapshot")
+    echo "Snapshot result $snapshotResult"
+    ./tests/test-replication-primary-dbs.sh save-admin
 
     echo "Will start the tests of failure"
 
@@ -186,7 +172,7 @@ then
 
     clusterStatePrimary=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth $user $user; cluster-state;")
     expectedCluster="valid auth
-;cluster-state  127.0.0.1:3016:Secoundary, 127.0.0.1:3018:Primary,"
+;cluster-state  127.0.0.1:3016:Primary, 127.0.0.1:3018:Secoundary,"
     echo "Cluster state $clusterStatePrimary - $expectedCluster"
 
     if [ "$clusterStatePrimary" !=  "$expectedCluster" ]; then
@@ -195,8 +181,19 @@ then
     else
         echo "Request Ok"
     fi
-    rm .primary.pid
-    rm .secoundary.pid
+    echo "Will restart primary"
+     ./tests/test-replication-primary-dbs.sh start-1
+    echo "Will wait for the replication"
+     sleep 10 # 
+     echo "Read from the secoundary"
+     get_result2=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; get state")
+     if [ "$get_result2" != "empty;value jose-20-1" ]; then
+        echo "Invalid value value in the secoundary 2: $get_result $i"
+        exit 3
+     else
+        echo "Request restored from op log Ok"
+      fi
 fi
+
 exit 0
 

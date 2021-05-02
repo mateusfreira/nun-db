@@ -91,7 +91,8 @@ fn start_db(
         let tcp_address_to_election = tcp_address_to_election.to_string();
         thread::sleep(time::Duration::from_millis(3000)); // 2s to finishe inicial election
         if replicate_address_to_thread.len() > 0 {
-            let parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
+            let mut parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
+            parts.sort();
             for replica in parts {
                 if replica != tcp_address_to_election {
                     let replica_str = String::from(replica);
