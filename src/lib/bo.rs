@@ -225,7 +225,7 @@ impl Databases {
             replication_sender: replication_sender,
             user: user,
             pwd: pwd.to_string(),
-            tcp_address : tcp_address,
+            tcp_address: tcp_address,
             node_state: Arc::new(AtomicUsize::new(ClusterRole::StartingUp as usize)),
             process_id: process_id,
         };

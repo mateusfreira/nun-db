@@ -168,14 +168,20 @@ pub fn process_request(
             respose
         }
 
-        Request::CreateDb { name, token } => apply_if_auth(&client.auth, &|| create_db(&name, &token, &sender, &dbs)),
+        Request::CreateDb { name, token } => {
+            apply_if_auth(&client.auth, &|| create_db(&name, &token, &sender, &dbs))
+        }
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
         Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(&dbs)),
         Request::Election { id } => apply_if_auth(&client.auth, &|| election_eval(&dbs, id)),
 
         Request::SetPrimary { name } => apply_if_auth(&client.auth, &|| {
-            println!("Setting {} as primary!", name);
+            if !dbs.is_primary() {
+                println!("Setting {} as primary!", name);
+            } else {
+                println!("Got a set primary from {} but already is a primary... There is going to be war!!", name);
+            }
             match dbs
                 .start_replication_sender
                 .clone()
@@ -209,15 +215,7 @@ pub fn process_request(
         }),
 
         Request::Join { name } => apply_if_auth(&client.auth, &|| {
-            match dbs
-                .start_replication_sender
-                .clone()
-                .try_send(format!("secoundary {}", name))
-            {
-                Ok(_n) => (),
-                Err(e) => println!("Request::Join sender.send Error: {}", e),
-            }
-            start_election(dbs);
+            join_as_secoundary_and_start_election(&dbs, &name);
             Response::Ok {}
         }),
 
@@ -259,7 +257,10 @@ pub fn process_request(
             Response::Ok {}
         }),
 
-        Request::ReplicateSince { node_name, start_at } => apply_if_auth(&client.auth, &|| {
+        Request::ReplicateSince {
+            node_name,
+            start_at,
+        } => apply_if_auth(&client.auth, &|| {
             match dbs
                 .start_replication_sender
                 .clone()

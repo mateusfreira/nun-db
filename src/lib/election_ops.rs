@@ -4,9 +4,21 @@ use std::{thread, time};
 
 use bo::*;
 
+pub fn join_as_secoundary_and_start_election(dbs: &Arc<Databases>, name: &String) {
+    match dbs
+        .start_replication_sender
+        .clone()
+        .try_send(format!("secoundary {}", name))
+    {
+        Ok(_n) => (),
+        Err(e) => println!("Request::Join sender.send Error: {}", e),
+    }
+    start_election(dbs);
+}
+
 pub fn start_inital_election(dbs: Arc<Databases>) {
     println!("will run start_inital_election");
-    thread::sleep(time::Duration::from_millis(1));
+    thread::sleep(time::Duration::from_millis(3000));
     println!("calling start_election");
     start_election(&dbs);
 }
@@ -36,10 +48,14 @@ pub fn start_new_election(dbs: &Arc<Databases>) {
 }
 
 pub fn election_eval(dbs: &Arc<Databases>, candidate_id: u128) -> Response {
-    println!("Election received");
+    println!(
+        "Election received candidate_id : {} ,dbs.process_id : {}",
+        candidate_id, dbs.process_id
+    );
+
     if candidate_id == dbs.process_id {
         println!("Ignoring same node election");
-    } else if candidate_id < dbs.process_id {
+    } else if candidate_id > dbs.process_id {
         println!("Will run the start_election");
         start_election(dbs);
     } else {

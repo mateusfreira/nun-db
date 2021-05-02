@@ -235,8 +235,8 @@ pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: Rep
     let since_the_epoch = start
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
-    let in_ms:u64 = since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
-
+    let in_ms: u64 =
+        since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
 
     let opp_to_write = opp as u8;
 
@@ -286,7 +286,10 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
         let read_all = possible_records == 1 && seek_point == size_as_u64;
         let no_more_smaller = possible_records <= 1 && (opp_time > since);
         if opp_time == since || no_more_smaller || read_all {
-            println!("found! {} {} {} {}", possible_records, seek_point, total_size, no_more_smaller);
+            println!(
+                "found! {} {} {} {}",
+                possible_records, seek_point, total_size, no_more_smaller
+            );
             while let Ok(byte_read) = f.read(&mut key_buffer) {
                 if byte_read == 0 {
                     break;
@@ -296,7 +299,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
                 let key_id: u64 = u64::from_le_bytes(key_buffer);
                 let db_id: u64 = u64::from_le_bytes(db_id_buffer);
                 let opp = ReplicateOpp::from(oop_buffer[0]);
-                let op_log = OpLogRecord::new(db_id, key_id, opp_time, opp, );
+                let op_log = OpLogRecord::new(db_id, key_id, opp_time, opp);
                 opps_since.insert(op_log.to_key(), op_log); //Needs to be one by database
 
                 if let Err(_) = f.read(&mut time_buffer) {
@@ -317,7 +320,10 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
 
         if opp_time < since {
             min = seek_point;
-            let n_recors: u64 = std::cmp::max(((std::cmp::max(max, seek_point) - seek_point) / 2) / size_as_u64, 1);
+            let n_recors: u64 = std::cmp::max(
+                ((std::cmp::max(max, seek_point) - seek_point) / 2) / size_as_u64,
+                1,
+            );
             println!(
                 "search bigger {} in {:?} {} {} {}",
                 opp_time,
@@ -384,9 +390,9 @@ mod tests {
 
     #[test]
     fn should_return_0_if_the_op_log_is_empty() {
-        let _f = get_log_file_append_mode();//Get here to ensure the file exists
-        fs::remove_file(get_op_log_file_name()).unwrap();//clean file
-        let _f = get_log_file_append_mode();//Get here to ensure the file exists
+        let _f = get_log_file_append_mode(); //Get here to ensure the file exists
+        fs::remove_file(get_op_log_file_name()).unwrap(); //clean file
+        let _f = get_log_file_append_mode(); //Get here to ensure the file exists
         let last_op = last_op_time();
         assert_eq!(last_op, 0);
     }

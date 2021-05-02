@@ -1,0 +1,8 @@
+auth mateus mateus
+create-db sample sample
+use-db sample sample
+set jose 1
+set maria 2
+set jose 4
+
+snapshot

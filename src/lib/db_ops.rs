@@ -49,7 +49,12 @@ pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Resp
     }
 }
 
-pub fn create_db(name: &String, token: &String,  sender: &Sender<String>,dbs: &Arc<Databases>) -> Response {
+pub fn create_db(
+    name: &String,
+    token: &String,
+    sender: &Sender<String>,
+    dbs: &Arc<Databases>,
+) -> Response {
     let empty_db_box = create_temp_db(name.clone(), dbs);
     let empty_db = Arc::try_unwrap(empty_db_box);
     match empty_db {
@@ -66,10 +71,10 @@ pub fn create_db(name: &String, token: &String,  sender: &Sender<String>,dbs: &A
             match sender
                 .clone()
                 .try_send("error create-db-error\n".to_string())
-                {
-                    Ok(_n) => (),
-                    Err(e) => println!("Request::Set sender.send Error: {}", e),
-                }
+            {
+                Ok(_n) => (),
+                Err(e) => println!("Request::Set sender.send Error: {}", e),
+            }
         }
     }
     Response::Ok {}

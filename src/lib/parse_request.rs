@@ -37,7 +37,10 @@ impl Request {
                     Err(_) => return Err(format!("replicate-since start_at must be a u64")),
                 };
 
-                Ok(Request::ReplicateSince { node_name: nome_name, start_at: start_at })
+                Ok(Request::ReplicateSince {
+                    node_name: nome_name,
+                    start_at: start_at,
+                })
             }
             Some("cluster-state") => Ok(Request::ClusterState {}),
             Some("election") => match command.next() {

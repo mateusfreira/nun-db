@@ -16,6 +16,7 @@ mod lib;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use lib::*;
 use std::thread;
+use std::time;
 
 use std::sync::Arc;
 
@@ -35,6 +36,7 @@ fn main() -> Result<(), String> {
             start_match
                 .value_of("http-address")
                 .unwrap_or("0.0.0.0:3013"),
+            start_match.value_of("replicate-address").unwrap_or(""),
         );
     } else {
         return lib::commad_line::commands::exec_command(&matches);
@@ -47,6 +49,7 @@ fn start_db(
     tcp_address: &str,
     ws_address: &str,
     http_address: &str,
+    replicate_address: &str,
 ) -> Result<(), String> {
     let (replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =
         channel(100);
@@ -78,6 +81,29 @@ fn start_db(
     let db_replication = dbs.clone();
     let replication_thread = thread::spawn(|| {
         lib::replication_ops::start_replication_thread(replication_receiver, db_replication);
+    });
+
+    let replicate_address_to_thread = Arc::new(replicate_address.to_string());
+
+    let dbs_self_election = dbs.clone();
+    let tcp_address_to_election = Arc::new(tcp_address.to_string());
+    let _joi_thread = thread::spawn(move || {
+        let tcp_address_to_election = tcp_address_to_election.to_string();
+        thread::sleep(time::Duration::from_millis(3000)); // 2s to finishe inicial election
+        if replicate_address_to_thread.len() > 0 {
+            let parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
+            for replica in parts {
+                if replica != tcp_address_to_election {
+                    let replica_str = String::from(replica);
+                    lib::replication_ops::ask_to_join(
+                        &replica_str,
+                        &tcp_address_to_election,
+                        &dbs_self_election.user,
+                        &dbs_self_election.pwd,
+                    );
+                }
+            }
+        }
     });
 
     let db_election = dbs.clone();

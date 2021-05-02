@@ -22,9 +22,10 @@
      - [x] Primary disconnection
      - [x] not recovering the keys file
      - [x] Implement replication transaction (Log based)
-     - [ ] Implement recovery message 
-     - [ ] Create a database from secundary
+     - [x] Implement recovery message 
      - [ ] Implement self election 
+     - [ ] What if oplog file became too big? We need a command to clean oplog file
+     - [ ] Create a database from secundary
      - [ ] Op log file reading as database
      - [ ] Document how to backup the admin datatabase
      - [ ] Implement ping command

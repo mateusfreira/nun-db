@@ -172,15 +172,16 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
     let mut op_log_stream = get_log_file_append_mode();
     loop {
         match replication_receiver.try_next() {
-            Ok(message_opt) => match message_opt {
-                Some(message) => {
-                    if message == "exit" {
-                        println!("replication_ops::start_replication_thread will exist!");
-                        break;
-                    }
-                    replicate_message_to_secoundary(message.to_string(), &dbs);
-                    let request = Request::parse(&message.to_string()).unwrap();
-                    match request {
+            Ok(message_opt) => {
+                match message_opt {
+                    Some(message) => {
+                        if message == "exit" {
+                            println!("replication_ops::start_replication_thread will exist!");
+                            break;
+                        }
+                        replicate_message_to_secoundary(message.to_string(), &dbs);
+                        let request = Request::parse(&message.to_string()).unwrap();
+                        match request {
                         Request::CreateDb { name, token: _ } => {
                             let db_id = get_db_id(name, &dbs);
                             let key_id = 1;
@@ -206,9 +207,10 @@ pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs:
                         }
                         _ => println!("Ignoring command {} in replication oplog register! not unimplemented!", message),
                     }
+                    }
+                    None => println!("replication::try_next::Empty message"),
                 }
-                None => println!("replication::try_next::Empty message"),
-            },
+            }
             _ => thread::sleep(time::Duration::from_millis(2)),
         }
     }
@@ -447,14 +449,19 @@ pub fn start_replication_creator_thread(
                             match members.get(&name) {
                                 Some(member) => {
                                     let commands = get_pendding_opps_since(start_at, &dbs);
-                                    println!("Will replicate {} messages to {}", commands.len(), member.name);
-                                    for message in  commands{
-                                       replicate_if_some(&member.sender, &message, &member.name);
+                                    println!(
+                                        "Will replicate {} messages to {}",
+                                        commands.len(),
+                                        member.name
+                                    );
+                                    for message in commands {
+                                        replicate_if_some(&member.sender, &message, &member.name);
                                     }
                                 }
-                                _ => eprintln!("Error tryting to replicate to a nonexistest member"),
+                                _ => {
+                                    eprintln!("Error tryting to replicate to a nonexistest member")
+                                }
                             }
-
                         }
                         // Add primary to primary
                         Some("election-win") => {
@@ -483,6 +490,27 @@ pub fn start_replication_creator_thread(
     }
 }
 
+pub fn ask_to_join(replica_addr: &String, tcp_addr: &String, user: &String, pwd: &String) {
+    match TcpStream::connect(replica_addr.clone()) {
+        Ok(socket) => {
+            let writer = &mut BufWriter::new(&socket);
+            writer
+                .write_fmt(format_args!("auth {} {}\n", user, pwd))
+                .unwrap();
+
+            writer
+                .write_fmt(format_args!("join {}\n", tcp_addr))
+                .unwrap();
+            writer.flush().unwrap();
+        }
+        Err(e) => {
+            eprint!(
+                "Could not stablish the connection to replicate to {} error : {}",
+                replica_addr, e
+            )
+        }
+    }
+}
 fn start_replication(
     replicate_address: String,
     mut command_receiver: Receiver<String>,
@@ -495,31 +523,40 @@ fn start_replication(
         "replicating to tcp client in the addr: {}",
         replicate_address
     );
-    let socket = TcpStream::connect(replicate_address).unwrap();
-    let writer = &mut BufWriter::new(&socket);
-    auth_on_replication(user, pwd, tcp_addr, is_primary, writer);
-    loop {
-        match command_receiver.try_next() {
-            Ok(message_opt) => match message_opt {
-                Some(message) => {
-                    println!("Will replicate {}", message);
-                    writer.write_fmt(format_args!("{}\n", message)).unwrap();
-                    match writer.flush() {
-                        Err(e) => {
-                            println!("replication error: {}", e);
+    match TcpStream::connect(replicate_address.clone()) {
+        Ok(socket) => {
+            let writer = &mut BufWriter::new(&socket);
+            auth_on_replication(user, pwd, tcp_addr, is_primary, writer);
+            loop {
+                match command_receiver.try_next() {
+                    Ok(message_opt) => match message_opt {
+                        Some(message) => {
+                            println!("Will replicate {}", message);
+                            writer.write_fmt(format_args!("{}\n", message)).unwrap();
+                            match writer.flush() {
+                                Err(e) => {
+                                    println!("replication error: {}", e);
+                                    break;
+                                }
+                                _ => (),
+                            }
+                        }
+                        None => {
+                            println!("replication::try_next::Empty message");
                             break;
                         }
-                        _ => (),
-                    }
+                    },
+                    _ => thread::sleep(time::Duration::from_millis(2)),
                 }
-                None => {
-                    println!("replication::try_next::Empty message");
-                    break;
-                }
-            },
-            _ => thread::sleep(time::Duration::from_millis(2)),
+            }
         }
-    }
+        Err(e) => {
+            eprint!(
+                "Could not stablish the connection to replicate to {} error : {}",
+                replicate_address, e
+            )
+        }
+    };
 }
 
 pub fn auth_on_replication(
@@ -533,6 +570,7 @@ pub fn auth_on_replication(
         .write_fmt(format_args!("auth {} {}\n", user, pwd))
         .unwrap();
     if is_primary {
+        // do I need this?
         writer
             .write_fmt(format_args!("set-primary {}\n", tcp_addr))
             .unwrap();
@@ -557,10 +595,10 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
     let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock"); // Will lock db creation I think
     let mut last_db = "$admin";
     let mut db: &Database = dbs_map.get(last_db).unwrap();
-    let mut vec_ops_to_process:Vec<&OpLogRecord> = opps.values().collect();
-    vec_ops_to_process.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));//sort by timestamp
+    let mut vec_ops_to_process: Vec<&OpLogRecord> = opps.values().collect();
+    vec_ops_to_process.sort_by(|a, b| a.timestamp.cmp(&b.timestamp)); //sort by timestamp
     for op_record in vec_ops_to_process {
-        println!("{}", op_record.to_string()); 
+        println!("{}", op_record.to_string());
         // todo sort by key to optmize speed
         let opp = match op_record.opp {
             ReplicateOpp::Update => {
@@ -582,7 +620,6 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
                 format!("replicate-remove {} {}", db_name, key_str)
             }
             ReplicateOpp::CreateDb => {
-
                 let db_name = id_name_db_map.get(&op_record.db).unwrap();
                 let db = dbs_map.get(db_name).unwrap();
                 let key_str = String::from(TOKEN_KEY);
@@ -603,10 +640,13 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
     opps_vec
 }
 
-
-fn start_sync_process(writer:&mut std::io::BufWriter<&std::net::TcpStream>, tcp_addr: &String){
+fn start_sync_process(writer: &mut std::io::BufWriter<&std::net::TcpStream>, tcp_addr: &String) {
     writer
-        .write_fmt(format_args!("replicate-since {} {}\n", tcp_addr.to_string(), last_op_time()))
+        .write_fmt(format_args!(
+            "replicate-since {} {}\n",
+            tcp_addr.to_string(),
+            last_op_time()
+        ))
         .unwrap();
 }
 #[cfg(test)]
@@ -614,16 +654,16 @@ mod tests {
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::collections::HashMap;
-    use std::time::{SystemTime, UNIX_EPOCH};
     use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn clean_env() {
-        fs::remove_file(get_op_log_file_name()).unwrap();//clean file
-        let _f = get_log_file_append_mode();//Get here to ensure the file exists
+        fs::remove_file(get_op_log_file_name()).unwrap(); //clean file
+        let _f = get_log_file_append_mode(); //Get here to ensure the file exists
     }
 
-    fn prep_env(){
-        thread::sleep(time::Duration::from_millis(50));//give it time to the opperation to happen
+    fn prep_env() {
+        thread::sleep(time::Duration::from_millis(50)); //give it time to the opperation to happen
     }
 
     #[test]
@@ -668,7 +708,7 @@ mod tests {
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards");
-        let test_start = 
+        let test_start =
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
         let commands = get_pendding_opps_since(test_start, &dbs);
         println!("{:?}", commands);
@@ -677,7 +717,6 @@ mod tests {
         replication_thread.join().expect("thread died");
         clean_env();
     }
-
 
     #[test]
     fn should_return_the_pedding_ops() {
@@ -709,7 +748,7 @@ mod tests {
 
         let name = String::from("sample");
         let token = String::from("sample");
-        create_db(&name, &token,  &sender_fake, &dbs);
+        create_db(&name, &token, &sender_fake, &dbs);
         {
             let map = dbs.map.read().unwrap();
             let db = map.get(&name).unwrap();
@@ -752,7 +791,7 @@ mod tests {
             commands[1] == "replicate sample key value3",
             "Expected secound message to be sample key value3"
         );
-        
+
         assert!(
             commands[2] == "replicate-snapshot sample",
             "Replicate message expected"
@@ -762,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn should_not_fail_with_a_prime_number_of_records(){
+    fn should_not_fail_with_a_prime_number_of_records() {
         let start = SystemTime::now();
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
@@ -797,7 +836,7 @@ mod tests {
             set_key_value("key".to_string(), "value5".to_string(), db);
             set_key_value("key".to_string(), "value6".to_string(), db);
             set_key_value("key".to_string(), "value7".to_string(), db);
-            set_key_value("key".to_string(), "value8".to_string(), db);// 11 recoreds on the op log
+            set_key_value("key".to_string(), "value8".to_string(), db); // 11 recoreds on the op log
         }
         //thread::sleep(time::Duration::from_millis(20));
 
