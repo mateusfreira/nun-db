@@ -1,5 +1,6 @@
 use std::net::TcpStream;
 use std::thread;
+use std::sync::atomic::Ordering;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::io::{BufWriter, Write};
@@ -741,6 +742,9 @@ mod tests {
             1 as u128,
         ));
 
+        dbs.node_state
+            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+
         let dbs_to_thread = dbs.clone();
         let replication_thread = thread::spawn(|| {
             start_replication_thread(replication_receiver, dbs_to_thread);
@@ -748,7 +752,8 @@ mod tests {
 
         let name = String::from("sample");
         let token = String::from("sample");
-        create_db(&name, &token, &sender_fake, &dbs);
+        let client = Client::new_empty();
+        create_db(&name, &token, &sender_fake, &dbs, &client);
         {
             let map = dbs.map.read().unwrap();
             let db = map.get(&name).unwrap();
