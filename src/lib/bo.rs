@@ -21,6 +21,15 @@ impl Client {
             cluster_member: Mutex::new(None),
         }
     }
+
+    pub fn is_primary(&self ) -> bool {
+        let member = &*self.cluster_member.lock().unwrap();
+        if let Some(m) = member {
+            m.role ==  ClusterRole::Primary
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Clone)]

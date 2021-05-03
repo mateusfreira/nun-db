@@ -169,7 +169,7 @@ pub fn process_request(
         }
 
         Request::CreateDb { name, token } => {
-            apply_if_auth(&client.auth, &|| create_db(&name, &token, &sender, &dbs))
+            apply_if_auth(&client.auth, &|| create_db(&name, &token, &sender, &dbs, &client))
         }
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now

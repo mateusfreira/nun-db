@@ -54,8 +54,9 @@ pub fn create_db(
     token: &String,
     sender: &Sender<String>,
     dbs: &Arc<Databases>,
+    client: &Client,
 ) -> Response {
-    if dbs.is_primary() {
+    if dbs.is_primary() || client.is_primary() {// If this node is the primary or the primary is asking to create it
         let empty_db_box = create_temp_db(name.clone(), dbs);
         let empty_db = Arc::try_unwrap(empty_db_box);
         match empty_db {
