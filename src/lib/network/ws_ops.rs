@@ -5,10 +5,10 @@ use std::time;
 use thread_id;
 use ws::{CloseCode, Handler, Message};
 
-use bo::*;
-use db_ops::*;
-use process_request::*;
-use security::*;
+use crate::bo::*;
+use crate::db_ops::*;
+use crate::process_request::*;
+use crate::security::*;
 
 const TO_CLOSE: &'static str = "##CLOSE##";
 

@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use std::sync::RwLock;
 
-use bo::*;
+use crate::bo::*;
 
 pub const CONNECTIONS_KEY: &'static str = "$connections";
 

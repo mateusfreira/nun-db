@@ -1,4 +1,4 @@
-use bo::*;
+use crate::bo::*;
 
 impl Request {
     pub fn parse(input: &str) -> Result<Request, String> {

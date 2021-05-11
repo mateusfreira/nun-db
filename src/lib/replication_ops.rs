@@ -1,14 +1,15 @@
 use std::net::TcpStream;
 use std::thread;
-use std::sync::atomic::Ordering;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
+use futures::stream::{self, StreamExt};
+
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
 
-use bo::*;
-use db_ops::*;
-use disk_ops::*;
+use crate::bo::*;
+use crate::db_ops::*;
+use crate::disk_ops::*;
 
 use std::time;
 
@@ -169,50 +170,52 @@ fn get_key_id(key: String, dbs: &Arc<Databases>) -> u64 {
  * Here I replicate the message the all the members in the cluster
  *
  */
-pub fn start_replication_thread(mut replication_receiver: Receiver<String>, dbs: Arc<Databases>) {
+pub async fn start_replication_thread(
+    mut replication_receiver: Receiver<String>,
+    dbs: Arc<Databases>,
+) {
     let mut op_log_stream = get_log_file_append_mode();
     loop {
-        match replication_receiver.try_next() {
-            Ok(message_opt) => {
-                match message_opt {
-                    Some(message) => {
-                        if message == "exit" {
-                            println!("replication_ops::start_replication_thread will exist!");
-                            break;
-                        }
-                        replicate_message_to_secoundary(message.to_string(), &dbs);
-                        let request = Request::parse(&message.to_string()).unwrap();
-                        match request {
-                        Request::CreateDb { name, token: _ } => {
-                            let db_id = get_db_id(name, &dbs);
-                            let key_id = 1;
-                            println!("Will write CreateDb");
-                            write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::CreateDb);
-                        }
-                        Request::ReplicateSnapshot { db } => {
-                            let db_id = get_db_id(db, &dbs);
-                            let key_id = 2;//has to be different
-                            println!("Will write ReplicateSnapshot");
-                            write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot);
-                        }
-                        Request::ReplicateSet { db, key, value: _ } => {
-                            let db_id = get_db_id(db, &dbs);
-                            let key_id = get_key_id(key, &dbs);
-                            write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
-                        }
+        let message_opt = replication_receiver.next().await;
+        match message_opt {
+            Some(message) => {
+                if message == "exit" {
+                    println!("replication_ops::start_replication_thread will exist!");
+                    break;
+                }
+                replicate_message_to_secoundary(message.to_string(), &dbs);
+                let request = Request::parse(&message.to_string()).unwrap();
+                match request {
+                    Request::CreateDb { name, token: _ } => {
+                        let db_id = get_db_id(name, &dbs);
+                        let key_id = 1;
+                        println!("Will write CreateDb");
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::CreateDb);
+                    }
+                    Request::ReplicateSnapshot { db } => {
+                        let db_id = get_db_id(db, &dbs);
+                        let key_id = 2; //has to be different
+                        println!("Will write ReplicateSnapshot");
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot);
+                    }
+                    Request::ReplicateSet { db, key, value: _ } => {
+                        let db_id = get_db_id(db, &dbs);
+                        let key_id = get_key_id(key, &dbs);
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
+                    }
 
-                        Request::ReplicateRemove { db, key } => {
-                            let db_id = get_db_id(db, &dbs);
-                            let key_id = get_key_id(key, &dbs);
-                            write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove);
-                        }
-                        _ => println!("Ignoring command {} in replication oplog register! not unimplemented!", message),
+                    Request::ReplicateRemove { db, key } => {
+                        let db_id = get_db_id(db, &dbs);
+                        let key_id = get_key_id(key, &dbs);
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove);
                     }
-                    }
-                    None => println!("replication::try_next::Empty message"),
+                    _ => println!(
+                        "Ignoring command {} in replication oplog register! not unimplemented!",
+                        message
+                    ),
                 }
             }
-            _ => thread::sleep(time::Duration::from_millis(2)),
+            _ => println!("Passed"),
         }
     }
 }
@@ -367,126 +370,124 @@ fn add_sencoundary_to_secoundary(
  *
  */
 
-pub fn start_replication_creator_thread(
+pub async fn start_replication_creator_thread(
     mut replication_start_receiver: Receiver<String>,
     dbs: Arc<Databases>,
     tcp_addr: Arc<String>,
 ) {
     let mut guards = Vec::with_capacity(10); // Max 10 servers
     loop {
-        match replication_start_receiver.try_next() {
-            Ok(message_opt) => match message_opt {
-                Some(start_replicate_message) => {
-                    println!(
-                        "[start_replication_creator_thread] got {}",
-                        start_replicate_message
-                    );
-                    let mut command = start_replicate_message.splitn(2, " ");
+        let message_opt = replication_start_receiver.next().await;
+        match message_opt {
+            Some(start_replicate_message) => {
+                println!(
+                    "[start_replication_creator_thread] got {}",
+                    start_replicate_message
+                );
+                let mut command = start_replicate_message.splitn(2, " ");
 
-                    let command_str = command.next();
-                    let name = String::from(command.next().unwrap());
-                    let (sender, receiver): (Sender<String>, Receiver<String>) = channel(100);
+                let command_str = command.next();
+                let name = String::from(command.next().unwrap());
+                let (sender, receiver): (Sender<String>, Receiver<String>) = channel(100);
 
-                    match command_str {
-                        // Add secoundary to primary
-                        Some("secoundary") => {
-                            // Notify the members in the cluster about the new member
-                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                            let guard = add_sencoundary_to_primary(
-                                &sender,
-                                name.clone(),
-                                &tcp_addr,
-                                dbs.clone(),
-                                receiver,
-                            );
-                            guards.push(guard);
-                        }
-
-                        Some("leave") => {
-                            println!(
-                                "[start_replication_creator_thread] removing {} from the cluster!!",
-                                name
-                            );
-                            dbs.remove_cluster_member(&name);
-                        }
-                        // Add primary to secoundary
-                        Some("primary") => {
-                            // Notify the members in the cluster about the new member
-                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                            let guard = add_primary_to_secoundary(
-                                &sender,
-                                name.clone(),
-                                &tcp_addr,
-                                dbs.clone(),
-                                receiver,
-                            );
-                            guards.push(guard);
-                        }
-                        // Add secoundary to secoundary
-                        Some("new-secoundary") => {
-                            if !dbs.has_cluster_memeber(&name) {
-                                // Notify the members in the cluster about the new member
-                                send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                                let guard = add_sencoundary_to_secoundary(
-                                    &sender,
-                                    name.clone(),
-                                    &tcp_addr,
-                                    dbs.clone(),
-                                    receiver,
-                                );
-                                guards.push(guard);
-                            }
-                        }
-                        // Add secoundary to secoundary
-                        Some("replicate-since-to") => {
-                            let mut parts = name.splitn(2, " ");
-                            let name = String::from(parts.next().unwrap());
-                            let start_at_str = String::from(parts.next().unwrap());
-                            let start_at = start_at_str.parse::<u64>().unwrap();
-
-                            //send missing data to primary
-                            let cluster_state = dbs.cluster_state.lock().unwrap();
-                            let members = cluster_state.members.lock().unwrap();
-                            match members.get(&name) {
-                                Some(member) => {
-                                    let commands = get_pendding_opps_since(start_at, &dbs);
-                                    println!(
-                                        "Will replicate {} messages to {}",
-                                        commands.len(),
-                                        member.name
-                                    );
-                                    for message in commands {
-                                        replicate_if_some(&member.sender, &message, &member.name);
-                                    }
-                                }
-                                _ => {
-                                    eprintln!("Error tryting to replicate to a nonexistest member")
-                                }
-                            }
-                        }
-                        // Add primary to primary
-                        Some("election-win") => {
-                            dbs.add_cluster_member(ClusterMember {
-                                name: tcp_addr.to_string(),
-                                role: ClusterRole::Primary,
-                                sender: None,
-                            });
-                            //noity others about primary
-                            match dbs
-                                .replication_sender
-                                .clone()
-                                .try_send(format!("set-primary {}", tcp_addr))
-                            {
-                                Ok(_) => (),
-                                Err(_) => println!("Error election cadidate"),
-                            }
-                        }
-                        _ => (),
+                match command_str {
+                    // Add secoundary to primary
+                    Some("secoundary") => {
+                        // Notify the members in the cluster about the new member
+                        send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                        let guard = add_sencoundary_to_primary(
+                            &sender,
+                            name.clone(),
+                            &tcp_addr,
+                            dbs.clone(),
+                            receiver,
+                        );
+                        guards.push(guard);
                     }
+
+                    Some("leave") => {
+                        println!(
+                            "[start_replication_creator_thread] removing {} from the cluster!!",
+                            name
+                        );
+                        dbs.remove_cluster_member(&name);
+                    }
+                    // Add primary to secoundary
+                    Some("primary") => {
+                        // Notify the members in the cluster about the new member
+                        send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                        let guard = add_primary_to_secoundary(
+                            &sender,
+                            name.clone(),
+                            &tcp_addr,
+                            dbs.clone(),
+                            receiver,
+                        );
+                        guards.push(guard);
+                    }
+                    // Add secoundary to secoundary
+                    Some("new-secoundary") => {
+                        if !dbs.has_cluster_memeber(&name) {
+                            // Notify the members in the cluster about the new member
+                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                            let guard = add_sencoundary_to_secoundary(
+                                &sender,
+                                name.clone(),
+                                &tcp_addr,
+                                dbs.clone(),
+                                receiver,
+                            );
+                            guards.push(guard);
+                        }
+                    }
+                    // Add secoundary to secoundary
+                    Some("replicate-since-to") => {
+                        let mut parts = name.splitn(2, " ");
+                        let name = String::from(parts.next().unwrap());
+                        let start_at_str = String::from(parts.next().unwrap());
+                        let start_at = start_at_str.parse::<u64>().unwrap();
+
+                        //send missing data to primary
+                        let cluster_state = dbs.cluster_state.lock().unwrap();
+                        let members = cluster_state.members.lock().unwrap();
+                        match members.get(&name) {
+                            Some(member) => {
+                                let commands = get_pendding_opps_since(start_at, &dbs);
+                                println!(
+                                    "Will replicate {} messages to {}",
+                                    commands.len(),
+                                    member.name
+                                );
+                                for message in commands {
+                                    replicate_if_some(&member.sender, &message, &member.name);
+                                }
+                            }
+                            _ => {
+                                eprintln!("Error tryting to replicate to a nonexistest member")
+                            }
+                        }
+                    }
+                    // Add primary to primary
+                    Some("election-win") => {
+                        dbs.add_cluster_member(ClusterMember {
+                            name: tcp_addr.to_string(),
+                            role: ClusterRole::Primary,
+                            sender: None,
+                        });
+                        //noity others about primary
+                        match dbs
+                            .replication_sender
+                            .clone()
+                            .try_send(format!("set-primary {}", tcp_addr))
+                        {
+                            Ok(_) => (),
+                            Err(_) => println!("Error election cadidate"),
+                        }
+                    }
+                    _ => (),
                 }
-                None => println!("replication::try_next::Empty message"),
-            },
-            _ => thread::sleep(time::Duration::from_millis(2)),
+            }
+            None => println!("replication::try_next::Empty message"),
         }
     }
 }
@@ -597,7 +598,7 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
     let mut last_db = "$admin";
     let mut db: &Database = dbs_map.get(last_db).unwrap();
     let mut vec_ops_to_process: Vec<&OpLogRecord> = opps.values().collect();
-    vec_ops_to_process.sort_by(|a, b| a.timestamp.cmp(&b.timestamp)); //sort by timestamp
+    vec_ops_to_process.sort_by(|a, b| a.opp_position.cmp(&b.opp_position)); //sort by insert order
     for op_record in vec_ops_to_process {
         println!("{}", op_record.to_string());
         // todo sort by key to optmize speed
@@ -656,7 +657,15 @@ mod tests {
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::collections::HashMap;
     use std::fs;
+    use std::sync::atomic::Ordering;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use tokio_test;
+
+    macro_rules! aw {
+        ($e:expr) => {
+            tokio_test::block_on($e)
+        };
+    }
 
     fn clean_env() {
         fs::remove_file(get_op_log_file_name()).unwrap(); //clean file
@@ -684,8 +693,8 @@ mod tests {
 
         let dbs_to_thread = dbs.clone();
 
-        let replication_thread = thread::spawn(|| {
-            start_replication_thread(replication_receiver, dbs_to_thread);
+        let replication_thread = thread::spawn(|| async {
+            start_replication_thread(replication_receiver, dbs_to_thread).await;
         });
         {
             let map = dbs.map.read().unwrap();
@@ -715,7 +724,7 @@ mod tests {
         println!("{:?}", commands);
         assert!(commands.len() == 0, "Only one command expected");
         sender.try_send("exit".to_string()).unwrap();
-        replication_thread.join().expect("thread died");
+        aw!(replication_thread.join().expect("thread died"));
         clean_env();
     }
 
@@ -729,7 +738,7 @@ mod tests {
         let test_start =
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
         let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
-        let (sender_fake, _): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender_fake, _): (Sender<String>, Receiver<String>) = channel(10);
 
         let keys_map = HashMap::new();
         let dbs = Arc::new(Databases::new(
@@ -746,8 +755,8 @@ mod tests {
             .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
 
         let dbs_to_thread = dbs.clone();
-        let replication_thread = thread::spawn(|| {
-            start_replication_thread(replication_receiver, dbs_to_thread);
+        let replication_thread = thread::spawn(|| async {
+            start_replication_thread(replication_receiver, dbs_to_thread).await;
         });
 
         let name = String::from("sample");
@@ -762,10 +771,10 @@ mod tests {
             set_key_value("key".to_string(), "value3".to_string(), db);
         }
 
+        thread::sleep(time::Duration::from_millis(10));
         sender
             .try_send("create-db sample sample".to_string())
             .unwrap();
-        thread::sleep(time::Duration::from_millis(20));
         sender
             .try_send("replicate sample key value".to_string())
             .unwrap();
@@ -776,14 +785,13 @@ mod tests {
         sender
             .try_send("replicate sample key value3".to_string())
             .unwrap();
-
-        thread::sleep(time::Duration::from_millis(20));
+        //thread::sleep(time::Duration::from_millis(200));
         sender
             .try_send("replicate-snapshot sample".to_string())
             .unwrap();
 
         sender.try_send("exit".to_string()).unwrap();
-        replication_thread.join().expect("thread died");
+        aw!(replication_thread.join().expect("thread died"));
         let commands = get_pendding_opps_since(test_start, &dbs);
         println!("{:?}", commands);
         assert!(commands.len() == 3, "Only 3 command expected");
@@ -828,8 +836,8 @@ mod tests {
 
         let dbs_to_thread = dbs.clone();
 
-        let replication_thread = thread::spawn(|| {
-            start_replication_thread(replication_receiver, dbs_to_thread);
+        let replication_thread = thread::spawn(|| async {
+            start_replication_thread(replication_receiver, dbs_to_thread).await;
         });
         {
             let map = dbs.map.read().unwrap();
@@ -856,7 +864,7 @@ mod tests {
             .unwrap();
 
         sender.try_send("exit".to_string()).unwrap();
-        replication_thread.join().expect("thread died");
+        aw!(replication_thread.join().unwrap());
         let commands = get_pendding_opps_since(test_start, &dbs);
         println!("{:?}", commands);
         assert!(commands.len() == 1, "Only one command expected");

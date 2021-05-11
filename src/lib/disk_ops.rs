@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use bo::*;
+use crate::bo::*;
 
 const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
 const FILE_NAME: &'static str = "-nun.data";
@@ -279,6 +279,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     let mut oop_buffer = [0; 1];
     f.seek(SeekFrom::Start(seek_point)).unwrap();
     let now = Instant::now();
+    let mut opp_count: u64 = 0;
     while let Ok(i) = f.read(&mut time_buffer) {
         //Read key from disk
         let possible_records = (max - min) / size_as_u64;
@@ -299,7 +300,8 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
                 let key_id: u64 = u64::from_le_bytes(key_buffer);
                 let db_id: u64 = u64::from_le_bytes(db_id_buffer);
                 let opp = ReplicateOpp::from(oop_buffer[0]);
-                let op_log = OpLogRecord::new(db_id, key_id, opp_time, opp);
+                opp_count = opp_count + 1; //opps_since.len() don't work
+                let op_log = OpLogRecord::new(db_id, key_id, opp_time, opp_count, opp);
                 opps_since.insert(op_log.to_key(), op_log); //Needs to be one by database
 
                 if let Err(_) = f.read(&mut time_buffer) {
