@@ -168,9 +168,9 @@ pub fn process_request(
             respose
         }
 
-        Request::CreateDb { name, token } => {
-            apply_if_auth(&client.auth, &|| create_db(&name, &token, &sender, &dbs, &client))
-        }
+        Request::CreateDb { name, token } => apply_if_auth(&client.auth, &|| {
+            create_db(&name, &token, &sender, &dbs, &client)
+        }),
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
         Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(&dbs)),

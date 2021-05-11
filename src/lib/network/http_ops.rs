@@ -57,13 +57,13 @@ fn process_commands(
 pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
     let http_address = http_address.to_string();
     println!(
-        "Starting the http client with 10 threads in the addr: {}",
+        "Starting the http client with 4 threads in the addr: {}",
         http_address
     );
     let http_server = tiny_http::Server::http(http_address).unwrap();
     let http_server = Arc::new(http_server);
-    let mut guards = Vec::with_capacity(10);
-    for _ in 0..10 {
+    let mut guards = Vec::with_capacity(4);
+    for _ in 0..4 {
         let server = http_server.clone();
         let dbs = dbs.clone();
         let guard = thread::spawn(move || loop {
