@@ -166,12 +166,12 @@ impl Database {
     pub fn set_value(&self, key: String, value: String) {
         let mut db = self.map.write().unwrap();
         db.insert(key.clone(), value.clone());
-        let mut watchers = self.watchers.map.write().unwrap();
-        match watchers.get_mut(&key) {
+        let watchers = self.watchers.map.read().unwrap();
+        match watchers.get(&key) {
             Some(senders) => {
                 for sender in senders {
                     println!("Sending to another client");
-                    match sender.try_send(
+                    match sender.clone().try_send(
                         format_args!("changed {} {}\n", key.to_string(), value.to_string())
                             .to_string(),
                     ) {

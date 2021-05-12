@@ -1,6 +1,7 @@
 mod lib;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
+use futures::join;
 use futures::executor::block_on;
 use lib::*;
 use std::thread;
@@ -59,6 +60,7 @@ fn start_db(
     let db_replication_start = dbs.clone();
     let tcp_address_to_relication = Arc::new(tcp_address.to_string());
     let replication_thread_creator = async {
+        println!("lib::replication_ops::start_replication_creator_thread");
         lib::replication_ops::start_replication_creator_thread(
             start_replication_receiver,
             db_replication_start,
@@ -117,11 +119,14 @@ fn start_db(
     let _http_thread =
         thread::spawn(|| lib::network::http_ops::start_http_client(db_http, http_address));
 
-    lib::network::tcp_ops::start_tcp_client(dbs.clone(), tcp_address);
-
-    ws_thread.join().expect("Ws thread died");
-    block_on(replication_thread);
-    block_on(replication_thread_creator);
+    let tcp_address = String::from(tcp_address.clone());
+    let tcp_thread  = thread::spawn(move || lib::network::tcp_ops::start_tcp_client(dbs.clone(), &tcp_address));
+    let join_all_promises = async {
+        join!(replication_thread_creator, replication_thread);
+    };
+    block_on(join_all_promises); 
+    tcp_thread.join().expect("Tcp thread died");
+    ws_thread.join().expect("WS thread died");
 
     election_thread.join().expect("election_thread thread died");
     Ok(())

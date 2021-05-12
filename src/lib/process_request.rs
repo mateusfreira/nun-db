@@ -273,6 +273,7 @@ pub fn process_request(
         }),
 
         Request::ClusterState {} => apply_if_auth(&client.auth, &|| {
+            println!("Cluster here");
             let mut members: Vec<String> = dbs
                 .cluster_state
                 .lock()
@@ -284,6 +285,7 @@ pub fn process_request(
                 .map(|(_name, member)| format!("{}:{}", member.name, member.role))
                 .collect();
             members.sort(); //OMG try not to use this
+            println!("ClusterMember {}", members.len());
             let cluster_state_str = members.iter().fold(String::from(""), |current, acc| {
                 format!("{} {},", current, acc)
             });

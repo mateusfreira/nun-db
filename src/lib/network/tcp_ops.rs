@@ -120,6 +120,7 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
     }
 }
 fn process_message(receiver: &mut Receiver<String>, writer: &mut BufWriter<&TcpStream>) {
+   // println!("tcp_ops::process_message");
     match receiver.try_next() {
         Ok(message_opt) => match message_opt {
             Some(message) => {

@@ -375,8 +375,10 @@ pub async fn start_replication_creator_thread(
     dbs: Arc<Databases>,
     tcp_addr: Arc<String>,
 ) {
+    println!("Will start the start_replication_creator_thread");
     let mut guards = Vec::with_capacity(10); // Max 10 servers
     loop {
+        println!("[start_replication_creator_thread] loop");
         let message_opt = replication_start_receiver.next().await;
         match message_opt {
             Some(start_replicate_message) => {

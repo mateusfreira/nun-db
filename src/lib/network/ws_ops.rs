@@ -35,6 +35,7 @@ impl Handler for Server {
                             break;
                         }
                         message => {
+                            println!("ws_ops::_read_thread::message {}", message);
                             match ws_sender.send(message) {
                                 Ok(_) => {}
                                 Err(e) => println!("ws_ops::_read_thread::send::Error {}", e),
@@ -45,7 +46,9 @@ impl Handler for Server {
                         println!("ws_ops::_read_thread::error::None");
                     }
                 },
-                _ => thread::sleep(time::Duration::from_millis(2)),
+                _ => {
+                    thread::sleep(time::Duration::from_millis(2))
+                },
             }
         });
         Ok(())
