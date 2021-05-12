@@ -441,7 +441,7 @@ pub enum Request {
     Keys {},
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Response {
     Value { key: String, value: String },
     Ok {},
