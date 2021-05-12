@@ -169,7 +169,22 @@ pub fn process_request(
         }
 
         Request::CreateDb { name, token } => {
-            apply_if_auth(&client.auth, &|| create_db(&name, &token, &sender, &dbs, &client))
+            apply_if_auth(&client.auth, &|| {
+              let db_already_exists = match dbs.map.read().unwrap().get(&name) {
+                Some(_) => true,
+                None => false
+              };
+
+              if db_already_exists {
+                println!("Database '{}' already exists. Use drop-db before if you want to override it", name);
+
+                Response::Error {
+                  msg: "database already exists".to_string()
+                }
+              } else {
+                create_db(&name, &token, &sender, &dbs, &client)
+              }
+            })
         }
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
