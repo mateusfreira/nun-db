@@ -2,7 +2,8 @@ use std::net::TcpStream;
 use std::thread;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
-use futures::stream::{self, StreamExt};
+use futures::executor::block_on;
+use futures::stream::{StreamExt};
 
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
@@ -11,7 +12,6 @@ use crate::bo::*;
 use crate::db_ops::*;
 use crate::disk_ops::*;
 
-use std::time;
 
 pub fn replicate_web(replication_sender: &Sender<String>, message: String) {
     match replication_sender.clone().try_send(message.clone()) {
@@ -529,9 +529,10 @@ fn start_replication(
         Ok(socket) => {
             let writer = &mut BufWriter::new(&socket);
             auth_on_replication(user, pwd, tcp_addr, is_primary, writer);
-            loop {
-                match command_receiver.try_next() {
-                    Ok(message_opt) => match message_opt {
+            let fut = async {
+                loop {
+                    let message_opt = command_receiver.next().await;
+                    match message_opt {
                         Some(message) => {
                             println!("Will replicate {}", message);
                             writer.write_fmt(format_args!("{}\n", message)).unwrap();
@@ -544,13 +545,13 @@ fn start_replication(
                             }
                         }
                         None => {
-                            println!("replication::try_next::Empty message");
+                            println!("replication::next::Empty message");
                             break;
                         }
-                    },
-                    _ => thread::sleep(time::Duration::from_millis(2)),
+                    }
                 }
-            }
+            };
+            block_on(fut);
         }
         Err(e) => {
             eprint!(
@@ -653,6 +654,7 @@ fn start_sync_process(writer: &mut std::io::BufWriter<&std::net::TcpStream>, tcp
 }
 #[cfg(test)]
 mod tests {
+    use std::time;
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::collections::HashMap;
