@@ -1,4 +1,4 @@
-use futures::channel::mpsc::Sender;
+use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -6,19 +6,31 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
 
+use crate::db_ops::*;
+
 pub const TOKEN_KEY: &'static str = "$$token";
 pub const ADMIN_DB: &'static str = "$admin";
 
 pub struct Client {
     pub auth: Arc<AtomicBool>,
     pub cluster_member: Mutex<Option<ClusterMember>>,
+    pub selected_db: Arc<SelectedDatabase>,
+    pub sender: Sender<String>,
 }
 
 impl Client {
-    pub fn new_empty() -> Client {
+    pub fn new_empty_and_receiver() -> (Client, Receiver<String>) {
+        let (sender, receiver): (Sender<String>, Receiver<String>) = channel(100);
+        (Client::new_empty(sender), receiver)
+    }
+    pub fn new_empty(sender: Sender<String>) -> Client {
         Client {
             auth: Arc::new(AtomicBool::new(false)),
             cluster_member: Mutex::new(None),
+            selected_db: Arc::new(SelectedDatabase {
+                name: RwLock::new("init".to_string()),
+            }),
+            sender: sender,
         }
     }
 
@@ -28,6 +40,26 @@ impl Client {
             m.role == ClusterRole::Primary
         } else {
             false
+        }
+    }
+
+    pub fn selected_db_name(&self) -> String {
+        let db_name = {
+            let name = self.selected_db.name.read().unwrap();
+            name.clone()
+        };
+        db_name
+    }
+
+    pub fn left(&self, dbs: &Arc<Databases>) {
+        let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
+        let db_box = dbs.get(&self.selected_db_name());
+        match db_box {
+            Some(db) => {
+                db.dec_connections();
+                set_connection_counter(db);
+            }
+            _ => (),
         }
     }
 }

@@ -6,7 +6,6 @@ use thread_id;
 use ws::{CloseCode, Handler, Message};
 
 use crate::bo::*;
-use crate::db_ops::*;
 use crate::process_request::*;
 use crate::security::*;
 
@@ -15,9 +14,7 @@ const TO_CLOSE: &'static str = "##CLOSE##";
 // Server WebSocket handler
 struct Server {
     out: ws::Sender,
-    sender: Sender<String>,
     dbs: Arc<Databases>,
-    db: Arc<SelectedDatabase>,
     client: Client,
 }
 
@@ -25,7 +22,7 @@ impl Handler for Server {
     fn on_open(&mut self, _: ws::Handshake) -> ws::Result<()> {
         let ws_sender = self.out.clone();
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
-        self.sender = sender;
+        self.client.sender = sender;
         let _read_thread = thread::spawn(move || loop {
             match receiver.try_next() {
                 Ok(message) => match message {
@@ -46,9 +43,7 @@ impl Handler for Server {
                         println!("ws_ops::_read_thread::error::None");
                     }
                 },
-                _ => {
-                    thread::sleep(time::Duration::from_millis(2))
-                },
+                _ => thread::sleep(time::Duration::from_millis(2)),
             }
         });
         Ok(())
@@ -61,16 +56,10 @@ impl Handler for Server {
             thread_id::get(),
             clean_string_to_log(&message, &self.dbs)
         );
-        match process_request(
-            &message,
-            &mut self.sender,
-            &self.db,
-            &self.dbs,
-            &mut self.client,
-        ) {
+        match process_request(&message, &self.dbs, &mut self.client) {
             Response::Error { msg } => {
                 println!("Error: {}", msg);
-                match self.sender.try_send(format!("error {} \n", msg)) {
+                match self.client.sender.try_send(format!("error {} \n", msg)) {
                     Ok(_) => {}
                     Err(e) => println!(
                         "ws_ops::_read_thread::process_request::try_send::Error {}",
@@ -79,7 +68,7 @@ impl Handler for Server {
                 }
             }
             _ => {
-                match self.sender.try_send(format!("ok \n")) {
+                match self.client.sender.try_send(format!("ok \n")) {
                     Ok(_) => {}
                     Err(e) => println!(
                         "ws_ops::_read_thread::process_request::_::try_send::Error {}",
@@ -95,18 +84,13 @@ impl Handler for Server {
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
         println!("WebSocket closing for ({:?}) {}", code, reason);
-        match self.sender.try_send(TO_CLOSE.to_string()) {
+        match self.client.sender.try_send(TO_CLOSE.to_string()) {
             //To close the read thread
             Ok(_) => {}
             Err(e) => println!("on_close::Error {}", e),
         }
-        process_request(
-            "unwatch-all",
-            &mut self.sender,
-            &self.db,
-            &self.dbs,
-            &mut self.client,
-        );
+        process_request("unwatch-all", &self.dbs, &mut self.client);
+        self.client.left(&self.dbs);
     }
 }
 
@@ -122,10 +106,8 @@ pub fn start_web_socket_client(dbs: Arc<Databases>, ws_address: Arc<String>) {
             })
             .build(move |out| Server {
                 out,
-                db: create_temp_selected_db("init".to_string()),
                 dbs: dbs.clone(),
-                sender: sender.clone(),
-                client: Client::new_empty(),
+                client: Client::new_empty(sender.clone()),
             })
             .unwrap()
             .listen(ws_address)

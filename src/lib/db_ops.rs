@@ -4,27 +4,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use std::sync::RwLock;
-
 use crate::bo::*;
 
 pub const CONNECTIONS_KEY: &'static str = "$connections";
 
 pub fn apply_to_database(
     dbs: &Arc<Databases>,
-    selected_db: &Arc<SelectedDatabase>,
-    sender: &Sender<String>,
+    client: &Client,
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
-    let db_name = {
-        let name = selected_db.name.read().unwrap();
-        name.clone()
-    };
+    let db_name = client.selected_db_name();
     let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => opp(db),
         None => {
-            match sender
+            match client
+                .sender
                 .clone()
                 .try_send(String::from("error no-db-selected\n"))
             {
@@ -49,13 +44,7 @@ pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Resp
     }
 }
 
-pub fn create_db(
-    name: &String,
-    token: &String,
-    sender: &Sender<String>,
-    dbs: &Arc<Databases>,
-    client: &Client,
-) -> Response {
+pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &Client) -> Response {
     if dbs.is_primary() || client.is_primary() {
         // If this node is the primary or the primary is asking to create it
         let empty_db_box = create_temp_db(name.clone(), dbs);
@@ -64,14 +53,19 @@ pub fn create_db(
             Ok(db) => {
                 set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);
                 dbs.add_database(&name.to_string(), db);
-                match sender.clone().try_send("create-db success\n".to_string()) {
+                match client
+                    .sender
+                    .clone()
+                    .try_send("create-db success\n".to_string())
+                {
                     Ok(_n) => (),
                     Err(e) => eprintln!("Request::CreateDb  Error: {}", e),
                 }
             }
             _ => {
                 println!("Could not create the database");
-                match sender
+                match client
+                    .sender
                     .clone()
                     .try_send("error create-db-error\n".to_string())
                 {
@@ -196,13 +190,6 @@ pub fn create_temp_db(name: String, dbs: &Arc<Databases>) -> Arc<Database> {
         initial_db,
         DatabaseMataData::new(dbs.map.read().expect("could not get lock").len()),
     ));
-}
-
-pub fn create_temp_selected_db(name: String) -> Arc<SelectedDatabase> {
-    let tmpdb = Arc::new(SelectedDatabase {
-        name: RwLock::new(name),
-    });
-    return tmpdb;
 }
 
 pub fn create_init_dbs(

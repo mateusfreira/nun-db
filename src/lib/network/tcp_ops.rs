@@ -7,7 +7,6 @@ use std::thread;
 use std::time;
 
 use crate::bo::*;
-use crate::db_ops::*;
 use crate::process_request::*;
 use crate::security::*;
 
@@ -34,10 +33,7 @@ pub fn start_tcp_client(dbs: Arc<Databases>, tcp_addressed: &str) {
 fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
     let mut reader = BufReader::new(&stream);
     let writer = &mut BufWriter::new(&stream);
-    let (mut sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
-
-    let mut client = Client::new_empty();
-    let db = create_temp_selected_db("init".to_string());
+    let (mut client, mut receiver) = Client::new_empty_and_receiver();
     loop {
         let mut buf = String::new();
         let read_line = reader.read_line(&mut buf);
@@ -48,6 +44,7 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                 match buf.as_ref() {
                     "" => {
                         println!("killing socket client, because of disconnected!!");
+                        process_request("unwatch-all", &dbs, &mut client);
                         let member = &*client.cluster_member.lock().unwrap();
                         match member {
                             Some(m) => {
@@ -63,23 +60,22 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                                         // leave request does not use the client, therefore this is safe!
                                         // Double borrow here may leads to an dead lock
                                         // Fake client needs to be auth
-                                        let mut fake_client = Client::new_empty();
+                                        let (mut fake_client, _) = Client::new_empty_and_receiver();
                                         fake_client.auth.store(true, Ordering::Relaxed);
                                         match process_request(
                                             &format!("leave {}", m.name),
-                                            &mut sender,
-                                            &db,
                                             &dbs,
                                             &mut fake_client,
                                         ) {
                                             Response::Error { msg } => {
                                                 println!("Error: {}", msg);
-                                                sender
+                                                client
+                                                    .sender
                                                     .try_send(format!("error {} \n", msg))
                                                     .unwrap();
                                             }
                                             _ => {
-                                                sender.try_send(format!("ok \n")).unwrap();
+                                                client.sender.try_send(format!("ok \n")).unwrap();
                                                 println!("Success processed");
                                             }
                                         }
@@ -89,26 +85,18 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                             }
                             None => (),
                         };
-                        //Implement leave
-                        /*process_request(
-                            "unwatch-all",
-                            &mut sender,
-                            &db,
-                            &dbs,
-                            &auth,
-                            &mut replication_sender,
-                        );*/
+                        client.left(&dbs);
                         break;
                     }
-                    _ => match process_request(&buf, &mut sender, &db, &dbs, &mut client) {
+                    _ => match process_request(&buf, &dbs, &mut client) {
                         Response::Error { msg } => {
                             println!("Error: {}", msg);
-                            match sender.try_send(format!("error {} \n", msg)) {
+                            match client.sender.try_send(format!("error {} \n", msg)) {
                                 Ok(_) => (),
                                 _ => println!("Error on sending and error request"),
                             }
                         }
-                        _ => match sender.try_send(format!("ok \n")) {
+                        _ => match client.sender.try_send(format!("ok \n")) {
                             Ok(_) => println!("Success processed"),
                             _ => println!("Success processed! error on sender"),
                         },
@@ -120,7 +108,7 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
     }
 }
 fn process_message(receiver: &mut Receiver<String>, writer: &mut BufWriter<&TcpStream>) {
-   // println!("tcp_ops::process_message");
+    // println!("tcp_ops::process_message");
     match receiver.try_next() {
         Ok(message_opt) => match message_opt {
             Some(message) => {

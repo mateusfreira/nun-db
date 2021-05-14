@@ -1,4 +1,3 @@
-use futures::channel::mpsc::Sender;
 use std::mem;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -10,23 +9,14 @@ use crate::election_ops::*;
 use crate::replication_ops::*;
 use crate::security::*;
 
-pub fn process_request(
-    input: &str,
-    sender: &mut Sender<String>,
-    db: &Arc<SelectedDatabase>,
-    dbs: &Arc<Databases>,
-    client: &mut Client,
-) -> Response {
+pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -> Response {
     let input_to_log = clean_string_to_log(input, &dbs);
     println!(
         "[{}] process_request got message '{}'. ",
         thread_id::get(),
         input_to_log
     );
-    let db_name_state = {
-        let name = db.name.read().unwrap();
-        name.clone()
-    };
+    let db_name_state = client.selected_db_name();
     let is_primary = dbs.is_primary();
     let start = Instant::now();
     let request = match Request::parse(String::from(input).trim_matches('\n')) {
@@ -52,22 +42,20 @@ pub fn process_request(
             } else {
                 "invalid auth\n".to_string()
             };
-            match sender.clone().try_send(message) {
+            match client.sender.clone().try_send(message) {
                 Ok(_n) => (),
                 Err(e) => println!("Request::Auth sender.send Error: {}", e),
             };
             Response::Ok {}
         }
 
-        Request::Get { key } => {
-            apply_to_database(&dbs, &db, &sender, &|_db| get_key_value(&key, &sender, _db))
-        }
+        Request::Get { key } => apply_to_database(&dbs, &client, &|_db| {
+            get_key_value(&key, &client.sender, _db)
+        }),
 
-        Request::Remove { key } => {
-            apply_to_database(&dbs, &db, &sender, &|_db| remove_key(&key, _db))
-        }
+        Request::Remove { key } => apply_to_database(&dbs, &client, &|_db| remove_key(&key, _db)),
 
-        Request::Set { key, value } => apply_to_database(&dbs, &db, &sender, &|_db| {
+        Request::Set { key, value } => apply_to_database(&dbs, &client, &|_db| {
             if dbs.is_primary() {
                 set_key_value(key.clone(), value.clone(), _db)
             } else {
@@ -113,36 +101,41 @@ pub fn process_request(
         }),
 
         Request::Snapshot {} => apply_if_auth(&client.auth, &|| {
-            apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
+            apply_to_database(&dbs, &client, &|_db| snapshot_db(_db, &dbs))
         }),
 
         Request::ReplicateSnapshot {
             db: db_to_snap_shot,
         } => apply_if_auth(&client.auth, &|| {
-            let db = create_temp_selected_db(db_to_snap_shot.clone());
-            apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
+            let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock");
+            match dbs_map.get(&db_to_snap_shot.to_string()) {
+                Some(db) => snapshot_db(db, &dbs),
+                _ => Response::Error {
+                    msg: "Invalid db name".to_string(),
+                },
+            }
         }),
 
-        Request::UnWatch { key } => apply_to_database(&dbs, &db, &sender, &|_db| {
-            unwatch_key(&key, &sender, _db);
+        Request::UnWatch { key } => apply_to_database(&dbs, &client, &|_db| {
+            unwatch_key(&key, &client.sender, _db);
             Response::Ok {}
         }),
 
-        Request::UnWatchAll {} => apply_to_database(&dbs, &db, &sender, &|_db| {
-            unwatch_all(&sender, _db);
+        Request::UnWatchAll {} => apply_to_database(&dbs, &client, &|_db| {
+            unwatch_all(&client.sender, _db);
             _db.dec_connections(); //todo put it in a better methods
             set_connection_counter(_db);
             Response::Ok {}
         }),
 
-        Request::Watch { key } => apply_to_database(&dbs, &db, &sender, &|_db| {
-            watch_key(&key, &sender, _db);
+        Request::Watch { key } => apply_to_database(&dbs, &client, &|_db| {
+            watch_key(&key, &client.sender, _db);
             Response::Ok {}
         }),
 
         Request::UseDb { name, token } => {
             println!("here");
-            let mut db_name_state = db.name.write().unwrap();
+            let mut db_name_state = client.selected_db.name.write().unwrap();
             println!("here1");
             let dbs = dbs.map.read().expect("Could not lock the mao mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
@@ -168,9 +161,9 @@ pub fn process_request(
             respose
         }
 
-        Request::CreateDb { name, token } => apply_if_auth(&client.auth, &|| {
-            create_db(&name, &token, &sender, &dbs, &client)
-        }),
+        Request::CreateDb { name, token } => {
+            apply_if_auth(&client.auth, &|| create_db(&name, &token, &dbs, &client))
+        }
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
         Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(&dbs)),
@@ -289,7 +282,8 @@ pub fn process_request(
             let cluster_state_str = members.iter().fold(String::from(""), |current, acc| {
                 format!("{} {},", current, acc)
             });
-            match sender
+            match client
+                .sender
                 .clone()
                 .try_send(format_args!("cluster-state {}\n", cluster_state_str).to_string())
             {
@@ -304,7 +298,7 @@ pub fn process_request(
             }
         }),
 
-        Request::Keys {} => apply_to_database(&dbs, &db, &sender, &|db| {
+        Request::Keys {} => apply_to_database(&dbs, &client, &|db| {
             let keys: Vec<String> = db
                 .map
                 .read()
@@ -316,7 +310,8 @@ pub fn process_request(
             let keys = keys.iter().fold(String::from(""), |current, acc| {
                 format!("{},{}", current, acc)
             });
-            match sender
+            match client
+                .sender
                 .clone()
                 .try_send(format_args!("keys {}\n", keys).to_string())
             {

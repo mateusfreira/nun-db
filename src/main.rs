@@ -1,8 +1,8 @@
 mod lib;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
-use futures::join;
 use futures::executor::block_on;
+use futures::join;
 use lib::*;
 use std::thread;
 use std::time;
@@ -120,11 +120,12 @@ fn start_db(
         thread::spawn(|| lib::network::http_ops::start_http_client(db_http, http_address));
 
     let tcp_address = String::from(tcp_address.clone());
-    let tcp_thread  = thread::spawn(move || lib::network::tcp_ops::start_tcp_client(dbs.clone(), &tcp_address));
+    let tcp_thread =
+        thread::spawn(move || lib::network::tcp_ops::start_tcp_client(dbs.clone(), &tcp_address));
     let join_all_promises = async {
         join!(replication_thread_creator, replication_thread);
     };
-    block_on(join_all_promises); 
+    block_on(join_all_promises);
     tcp_thread.join().expect("Tcp thread died");
     ws_thread.join().expect("WS thread died");
 

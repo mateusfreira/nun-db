@@ -4,15 +4,12 @@ use std::thread;
 use tiny_http;
 
 use crate::bo::*;
-use crate::db_ops::*;
 use crate::process_request::*;
 use crate::security::*;
 
 fn process_commands(
     commands: &Vec<&str>,
-    sender: &mut Sender<String>,
     receiver: &mut Receiver<String>,
-    db: &Arc<SelectedDatabase>,
     dbs: &Arc<Databases>,
     client: &mut Client,
 ) -> Vec<String> {
@@ -20,7 +17,7 @@ fn process_commands(
     for command in commands {
         let clean_command = command.trim();
         if clean_command != "" {
-            match process_request(clean_command, sender, db, dbs, client) {
+            match process_request(clean_command, dbs, client) {
                 Response::Error { msg } => {
                     responses.push(msg.clone());
                     println!("Http response Error: {}", msg);
@@ -50,7 +47,8 @@ fn process_commands(
         }
     }
 
-    process_request("unwatch-all", sender, db, dbs, client); //To dicsconect
+    process_request("unwatch-all", dbs, client); //To dicsconect
+    client.left(&dbs);
 
     return responses;
 }
@@ -67,10 +65,7 @@ pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
         let server = http_server.clone();
         let dbs = dbs.clone();
         let guard = thread::spawn(move || loop {
-            let (mut sender, mut receiver): (Sender<String>, Receiver<String>) = channel(10);
-
-            let mut client = Client::new_empty();
-            let db = create_temp_selected_db("init".to_string());
+            let (mut client, mut receiver) = Client::new_empty_and_receiver();
             let mut body = String::new();
 
             match server.recv() {
@@ -78,14 +73,8 @@ pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
                     Ok(_) => {
                         println!("[http] body {}", clean_string_to_log(&body, &dbs));
                         let commands: Vec<&str> = body.split(';').collect();
-                        let responses = process_commands(
-                            &commands,
-                            &mut sender,
-                            &mut receiver,
-                            &db,
-                            &dbs,
-                            &mut client,
-                        );
+                        let responses =
+                            process_commands(&commands, &mut receiver, &dbs, &mut client);
                         let response = tiny_http::Response::from_string(responses.join(";"));
                         match rq.respond(response) {
                             Ok(_) => {}

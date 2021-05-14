@@ -3,7 +3,7 @@ use std::thread;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
-use futures::stream::{StreamExt};
+use futures::stream::StreamExt;
 
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
@@ -11,7 +11,6 @@ use std::sync::Arc;
 use crate::bo::*;
 use crate::db_ops::*;
 use crate::disk_ops::*;
-
 
 pub fn replicate_web(replication_sender: &Sender<String>, message: String) {
     match replication_sender.clone().try_send(message.clone()) {
@@ -656,12 +655,12 @@ fn start_sync_process(writer: &mut std::io::BufWriter<&std::net::TcpStream>, tcp
 }
 #[cfg(test)]
 mod tests {
-    use std::time;
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::collections::HashMap;
     use std::fs;
     use std::sync::atomic::Ordering;
+    use std::time;
     use std::time::{SystemTime, UNIX_EPOCH};
     use tokio_test;
 
@@ -742,7 +741,7 @@ mod tests {
         let test_start =
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
         let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
-        let (sender_fake, _): (Sender<String>, Receiver<String>) = channel(10);
+        let (_sender_fake, _): (Sender<String>, Receiver<String>) = channel(10);
 
         let keys_map = HashMap::new();
         let dbs = Arc::new(Databases::new(
@@ -765,8 +764,8 @@ mod tests {
 
         let name = String::from("sample");
         let token = String::from("sample");
-        let client = Client::new_empty();
-        create_db(&name, &token, &sender_fake, &dbs, &client);
+        let (client, _) = Client::new_empty_and_receiver();
+        create_db(&name, &token, &dbs, &client);
         {
             let map = dbs.map.read().unwrap();
             let db = map.get(&name).unwrap();
