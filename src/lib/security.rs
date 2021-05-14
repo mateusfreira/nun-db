@@ -1,4 +1,4 @@
-use bo::*;
+use crate::bo::*;
 use std::sync::Arc;
 
 pub fn clean_string_to_log(input: &str, dbs: &Arc<Databases>) -> String {
@@ -12,7 +12,7 @@ pub fn clean_string_to_log(input: &str, dbs: &Arc<Databases>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use db_ops::*;
+    use crate::db_ops::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::collections::HashMap;
 

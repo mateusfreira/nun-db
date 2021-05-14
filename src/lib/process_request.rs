@@ -4,11 +4,11 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
 
-use bo::*;
-use db_ops::*;
-use election_ops::*;
-use replication_ops::*;
-use security::*;
+use crate::bo::*;
+use crate::db_ops::*;
+use crate::election_ops::*;
+use crate::replication_ops::*;
+use crate::security::*;
 
 pub fn process_request(
     input: &str,
@@ -288,6 +288,7 @@ pub fn process_request(
         }),
 
         Request::ClusterState {} => apply_if_auth(&client.auth, &|| {
+            println!("Cluster here");
             let mut members: Vec<String> = dbs
                 .cluster_state
                 .lock()
@@ -299,6 +300,7 @@ pub fn process_request(
                 .map(|(_name, member)| format!("{}:{}", member.name, member.role))
                 .collect();
             members.sort(); //OMG try not to use this
+            println!("ClusterMember {}", members.len());
             let cluster_state_str = members.iter().fold(String::from(""), |current, acc| {
                 format!("{} {},", current, acc)
             });

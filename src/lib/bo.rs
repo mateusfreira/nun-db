@@ -22,10 +22,10 @@ impl Client {
         }
     }
 
-    pub fn is_primary(&self ) -> bool {
+    pub fn is_primary(&self) -> bool {
         let member = &*self.cluster_member.lock().unwrap();
         if let Some(m) = member {
-            m.role ==  ClusterRole::Primary
+            m.role == ClusterRole::Primary
         } else {
             false
         }
@@ -59,7 +59,7 @@ impl From<usize> for ClusterRole {
 }
 
 impl fmt::Display for ClusterRole {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             ClusterRole::Primary => write!(f, "Primary"),
             ClusterRole::Secoundary => write!(f, "Secoundary"),
@@ -170,12 +170,12 @@ impl Database {
     pub fn set_value(&self, key: String, value: String) {
         let mut db = self.map.write().unwrap();
         db.insert(key.clone(), value.clone());
-        let mut watchers = self.watchers.map.write().unwrap();
-        match watchers.get_mut(&key) {
+        let watchers = self.watchers.map.read().unwrap();
+        match watchers.get(&key) {
             Some(senders) => {
                 for sender in senders {
                     println!("Sending to another client");
-                    match sender.try_send(
+                    match sender.clone().try_send(
                         format_args!("changed {} {}\n", key.to_string(), value.to_string())
                             .to_string(),
                     ) {
@@ -343,15 +343,23 @@ pub struct OpLogRecord {
     pub db: u64,
     pub key: u64,
     pub timestamp: u64,
+    pub opp_position: u64,
     pub opp: ReplicateOpp,
 }
 
 impl OpLogRecord {
-    pub fn new(db: u64, key: u64, timestamp: u64, opp: ReplicateOpp) -> OpLogRecord {
+    pub fn new(
+        db: u64,
+        key: u64,
+        timestamp: u64,
+        opp_position: u64,
+        opp: ReplicateOpp,
+    ) -> OpLogRecord {
         OpLogRecord {
             db: db,
             key: key,
             opp: opp,
+            opp_position: opp_position,
             timestamp: timestamp,
         }
     }
@@ -361,7 +369,10 @@ impl OpLogRecord {
     }
 
     pub fn to_string(&self) -> String {
-        format!("{}_{}_{}", self.db, self.key, self.timestamp)
+        format!(
+            "db: {} key: {} timestamp: {} file_position: {}",
+            self.db, self.key, self.timestamp, self.opp_position
+        )
     }
 }
 

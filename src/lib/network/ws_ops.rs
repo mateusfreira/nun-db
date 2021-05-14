@@ -5,10 +5,10 @@ use std::time;
 use thread_id;
 use ws::{CloseCode, Handler, Message};
 
-use bo::*;
-use db_ops::*;
-use process_request::*;
-use security::*;
+use crate::bo::*;
+use crate::db_ops::*;
+use crate::process_request::*;
+use crate::security::*;
 
 const TO_CLOSE: &'static str = "##CLOSE##";
 
@@ -35,6 +35,7 @@ impl Handler for Server {
                             break;
                         }
                         message => {
+                            println!("ws_ops::_read_thread::message {}", message);
                             match ws_sender.send(message) {
                                 Ok(_) => {}
                                 Err(e) => println!("ws_ops::_read_thread::send::Error {}", e),
@@ -45,7 +46,9 @@ impl Handler for Server {
                         println!("ws_ops::_read_thread::error::None");
                     }
                 },
-                _ => thread::sleep(time::Duration::from_millis(2)),
+                _ => {
+                    thread::sleep(time::Duration::from_millis(2))
+                },
             }
         });
         Ok(())

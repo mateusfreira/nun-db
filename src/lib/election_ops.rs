@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::{thread, time};
 
-use bo::*;
+use crate::bo::*;
 
 pub fn join_as_secoundary_and_start_election(dbs: &Arc<Databases>, name: &String) {
     match dbs
