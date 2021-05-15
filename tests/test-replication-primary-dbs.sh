@@ -18,6 +18,12 @@ then
     cargo build
 fi
 
+if [ $command = "snapshot-all" ] || [ $command = "all" ] || [ $command = "kill" ]
+then
+    echo "snapshot all dbs"
+    RUST_BACKTRACE=1 ./target/debug/nun-db --user $NUN_USER  -p $NUN_PWD --host "http://$primaryHttpAddress" exec "use-db \$admin $password; keys" | tr "," "\n" | sort  | grep -v "lost+found" | tail +5 | xargs  -I '{}' nun-db --user $user  -p $password --host "http://$primaryHttpAddress" exec "replicate-snapshot {}"
+fi
+
 
 if [ $command = "kill" ] || [ $command = "all" ]
 then
@@ -91,5 +97,19 @@ then
 fi
 
 
-exit 0
+if [ $command = "create-vue" ] || [ $command = "all" ]
+then
+	RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$primaryHttpAddress" exec "auth mateus mateus; create-db vue vue_pwd; use-db vue vue_pwd; snapshot";
+fi
 
+if [ $command = "create-test" ] || [ $command = "all" ]
+then
+	RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$primaryHttpAddress" exec "auth mateus mateus; create-db test test-pwd; use-db test test-pwd; snapshot";
+fi
+
+if [ $command = "create-blog" ] || [ $command = "all" ]
+then
+	RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$primaryHttpAddress" exec "auth mateus mateus; create-db analitcs-blog analitcs-blog-2903uyi9ewrj; use-db analitcs-blog analitcs-blog-2903uyi9ewrj; snapshot;";
+fi
+
+exit 0

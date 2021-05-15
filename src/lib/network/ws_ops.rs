@@ -1,7 +1,9 @@
 use futures::channel::mpsc::{channel, Receiver, Sender};
+use futures::executor::block_on;
+use futures::stream::StreamExt;
 use std::sync::Arc;
 use std::thread;
-use std::time;
+
 use thread_id;
 use ws::{CloseCode, Handler, Message};
 
@@ -23,28 +25,33 @@ impl Handler for Server {
         let ws_sender = self.out.clone();
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         self.client.sender = sender;
-        let _read_thread = thread::spawn(move || loop {
-            match receiver.try_next() {
-                Ok(message) => match message {
-                    Some(message) => match message.as_ref() {
-                        TO_CLOSE => {
-                            println!("Closing server connection");
-                            break;
+        let _read_thread = thread::spawn(move || {
+            let read_promise = async {
+                loop {
+                    let message = receiver.next().await;
+                    match message {
+                        Some(message) => match message.as_ref() {
+                            TO_CLOSE => {
+                                println!("Closing server connection");
+                                break;
+                            }
+                            message => {
+                                println!("ws_ops::_read_thread::message {}", message);
+                                match ws_sender.send(message) {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        println!("ws_ops::_read_thread::send::Error {}", e)
+                                    }
+                                };
+                            }
+                        },
+                        None => {
+                            println!("ws_ops::_read_thread::error::None");
                         }
-                        message => {
-                            println!("ws_ops::_read_thread::message {}", message);
-                            match ws_sender.send(message) {
-                                Ok(_) => {}
-                                Err(e) => println!("ws_ops::_read_thread::send::Error {}", e),
-                            };
-                        }
-                    },
-                    None => {
-                        println!("ws_ops::_read_thread::error::None");
                     }
-                },
-                _ => thread::sleep(time::Duration::from_millis(2)),
-            }
+                }
+            };
+            block_on(read_promise);
         });
         Ok(())
     }
