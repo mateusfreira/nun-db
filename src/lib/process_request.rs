@@ -123,8 +123,6 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
 
         Request::UnWatchAll {} => apply_to_database(&dbs, &client, &|_db| {
             unwatch_all(&client.sender, _db);
-            _db.dec_connections(); //todo put it in a better methods
-            set_connection_counter(_db);
             Response::Ok {}
         }),
 

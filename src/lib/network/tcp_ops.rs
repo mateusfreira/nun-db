@@ -1,4 +1,4 @@
-use futures::channel::mpsc::{channel, Receiver, Sender};
+use futures::channel::mpsc::{Receiver};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::Ordering;
