@@ -186,9 +186,7 @@ impl Database {
             .expect("Error getting the db.connections.lock to decrement");
 
         let connections_value = connections.load(Ordering::SeqCst);
-        if connections_value > 0 {
-            *connections.get_mut() = connections_value - 1;
-        }
+        *connections.get_mut() = connections_value - 1;
     }
 
     pub fn connections_count(&self) -> usize {
