@@ -279,15 +279,23 @@ impl Databases {
         dbs
     }
 
-    pub fn add_database(&self, name: &String, database: Database) {
+    pub fn add_database(&self, name: &String, database: Database) -> Response {
         println!("add_database {}", name.to_string());
         let mut dbs = self.map.write().unwrap();
-        let mut id_name_db_map = self.id_name_db_map.write().unwrap();
-        id_name_db_map.insert(database.metadata.id as u64, name.to_string());
-        dbs.insert(name.to_string(), database);
-        dbs.get(&String::from(ADMIN_DB))
-            .unwrap()
-            .set_value(name.to_string(), String::from("{}"));
+        match dbs.get(name) {
+            None => {
+                let mut id_name_db_map = self.id_name_db_map.write().unwrap();
+                id_name_db_map.insert(database.metadata.id as u64, name.to_string());
+                dbs.insert(name.to_string(), database);
+                dbs.get(&String::from(ADMIN_DB))
+                    .unwrap()
+                    .set_value(name.to_string(), String::from("{}"));
+                Response::Ok {}
+            }
+            _ => Response::Error {
+                msg: "database already exists".to_string(),
+            },
+        }
     }
 
     pub fn get_role(&self) -> ClusterRole {
@@ -480,7 +488,7 @@ pub enum Request {
     Keys {},
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Response {
     Value { key: String, value: String },
     Ok {},
