@@ -184,7 +184,11 @@ impl Database {
             .connections
             .write()
             .expect("Error getting the db.connections.lock to decrement");
-        *connections.get_mut() = *connections.get_mut() - 1;
+
+        let connections_value = connections.load(Ordering::SeqCst);
+        if connections_value > 0 {
+            *connections.get_mut() = connections_value - 1;
+        }
     }
 
     pub fn connections_count(&self) -> usize {
@@ -480,7 +484,7 @@ pub enum Request {
     Keys {},
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Response {
     Value { key: String, value: String },
     Ok {},
@@ -519,6 +523,16 @@ mod tests {
         db.dec_connections();
 
         assert_eq!(db.connections_count(), 1);
+    }
+
+    #[test]
+    fn connection_decrement_should_not_overflow() {
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        assert_eq!(db.connections_count(), 0);
+
+        db.dec_connections(); // decrement a zeroed connection should do nothing
+
+        assert_eq!(db.connections_count(), 0);
     }
 
     #[test]

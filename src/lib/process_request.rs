@@ -160,7 +160,15 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         }
 
         Request::CreateDb { name, token } => {
-            apply_if_auth(&client.auth, &|| create_db(&name, &token, &dbs, &client))
+            apply_if_auth(&client.auth, &|| match dbs.map.read().unwrap().get(&name) {
+                None => create_db(&name, &token, &dbs, &client),
+                Some(_) => {
+                    println!("Database '{}' already exists. Use drop-db before if you want to override it", name);
+                    Response::Error {
+                        msg: "database already exists".to_string(),
+                    }
+                }
+            })
         }
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
@@ -339,4 +347,113 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         is_primary,
     );
     replication_result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::channel::mpsc::{channel, Receiver, Sender};
+    use std::collections::HashMap;
+
+    fn create_default_args() -> (
+        Receiver<String>,
+        Arc<Databases>,
+        Client,
+    ) {
+
+        let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender2, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
+        let dbs = Arc::new(Databases::new(
+            String::from("user"),
+            String::from("token"),
+            String::from(""),
+            sender1,
+            sender2,
+            keys_map,
+            1 as u128,
+        ));
+
+        dbs.node_state
+            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+
+        let (client, receiver) = Client::new_empty_and_receiver();
+
+        return (receiver, dbs, client);
+    }
+
+    fn assert_received(receiver: &mut Receiver<String>, expected: &str) {
+        match receiver.try_next() {
+            Ok(Some(message)) => assert_eq!(message, expected),
+            _ => assert!(false, "Receiver doesnt have any message"),
+        };
+    }
+
+    fn assert_valid_request(request: Response) {
+        assert_eq!(Response::Ok {}, request);
+    }
+
+    fn assert_invalid_request(request: Response) {
+        match request {
+            Response::Error { msg: _ } => assert!(true, "Request is invalid"),
+            _ => assert!(false, "Request should be invalid"),
+        };
+    }
+
+    #[test]
+    fn should_auth_correctly() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+
+        process_request("auth user wrong_token", &dbs, &mut client);
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        assert_received(&mut receiver, "invalid auth\n");
+
+        process_request("auth user token", &dbs, &mut client);
+        assert_eq!(client.auth.load(Ordering::SeqCst), true);
+        assert_received(&mut receiver, "valid auth\n");
+    }
+
+    #[test]
+    fn should_create_db() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+
+        match (*dbs.map.read().unwrap()).get("my-db") {
+            Some(_) => assert!(false, "my-db shouldnt exist yet"),
+            None => assert!(true),
+        };
+
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        assert_received(&mut receiver, "create-db success\n");
+        (*dbs.map.read().unwrap())
+            .get("my-db")
+            .expect("my-db should exists");
+    }
+
+    #[test]
+    fn should_not_create_db_if_already_exist() {
+        let (_, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+
+        // @todo start dbs args with db already created, instead of relying on
+        // the correct function of create-db command
+        process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        );
+
+        assert_invalid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+    }
 }

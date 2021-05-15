@@ -1,4 +1,4 @@
-use futures::channel::mpsc::{ Receiver };
+use futures::channel::mpsc::Receiver;
 use std::sync::Arc;
 use std::thread;
 use tiny_http;
