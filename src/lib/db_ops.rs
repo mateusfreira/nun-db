@@ -52,14 +52,19 @@ pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &C
         match empty_db {
             Ok(db) => {
                 set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);
-                dbs.add_database(&name.to_string(), db);
-                match client
-                    .sender
-                    .clone()
-                    .try_send("create-db success\n".to_string())
-                {
-                    Ok(_n) => (),
-                    Err(e) => eprintln!("Request::CreateDb  Error: {}", e),
+                match dbs.add_database(&name.to_string(), db) {
+                    Response::Ok {} => {
+                        match client
+                            .sender
+                            .clone()
+                            .try_send("create-db success\n".to_string())
+                        {
+                            Ok(_n) => (),
+                            Err(e) => eprintln!("Request::CreateDb  Error: {}", e),
+                        }
+                        Response::Ok {}
+                    }
+                    r => r,
                 }
             }
             _ => {
@@ -69,12 +74,18 @@ pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &C
                     .clone()
                     .try_send("error create-db-error\n".to_string())
                 {
-                    Ok(_n) => (),
-                    Err(e) => println!("Request::Set sender.send Error: {}", e),
+                    Ok(_n) => Response::Error {
+                        msg: String::from("Error clreating the DB"),
+                    },
+                    Err(e) => {
+                        println!("Request::Set sender.send Error: {}", e);
+                        Response::Error {
+                            msg: String::from("Error to send client response"),
+                        }
+                    }
                 }
             }
         }
-        Response::Ok {}
     } else {
         Response::Error {
             msg: String::from("Create database only allow from primary!"),

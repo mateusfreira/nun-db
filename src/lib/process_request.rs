@@ -160,15 +160,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         }
 
         Request::CreateDb { name, token } => {
-            apply_if_auth(&client.auth, &|| match dbs.map.read().unwrap().get(&name) {
-                None => create_db(&name, &token, &dbs, &client),
-                Some(_) => {
-                    println!("Database '{}' already exists. Use drop-db before if you want to override it", name);
-                    Response::Error {
-                        msg: "database already exists".to_string(),
-                    }
-                }
-            })
+            apply_if_auth(&client.auth, &|| create_db(&name, &token, &dbs, &client))
         }
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
@@ -355,12 +347,7 @@ mod tests {
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::collections::HashMap;
 
-    fn create_default_args() -> (
-        Receiver<String>,
-        Arc<Databases>,
-        Client,
-    ) {
-
+    fn create_default_args() -> (Receiver<String>, Arc<Databases>, Client) {
         let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         let (sender2, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         let keys_map = HashMap::new();
@@ -419,12 +406,6 @@ mod tests {
     fn should_create_db() {
         let (mut receiver, dbs, mut client) = create_default_args();
         client.auth.store(true, Ordering::Relaxed);
-
-        match (*dbs.map.read().unwrap()).get("my-db") {
-            Some(_) => assert!(false, "my-db shouldnt exist yet"),
-            None => assert!(true),
-        };
-
         assert_valid_request(process_request(
             "create-db my-db my-token",
             &dbs,
@@ -444,11 +425,7 @@ mod tests {
 
         // @todo start dbs args with db already created, instead of relying on
         // the correct function of create-db command
-        process_request(
-            "create-db my-db my-token",
-            &dbs,
-            &mut client,
-        );
+        process_request("create-db my-db my-token", &dbs, &mut client);
 
         assert_invalid_request(process_request(
             "create-db my-db my-token",
