@@ -13,7 +13,10 @@ timeoutSpeep=3
 replicaSetAddrs="127.0.0.1:3016,127.0.0.1:3017,127.0.0.1:3018"
 
 
-cargo build
+if [ $command = "build" ] || [ $command = "all" ] || [ $command = "start-1" ] || [ command = "start-primary" ]
+then
+    cargo build
+fi
 
 
 if [ $command = "kill" ] || [ $command = "all" ]
@@ -38,8 +41,7 @@ then
     trap "kill 0" EXIT
 fi
 
-
-if [ $command = "start-1" ] || [ $command = "all" ]
+if [ $command = "start-1" ] || [ $command = "start-primary" ] || [ $command = "all" ]
 then
     echo "Starting the primary"
     NUN_DBS_DIR=./dbs RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "127.0.0.1:3058" --replicate-address "$replicaSetAddrs" >primary.log&
@@ -48,7 +50,12 @@ then
     sleep $timeoutSpeep
 fi
 
-sleep $timeoutSpeep
+if [ $command = "cluster-state" ]
+then
+    clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
+    echo $clusterStatePrimary
+fi
+
 
 if [ $command = "start-2" ] || [ $command = "all" ]
 then
@@ -59,7 +66,6 @@ then
     sleep $timeoutSpeep
 fi
 
-sleep $timeoutSpeep
 
 if [ $command = "start-3" ] || [ $command = "all" ]
 then
@@ -70,7 +76,7 @@ then
     sleep $timeoutSpeep 
 
 fi
-sleep $timeoutSpeep
+
 if [ $command = "all" ]
 then
     echo "Giving time to election!!!"

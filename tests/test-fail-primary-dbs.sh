@@ -56,6 +56,14 @@ then
     echo "Giving time to election!!!"
     sleep 10
 fi
+
+if [ $command = "cluster-state" ]
+then
+    clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
+    echo $clusterStatePrimary
+fi
+
+
 if [ $command = "election" ] || [ $command = "all" ]
 then
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
