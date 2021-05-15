@@ -1,21 +1,62 @@
 use std::collections::HashMap;
 use std::env;
+use std::fs::OpenOptions;
 use std::fs::{create_dir_all, read_dir, File};
+use std::io::prelude::*;
+use std::io::BufWriter;
+use std::io::Read;
+use std::io::SeekFrom;
+use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use bo::*;
-use db_ops::*;
+use crate::bo::*;
 
 const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
 const FILE_NAME: &'static str = "-nun.data";
+const META_FILE_NAME: &'static str = "-nun.madadata";
 const DIR_NAME: &'static str = "dbs";
+
+const KEYS_FILE: &'static str = "keys-nun.keys";
+
+const OP_LOG_FILE: &'static str = "oplog-nun.op";
+const OP_KEY_SIZE: usize = 8;
+const OP_DB_ID_SIZE: usize = 8;
+const OP_TIME_SIZE: usize = 8;
+const OP_OP_SIZE: usize = 1;
+const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
 
 pub fn get_dir_name() -> String {
     match env::var_os("NUN_DBS_DIR") {
         Some(dir_name) => dir_name.into_string().unwrap(),
         None => DIR_NAME.to_string(),
     }
+}
+
+pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
+    let mut initial_db = HashMap::new();
+    let db_file_name = get_keys_map_file_name();
+    println!("Will read the keys {} from disk", db_file_name);
+    if Path::new(&db_file_name).exists() {
+        // May I should move this out of here
+        println!("Will read from disck");
+        let mut file = File::open(db_file_name).unwrap();
+        initial_db = bincode::deserialize_from(&mut file).unwrap();
+    }
+    return initial_db;
+}
+
+pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
+    let db_file_name = get_keys_map_file_name();
+    println!("Will read the keys {} from disk", db_file_name);
+
+    let mut keys_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(db_file_name)
+        .unwrap();
+    bincode::serialize_into(&mut keys_file, &keys.clone()).unwrap();
 }
 
 pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
@@ -30,15 +71,34 @@ pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
     return initial_db;
 }
 
+pub fn load_db_metadata_from_disk_or_empty(name: String, dbs: &Arc<Databases>) -> DatabaseMataData {
+    let db_file_name = meta_file_name_from_db_name(name.clone());
+    println!("Will read the metadata {} from disk", db_file_name);
+    if Path::new(&db_file_name).exists() {
+        // May I should move this out of here
+        let mut file = File::open(db_file_name).unwrap();
+        let mut buffer = [0; 8];
+        file.read(&mut buffer).unwrap();
+        let id: usize = usize::from_le_bytes(buffer);
+
+        DatabaseMataData::new(id)
+    } else {
+        DatabaseMataData::new(dbs.map.read().unwrap().len())
+    }
+}
+
 fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::DirEntry>) {
     if let Ok(entry) = entry {
         let full_name = entry.file_name().into_string().unwrap();
-        let db_name = db_name_from_file_name(full_name);
-        let db_data = load_db_from_disck_or_empty(db_name.to_string());
-        dbs.add_database(
-            &db_name.to_string(),
-            create_db_from_hash(db_name.to_string(), db_data),
-        );
+        if full_name.ends_with(FILE_NAME) {
+            let db_name = db_name_from_file_name(full_name);
+            let db_data = load_db_from_disck_or_empty(db_name.to_string());
+            let meta = load_db_metadata_from_disk_or_empty(db_name.to_string(), dbs);
+            dbs.add_database(
+                &db_name.to_string(),
+                Database::create_db_from_hash(db_name.to_string(), db_data, meta),
+            );
+        }
     }
 }
 fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
@@ -58,6 +118,23 @@ pub fn file_name_from_db_name(db_name: String) -> String {
     )
 }
 
+pub fn get_op_log_file_name() -> String {
+    format!("{dir}/{sufix}", dir = get_dir_name(), sufix = OP_LOG_FILE)
+}
+
+pub fn get_keys_map_file_name() -> String {
+    format!("{dir}/{sufix}", dir = get_dir_name(), sufix = KEYS_FILE)
+}
+
+pub fn meta_file_name_from_db_name(db_name: String) -> String {
+    format!(
+        "{dir}/{db_name}{sufix}",
+        dir = get_dir_name(),
+        db_name = db_name,
+        sufix = META_FILE_NAME
+    )
+}
+
 pub fn db_name_from_file_name(full_name: String) -> String {
     let partial_name = full_name.replace(FILE_NAME, "");
     let splited_name: Vec<&str> = partial_name.split("/").collect();
@@ -66,9 +143,17 @@ pub fn db_name_from_file_name(full_name: String) -> String {
 }
 
 fn storage_data_disk(db: &Database, db_name: String) {
-    let db = db.map.lock().unwrap();
-    let mut file = File::create(file_name_from_db_name(db_name)).unwrap();
-    bincode::serialize_into(&mut file, &db.clone()).unwrap();
+    let data = db.map.read().unwrap();
+    // store data
+    let mut file = File::create(file_name_from_db_name(db_name.to_string())).unwrap();
+    bincode::serialize_into(&mut file, &data.clone()).unwrap();
+
+    let mut meta_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(meta_file_name_from_db_name(db_name))
+        .unwrap();
+    meta_file.write(&db.metadata.id.to_le_bytes()).unwrap(); //8 bytes
 }
 
 // calls storage_data_disk each $SNAPSHOT_TIME seconds
@@ -88,15 +173,30 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     ) = std::sync::mpsc::channel(); // Visit this again
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
-            let mut dbs_to_snapshot = dbs.to_snapshot.lock().unwrap();
+            let mut dbs_to_snapshot = {
+                let dbs = dbs.to_snapshot.write().unwrap();
+                dbs
+                //.clone()
+            };
             dbs_to_snapshot.dedup();
             while let Some(database_name) = dbs_to_snapshot.pop() {
                 println!("Will snapshot the database {}", database_name);
                 let dbs = dbs.clone();
-                let dbs = dbs.map.lock().unwrap();
-                let db_opt = dbs.get(&database_name);
+                let dbs_map = dbs.map.read().unwrap();
+                let db_opt = dbs_map.get(&database_name);
                 match db_opt {
-                    Some(db) => storage_data_disk(db, database_name.clone()),
+                    Some(db) => {
+                        storage_data_disk(db, database_name.clone());
+                        if database_name == ADMIN_DB {
+                            // if saving the admin db save the keys
+                            let keys_map = {
+                                let keys_map = dbs.keys_map.read().unwrap();
+                                keys_map.clone()
+                            };
+                            println!("Will snapshot the keys {}", keys_map.len());
+                            write_keys_map_to_disk(keys_map);
+                        }
+                    }
                     _ => println!("Database not found {}", database_name),
                 }
             }
@@ -105,9 +205,177 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     rx.recv().unwrap(); // Thread will run for ever
 }
 
+pub fn get_log_file_append_mode() -> BufWriter<File> {
+    BufWriter::with_capacity(
+        OP_RECORD_SIZE,
+        OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(get_op_log_file_name())
+            .unwrap(),
+    )
+}
+
+pub fn get_log_file_read_mode() -> File {
+    match OpenOptions::new().read(true).open(get_op_log_file_name()) {
+        Err(e) => {
+            eprint!("{:?}", e);
+            OpenOptions::new()
+                .read(true)
+                .create(true)
+                .open(get_op_log_file_name())
+                .unwrap()
+        }
+        Ok(f) => f,
+    }
+}
+
+pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: ReplicateOpp) {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    let in_ms: u64 =
+        since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+
+    let opp_to_write = opp as u8;
+
+    stream.write(&in_ms.to_le_bytes()).unwrap(); //8
+    stream.write(&key.to_le_bytes()).unwrap(); // 8
+    stream.write(&db_id.to_le_bytes()).unwrap(); // 8
+    stream.write(&[opp_to_write]).unwrap(); // 1
+    stream.flush().unwrap();
+    println!("will write :  db: {db}", db = db_id);
+}
+
+pub fn last_op_time() -> u64 {
+    let mut f = get_log_file_read_mode();
+    let total_size = f.metadata().unwrap().len();
+    let size_as_u64 = OP_RECORD_SIZE as u64;
+    // if the file is empty return 0 to avoid  attempt to subtract with overflow error
+    if total_size < size_as_u64 {
+        return 0 as u64;
+    }
+    let last_record_position = total_size - size_as_u64;
+    let mut time_buffer = [0; OP_TIME_SIZE];
+    f.seek(SeekFrom::Start(last_record_position)).unwrap();
+    if let Ok(_) = f.read(&mut time_buffer) {
+        u64::from_le_bytes(time_buffer)
+    } else {
+        0
+    }
+}
+pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
+    let mut opps_since = HashMap::new();
+    let mut f = get_log_file_read_mode();
+    let total_size = f.metadata().unwrap().len();
+    let size_as_u64 = OP_RECORD_SIZE as u64;
+    let mut max = total_size;
+    let mut min = 0;
+    let mut seek_point = (total_size / size_as_u64 / 2) * size_as_u64;
+    let mut time_buffer = [0; OP_TIME_SIZE];
+    let mut key_buffer = [0; OP_KEY_SIZE];
+    let mut db_id_buffer = [0; OP_DB_ID_SIZE];
+    let mut oop_buffer = [0; 1];
+    f.seek(SeekFrom::Start(seek_point)).unwrap();
+    let now = Instant::now();
+    let mut opp_count: u64 = 0;
+    while let Ok(i) = f.read(&mut time_buffer) {
+        //Read key from disk
+        let possible_records = (max - min) / size_as_u64;
+        let mut opp_time = u64::from_le_bytes(time_buffer);
+        let read_all = possible_records == 1 && seek_point == size_as_u64;
+        let no_more_smaller = possible_records <= 1 && (opp_time > since);
+        if opp_time == since || no_more_smaller || read_all {
+            println!(
+                "found! {} {} {} {}",
+                possible_records, seek_point, total_size, no_more_smaller
+            );
+            while let Ok(byte_read) = f.read(&mut key_buffer) {
+                if byte_read == 0 {
+                    break;
+                }
+                f.read(&mut db_id_buffer).unwrap();
+                f.read(&mut oop_buffer).unwrap();
+                let key_id: u64 = u64::from_le_bytes(key_buffer);
+                let db_id: u64 = u64::from_le_bytes(db_id_buffer);
+                let opp = ReplicateOpp::from(oop_buffer[0]);
+                opp_count = opp_count + 1; //opps_since.len() don't work
+                let op_log = OpLogRecord::new(db_id, key_id, opp_time, opp_count, opp);
+                opps_since.insert(op_log.to_key(), op_log); //Needs to be one by database
+
+                if let Err(_) = f.read(&mut time_buffer) {
+                    //Next time
+                    //To skip time value
+                    break;
+                }
+                opp_time = u64::from_le_bytes(time_buffer);
+                /*
+                println!(
+                    "Here key:{} db:{} n:{} opp:{:?}",
+                    key_id, db_id, opp_time, oop_buffer
+                );
+                */
+            }
+            break;
+        }
+
+        if opp_time < since {
+            min = seek_point;
+            let n_recors: u64 = std::cmp::max(
+                ((std::cmp::max(max, seek_point) - seek_point) / 2) / size_as_u64,
+                1,
+            );
+            println!(
+                "search bigger {} in {:?} {} {} {}",
+                opp_time,
+                now.elapsed(),
+                seek_point,
+                possible_records,
+                n_recors
+            );
+            seek_point = (n_recors * size_as_u64) + seek_point;
+        }
+
+        if opp_time > since {
+            max = seek_point;
+            println!(
+                "seach smaller op: {} since: {} in {:?} {} possible_records: {}, no_more_smaller: {}",
+                opp_time,
+                since,
+                now.elapsed(),
+                seek_point,
+                possible_records,
+                no_more_smaller
+            );
+            let n_recors: u64 = std::cmp::max(((seek_point - min) / 2) / size_as_u64, 1);
+            seek_point = seek_point - (n_recors * size_as_u64);
+        }
+
+        if possible_records <= 1 {
+            println!(
+                " Did not found {:?} {}, {} any record!",
+                now.elapsed(),
+                max,
+                seek_point
+            );
+            //break;
+        }
+
+        if i != OP_TIME_SIZE as usize {
+            println!(" End of the file{:?} ms", now.elapsed());
+            break;
+        }
+
+        f.seek(SeekFrom::Start(seek_point)).unwrap(); // Repoint disk seek
+    }
+    opps_since
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn should_return_the_db_name() {
@@ -115,5 +383,19 @@ mod tests {
             db_name_from_file_name(String::from("dbs/org-1-nun.data")),
             "org-1"
         );
+    }
+
+    #[test]
+    fn should_return_the_correct_op_log_name() {
+        assert_eq!(get_op_log_file_name(), "dbs/oplog-nun.op");
+    }
+
+    #[test]
+    fn should_return_0_if_the_op_log_is_empty() {
+        let _f = get_log_file_append_mode(); //Get here to ensure the file exists
+        fs::remove_file(get_op_log_file_name()).unwrap(); //clean file
+        let _f = get_log_file_append_mode(); //Get here to ensure the file exists
+        let last_op = last_op_time();
+        assert_eq!(last_op, 0);
     }
 }

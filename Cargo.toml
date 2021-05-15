@@ -3,6 +3,7 @@
 name = "nun-db"
 version = "0.0.1"
 authors = [ "Mateus Freira <mateus.freira@gmail.com>" ]
+edition = "2018"
 
 [dependencies]
 tokio = "0.1.13"
@@ -18,3 +19,5 @@ thread-id = "*"
 tiny_http = "*"
 clap = "*"
 reqwest = { version="*" , features = ["blocking"]}
+[dev-dependencies]
+tokio-test = "*"

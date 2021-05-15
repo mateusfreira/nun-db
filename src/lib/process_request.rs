@@ -1,29 +1,22 @@
-use futures::channel::mpsc::Sender;
 use std::mem;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
 
-use bo::*;
-use db_ops::*;
-use election_ops::*;
-use replication_ops::*;
-use security::*;
+use crate::bo::*;
+use crate::db_ops::*;
+use crate::election_ops::*;
+use crate::replication_ops::*;
+use crate::security::*;
 
-pub fn process_request(
-    input: &str,
-    sender: &mut Sender<String>,
-    db: &Arc<SelectedDatabase>,
-    dbs: &Arc<Databases>,
-    client: &mut Client,
-) -> Response {
+pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -> Response {
     let input_to_log = clean_string_to_log(input, &dbs);
     println!(
         "[{}] process_request got message '{}'. ",
         thread_id::get(),
         input_to_log
     );
-    let db_name_state = db.name.lock().expect("Could not lock name mutex").clone();
+    let db_name_state = client.selected_db_name();
     let is_primary = dbs.is_primary();
     let start = Instant::now();
     let request = match Request::parse(String::from(input).trim_matches('\n')) {
@@ -49,26 +42,24 @@ pub fn process_request(
             } else {
                 "invalid auth\n".to_string()
             };
-            match sender.clone().try_send(message) {
+            match client.sender.clone().try_send(message) {
                 Ok(_n) => (),
                 Err(e) => println!("Request::Auth sender.send Error: {}", e),
             };
             Response::Ok {}
         }
 
-        Request::Get { key } => {
-            apply_to_database(&dbs, &db, &sender, &|_db| get_key_value(&key, &sender, _db))
-        }
+        Request::Get { key } => apply_to_database(&dbs, &client, &|_db| {
+            get_key_value(&key, &client.sender, _db)
+        }),
 
-        Request::Remove { key } => {
-            apply_to_database(&dbs, &db, &sender, &|_db| remove_key(&key, _db))
-        }
+        Request::Remove { key } => apply_to_database(&dbs, &client, &|_db| remove_key(&key, _db)),
 
-        Request::Set { key, value } => apply_to_database(&dbs, &db, &sender, &|_db| {
+        Request::Set { key, value } => apply_to_database(&dbs, &client, &|_db| {
             if dbs.is_primary() {
                 set_key_value(key.clone(), value.clone(), _db)
             } else {
-                let db_name_state = _db.name.lock().expect("Could not lock name mutex");
+                let db_name_state = _db.name.clone();
                 send_message_to_primary(
                     get_replicate_message(db_name_state.to_string(), key.clone(), value.clone()),
                     dbs,
@@ -77,11 +68,8 @@ pub fn process_request(
             }
         }),
 
-        Request::ReplicateRemove {
-            db: name,
-            key,
-        } => apply_if_auth(&client.auth, &|| {
-            let dbs = dbs.map.lock().expect("Could not lock the dbs mutex");
+        Request::ReplicateRemove { db: name, key } => apply_if_auth(&client.auth, &|| {
+            let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => remove_key(&key, db),
                 _ => {
@@ -99,7 +87,7 @@ pub fn process_request(
             key,
             value,
         } => apply_if_auth(&client.auth, &|| {
-            let dbs = dbs.map.lock().expect("Could not lock the dbs mutex");
+            let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => set_key_value(key.clone(), value.clone(), db),
                 _ => {
@@ -113,36 +101,41 @@ pub fn process_request(
         }),
 
         Request::Snapshot {} => apply_if_auth(&client.auth, &|| {
-            apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
+            apply_to_database(&dbs, &client, &|_db| snapshot_db(_db, &dbs))
         }),
 
         Request::ReplicateSnapshot {
             db: db_to_snap_shot,
         } => apply_if_auth(&client.auth, &|| {
-            let db = create_temp_selected_db(db_to_snap_shot.clone());
-            apply_to_database(&dbs, &db, &sender, &|_db| snapshot_db(_db, &dbs))
+            let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock");
+            match dbs_map.get(&db_to_snap_shot.to_string()) {
+                Some(db) => snapshot_db(db, &dbs),
+                _ => Response::Error {
+                    msg: "Invalid db name".to_string(),
+                },
+            }
         }),
 
-        Request::UnWatch { key } => apply_to_database(&dbs, &db, &sender, &|_db| {
-            unwatch_key(&key, &sender, _db);
+        Request::UnWatch { key } => apply_to_database(&dbs, &client, &|_db| {
+            unwatch_key(&key, &client.sender, _db);
             Response::Ok {}
         }),
 
-        Request::UnWatchAll {} => apply_to_database(&dbs, &db, &sender, &|_db| {
-            unwatch_all(&sender, _db);
-            _db.dec_connections(); //todo put it in a better methods
-            set_connection_counter(_db);
+        Request::UnWatchAll {} => apply_to_database(&dbs, &client, &|_db| {
+            unwatch_all(&client.sender, _db);
             Response::Ok {}
         }),
 
-        Request::Watch { key } => apply_to_database(&dbs, &db, &sender, &|_db| {
-            watch_key(&key, &sender, _db);
+        Request::Watch { key } => apply_to_database(&dbs, &client, &|_db| {
+            watch_key(&key, &client.sender, _db);
             Response::Ok {}
         }),
 
         Request::UseDb { name, token } => {
-            let mut db_name_state = db.name.lock().expect("Could not lock name mutex");
-            let dbs = dbs.map.lock().expect("Could not lock the mao mutex");
+            println!("here");
+            let mut db_name_state = client.selected_db.name.write().unwrap();
+            println!("here1");
+            let dbs = dbs.map.read().expect("Could not lock the mao mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => {
                     if is_valid_token(&token, db) {
@@ -166,59 +159,20 @@ pub fn process_request(
             respose
         }
 
-        Request::CreateDb { name, token } => apply_if_auth(&client.auth, &|| {
-            let empty_db_box = create_temp_db(name.clone());
-            let empty_db = Arc::try_unwrap(empty_db_box);
-            match empty_db {
-                Ok(db) => {
-                    set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);
-                    dbs.add_database(&name.to_string(), db);
-                    match sender.clone().try_send("create-db success\n".to_string()) {
-                        Ok(_n) => (),
-                        Err(e) => println!("Request::CreateDb  Error: {}", e),
-                    }
-                }
-                _ => {
-                    println!("Could not create the database");
-                    match sender
-                        .clone()
-                        .try_send("error create-db-error\n".to_string())
-                    {
-                        Ok(_n) => (),
-                        Err(e) => println!("Request::Set sender.send Error: {}", e),
-                    }
-                }
-            }
-            Response::Ok {}
-        }),
+        Request::CreateDb { name, token } => {
+            apply_if_auth(&client.auth, &|| create_db(&name, &token, &dbs, &client))
+        }
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
-        Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(dbs.clone())),
-        Request::Election { id } => apply_if_auth(&client.auth, &|| {
-            println!("Election received");
-            if id == dbs.process_id {
-                println!("Ignoring same node election");
-            } else if id < dbs.process_id {
-                println!("Will run the start_election");
-                start_election(dbs);
-            } else {
-                println!("Won't run the start_election");
-                match dbs
-                    .replication_sender
-                    .clone()
-                    .try_send(format!("election alive"))
-                {
-                    Ok(_) => (),
-                    Err(_) => println!("Error election alive"),
-                }
-                dbs.node_state
-                    .swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
-            }
-            Response::Ok {}
-        }),
+        Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(&dbs)),
+        Request::Election { id } => apply_if_auth(&client.auth, &|| election_eval(&dbs, id)),
 
         Request::SetPrimary { name } => apply_if_auth(&client.auth, &|| {
-            println!("Setting {} as primary!", name);
+            if !dbs.is_primary() {
+                println!("Setting {} as primary!", name);
+            } else {
+                println!("Got a set primary from {} but already is a primary... There is going to be war!!", name);
+            }
             match dbs
                 .start_replication_sender
                 .clone()
@@ -240,7 +194,7 @@ pub fn process_request(
         }),
 
         Request::SetScoundary { name } => apply_if_auth(&client.auth, &|| {
-            println!("Setting {} as primary!", name);
+            println!("Setting {} as secoundary!", name);
             let member = Some(ClusterMember {
                 name: name.clone(),
                 role: ClusterRole::Secoundary,
@@ -252,15 +206,7 @@ pub fn process_request(
         }),
 
         Request::Join { name } => apply_if_auth(&client.auth, &|| {
-            match dbs
-                .start_replication_sender
-                .clone()
-                .try_send(format!("secoundary {}", name))
-            {
-                Ok(_n) => (),
-                Err(e) => println!("Request::Join sender.send Error: {}", e),
-            }
-            start_election(dbs);
+            join_as_secoundary_and_start_election(&dbs, &name);
             Response::Ok {}
         }),
 
@@ -302,7 +248,23 @@ pub fn process_request(
             Response::Ok {}
         }),
 
+        Request::ReplicateSince {
+            node_name,
+            start_at,
+        } => apply_if_auth(&client.auth, &|| {
+            match dbs
+                .start_replication_sender
+                .clone()
+                .try_send(format!("replicate-since-to {} {}", node_name, start_at))
+            {
+                Ok(_n) => (),
+                Err(e) => println!("Request::ReplicateJoin sender.send Error: {}", e),
+            }
+            Response::Ok {}
+        }),
+
         Request::ClusterState {} => apply_if_auth(&client.auth, &|| {
+            println!("Cluster here");
             let mut members: Vec<String> = dbs
                 .cluster_state
                 .lock()
@@ -314,10 +276,12 @@ pub fn process_request(
                 .map(|(_name, member)| format!("{}:{}", member.name, member.role))
                 .collect();
             members.sort(); //OMG try not to use this
+            println!("ClusterMember {}", members.len());
             let cluster_state_str = members.iter().fold(String::from(""), |current, acc| {
                 format!("{} {},", current, acc)
             });
-            match sender
+            match client
+                .sender
                 .clone()
                 .try_send(format_args!("cluster-state {}\n", cluster_state_str).to_string())
             {
@@ -332,10 +296,10 @@ pub fn process_request(
             }
         }),
 
-        Request::Keys {} => apply_to_database(&dbs, &db, &sender, &|db| {
+        Request::Keys {} => apply_to_database(&dbs, &client, &|db| {
             let keys: Vec<String> = db
                 .map
-                .lock()
+                .read()
                 .unwrap()
                 .keys()
                 .filter(|key| !key.starts_with("$$")) // filter the secret keys
@@ -344,7 +308,8 @@ pub fn process_request(
             let keys = keys.iter().fold(String::from(""), |current, acc| {
                 format!("{},{}", current, acc)
             });
-            match sender
+            match client
+                .sender
                 .clone()
                 .try_send(format_args!("keys {}\n", keys).to_string())
             {
@@ -352,7 +317,6 @@ pub fn process_request(
                 _ => (),
             }
 
-            println!("DBKeys {}", keys);
             Response::Value {
                 key: String::from("keys"),
                 value: String::from(keys),
@@ -375,4 +339,98 @@ pub fn process_request(
         is_primary,
     );
     replication_result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::channel::mpsc::{channel, Receiver, Sender};
+    use std::collections::HashMap;
+
+    fn create_default_args() -> (Receiver<String>, Arc<Databases>, Client) {
+        let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender2, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
+        let dbs = Arc::new(Databases::new(
+            String::from("user"),
+            String::from("token"),
+            String::from(""),
+            sender1,
+            sender2,
+            keys_map,
+            1 as u128,
+        ));
+
+        dbs.node_state
+            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+
+        let (client, receiver) = Client::new_empty_and_receiver();
+
+        return (receiver, dbs, client);
+    }
+
+    fn assert_received(receiver: &mut Receiver<String>, expected: &str) {
+        match receiver.try_next() {
+            Ok(Some(message)) => assert_eq!(message, expected),
+            _ => assert!(false, "Receiver doesnt have any message"),
+        };
+    }
+
+    fn assert_valid_request(request: Response) {
+        assert_eq!(Response::Ok {}, request);
+    }
+
+    fn assert_invalid_request(request: Response) {
+        match request {
+            Response::Error { msg: _ } => assert!(true, "Request is invalid"),
+            _ => assert!(false, "Request should be invalid"),
+        };
+    }
+
+    #[test]
+    fn should_auth_correctly() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+
+        process_request("auth user wrong_token", &dbs, &mut client);
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        assert_received(&mut receiver, "invalid auth\n");
+
+        process_request("auth user token", &dbs, &mut client);
+        assert_eq!(client.auth.load(Ordering::SeqCst), true);
+        assert_received(&mut receiver, "valid auth\n");
+    }
+
+    #[test]
+    fn should_create_db() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        assert_received(&mut receiver, "create-db success\n");
+        (*dbs.map.read().unwrap())
+            .get("my-db")
+            .expect("my-db should exists");
+    }
+
+    #[test]
+    fn should_not_create_db_if_already_exist() {
+        let (_, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+
+        // @todo start dbs args with db already created, instead of relying on
+        // the correct function of create-db command
+        process_request("create-db my-db my-token", &dbs, &mut client);
+
+        assert_invalid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+    }
 }

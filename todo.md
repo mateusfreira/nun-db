@@ -1,4 +1,4 @@
-- [ ] Get Keys
+- [x] Get Keys
 - [ ] Data Replication
      - Lazy Centralized Protocols using algorithm Single Master with limited Transparency 
      - Write only on master, reads from anywhere (One point writes mutiple points reads)
@@ -19,10 +19,21 @@
                 If P receives a Coordinator message, it treats the sender as the coordinator.
      - [x] Add Join command
      - [x] Wire from secoundary
-     - [ ] Primary disconnection
-     - [ ] Implement replication transaction
-     - [ ] Implement ping command
+     - [x] Primary disconnection
+     - [x] not recovering the keys file
+     - [x] Implement replication transaction (Log based)
+     - [x] Implement recovery message 
+     - [x] Implement self election 
+     - [x] Create a database from secundary
+     - [x] Op log file reading as database
+     - [ ] Document how to backup the admin datatabase
+     - [ ] Document how the all election process works
+     - [ ] Document only snapshoted dbs are restored from disaster??? Should we change it?
      - [ ] Update library to use the cluster (Js)
+     - [ ] Compare performance with old version (argo + https://k6.io/open-source)
+     - [ ] What if oplog file became too big? We need a command to clean oplog file
+     - [ ] Some times election falling in ./tests/test-fail-primary-dbs.sh all
+     - [ ] Implement ping command
 - [ ] Read https://jepsen.io/analyses/redis-raft-1b3fbf6
 - [x] Add cli interface
 - [x] Remove the need to admin auth to use an database  

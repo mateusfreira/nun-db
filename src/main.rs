@@ -1,21 +1,11 @@
-extern crate bincode;
-extern crate chrono;
-extern crate clap;
-extern crate env_logger;
-extern crate futures;
-extern crate reqwest;
-extern crate rustc_serialize;
-extern crate serde;
-extern crate thread_id;
-extern crate timer;
-extern crate tiny_http;
-extern crate ws;
-
 mod lib;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
+use futures::executor::block_on;
+use futures::join;
 use lib::*;
 use std::thread;
+use std::time;
 
 use std::sync::Arc;
 
@@ -23,7 +13,7 @@ use clap::ArgMatches;
 
 fn main() -> Result<(), String> {
     env_logger::init();
-    let matches: ArgMatches = lib::commad_line::commands::prepare_args();
+    let matches: ArgMatches<'_> = lib::commad_line::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
         return start_db(
             matches.value_of("user").unwrap(),
@@ -35,6 +25,7 @@ fn main() -> Result<(), String> {
             start_match
                 .value_of("http-address")
                 .unwrap_or("0.0.0.0:3013"),
+            start_match.value_of("replicate-address").unwrap_or(""),
         );
     } else {
         return lib::commad_line::commands::exec_command(&matches);
@@ -47,33 +38,64 @@ fn start_db(
     tcp_address: &str,
     ws_address: &str,
     http_address: &str,
+    replicate_address: &str,
 ) -> Result<(), String> {
     let (replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =
         channel(100);
 
     let (start_replication_sender, start_replication_receiver): (Sender<String>, Receiver<String>) =
         channel(100);
+    let keys_map = disk_ops::load_keys_map_from_disk();
+    println!("Keys {}", keys_map.len());
 
     let dbs = lib::db_ops::create_init_dbs(
         user.to_string(),
         pwd.to_string(),
+        tcp_address.to_string(),
         start_replication_sender,
         replication_sender.clone(),
+        keys_map,
     );
 
     let db_replication_start = dbs.clone();
     let tcp_address_to_relication = Arc::new(tcp_address.to_string());
-    let replication_thread_creator = thread::spawn(|| {
+    let replication_thread_creator = async {
+        println!("lib::replication_ops::start_replication_creator_thread");
         lib::replication_ops::start_replication_creator_thread(
             start_replication_receiver,
             db_replication_start,
             tcp_address_to_relication,
-        );
-    });
+        )
+        .await
+    };
 
     let db_replication = dbs.clone();
-    let replication_thread = thread::spawn(|| {
-        lib::replication_ops::start_replication_thread(replication_receiver, db_replication);
+    let replication_thread = async {
+        lib::replication_ops::start_replication_thread(replication_receiver, db_replication).await
+    };
+
+    let replicate_address_to_thread = Arc::new(replicate_address.to_string());
+
+    let dbs_self_election = dbs.clone();
+    let tcp_address_to_election = Arc::new(tcp_address.to_string());
+    let _joi_thread = thread::spawn(move || {
+        let tcp_address_to_election = tcp_address_to_election.to_string();
+        thread::sleep(time::Duration::from_millis(3000)); // 2s to finishe inicial election
+        if replicate_address_to_thread.len() > 0 {
+            let mut parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
+            parts.sort();
+            for replica in parts {
+                if replica != tcp_address_to_election {
+                    let replica_str = String::from(replica);
+                    lib::replication_ops::ask_to_join(
+                        &replica_str,
+                        &tcp_address_to_election,
+                        &dbs_self_election.user,
+                        &dbs_self_election.pwd,
+                    );
+                }
+            }
+        }
     });
 
     let db_election = dbs.clone();
@@ -97,16 +119,15 @@ fn start_db(
     let _http_thread =
         thread::spawn(|| lib::network::http_ops::start_http_client(db_http, http_address));
 
-    lib::network::tcp_ops::start_tcp_client(dbs.clone(), tcp_address);
-
-    ws_thread.join().expect("ws thread died");
-    replication_thread
-        .join()
-        .expect("replication_thread thread died");
-
-    replication_thread_creator
-        .join()
-        .expect("replication_thread_creator thread died");
+    let tcp_address = String::from(tcp_address.clone());
+    let tcp_thread =
+        thread::spawn(move || lib::network::tcp_ops::start_tcp_client(dbs.clone(), &tcp_address));
+    let join_all_promises = async {
+        join!(replication_thread_creator, replication_thread);
+    };
+    block_on(join_all_promises);
+    tcp_thread.join().expect("Tcp thread died");
+    ws_thread.join().expect("WS thread died");
 
     election_thread.join().expect("election_thread thread died");
     Ok(())

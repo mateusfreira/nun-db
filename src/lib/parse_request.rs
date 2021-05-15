@@ -1,4 +1,4 @@
-use bo::*;
+use crate::bo::*;
 
 impl Request {
     pub fn parse(input: &str) -> Result<Request, String> {
@@ -20,6 +20,27 @@ impl Request {
                     None => return Err(format!("replicate-snapshot must contain a db name")),
                 };
                 Ok(Request::ReplicateSnapshot { db: db_name })
+            }
+            Some("replicate-since") => {
+                let nome_name = match command.next() {
+                    Some(db_name) => db_name.replace("\n", ""),
+                    None => return Err(format!("replicate-since must contain a node name")),
+                };
+
+                let start_at_str = match command.next() {
+                    Some(start_at_str) => start_at_str.replace("\n", ""),
+                    None => return Err(format!("replicate-since must contain a start at")),
+                };
+
+                let start_at = match start_at_str.parse::<u64>() {
+                    Ok(start_at) => start_at,
+                    Err(_) => return Err(format!("replicate-since start_at must be a u64")),
+                };
+
+                Ok(Request::ReplicateSince {
+                    node_name: nome_name,
+                    start_at: start_at,
+                })
             }
             Some("cluster-state") => Ok(Request::ClusterState {}),
             Some("election") => match command.next() {
@@ -205,7 +226,10 @@ impl Request {
                         "".to_string()
                     }
                 };
-                Ok(Request::ReplicateRemove { db: db.to_string(), key : key })
+                Ok(Request::ReplicateRemove {
+                    db: db.to_string(),
+                    key: key,
+                })
             }
             Some("replicate") => {
                 let db = match command.next() {

@@ -89,7 +89,7 @@ pub fn prepare_args<'a>() -> ArgMatches<'static> {
         .get_matches();
 }
 
-pub fn exec_command(matches: &ArgMatches) -> Result<(), String> {
+pub fn exec_command(matches: &ArgMatches<'_>) -> Result<(), String> {
     if let Some(create_db_matches) = matches.subcommand_matches("create-db") {
         println!(
             "Will create the database {}, with the token {}",
