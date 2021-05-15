@@ -524,16 +524,6 @@ mod tests {
     }
 
     #[test]
-    fn connection_decrement_should_not_overflow() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
-        assert_eq!(db.connections_count(), 0);
-
-        db.dec_connections(); // decrement a zeroed connection should do nothing
-
-        assert_eq!(db.connections_count(), 0);
-    }
-
-    #[test]
     fn add_database_should_add_a_database() {
         let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
