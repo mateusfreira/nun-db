@@ -132,9 +132,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         }),
 
         Request::UseDb { name, token } => {
-            println!("here");
             let mut db_name_state = client.selected_db.name.write().unwrap();
-            println!("here1");
             let dbs = dbs.map.read().expect("Could not lock the mao mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => {
