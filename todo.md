@@ -26,6 +26,8 @@
      - [x] Implement self election 
      - [x] Create a database from secundary
      - [x] Op log file reading as database
+     - [x] Implement full sync (if op log fail)
+     - [ ] Stop using timestamp
      - [ ] Document how to backup the admin datatabase
      - [ ] Document how the all election process works
      - [ ] Document only snapshoted dbs are restored from disaster??? Should we change it?
@@ -34,7 +36,7 @@
      - [ ] What if oplog file became too big? We need a command to clean oplog file
      - [ ] Some times election falling in ./tests/test-fail-primary-dbs.sh all
      - [ ] Implement ping command
-     - [ ] Implement full sync (if op log fail)
+     - [ ] Add command to estimate op log size
 - [ ] Read https://jepsen.io/analyses/redis-raft-1b3fbf6
 - [x] Add cli interface
 - [x] Remove the need to admin auth to use an database  
