@@ -28,6 +28,7 @@
      - [x] Op log file reading as database
      - [x] Implement full sync (if op log fail)
      - [ ] Stop using timestamp
+     - [ ] Document db creation and deletion lock while restoring a replica set...
      - [ ] Document how to backup the admin datatabase
      - [ ] Document how the all election process works
      - [ ] Document only snapshoted dbs are restored from disaster??? Should we change it?

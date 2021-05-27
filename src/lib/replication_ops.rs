@@ -769,6 +769,83 @@ mod tests {
     }
 
     #[test]
+    fn should_return_all_the_opps_if_since_is_0() {
+        prep_env();
+        let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (_sender_fake, _): (Sender<String>, Receiver<String>) = channel(10);
+
+        let keys_map = HashMap::new();
+        let dbs = Arc::new(Databases::new(
+            String::from(""),
+            String::from(""),
+            String::from(""),
+            sender.clone(),
+            sender.clone(),
+            keys_map,
+            1 as u128,
+        ));
+
+        dbs.node_state
+            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+
+        let dbs_to_thread = dbs.clone();
+        let replication_thread = thread::spawn(|| async {
+            start_replication_thread(replication_receiver, dbs_to_thread).await;
+        });
+
+        let name = String::from("sample");
+        let token = String::from("sample");
+        let (client, _) = Client::new_empty_and_receiver();
+        create_db(&name, &token, &dbs, &client);
+        {
+            let map = dbs.map.read().unwrap();
+            let db = map.get(&name).unwrap();
+            set_key_value("key".to_string(), "value1".to_string(), db);
+            set_key_value("key".to_string(), "value3".to_string(), db);
+        }
+
+        thread::sleep(time::Duration::from_millis(10));
+        sender
+            .try_send("create-db sample sample".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate sample key value".to_string())
+            .unwrap();
+
+        sender
+            .try_send("replicate sample key value1".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate sample key value3".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate-snapshot sample".to_string())
+            .unwrap();
+
+        sender.try_send("exit".to_string()).unwrap();
+        aw!(replication_thread.join().expect("thread died"));
+        let commands = get_pendding_opps_since(0, &dbs);
+        println!("{:?}", commands);
+        assert!(commands.len() == 3, "Only 3 command expected");
+        assert!(
+            commands[0] == "create-db sample sample",
+            "Create sample comman error"
+        );
+
+        assert!(
+            commands[1] == "replicate sample key value3",
+            "Expected secound message to be sample key value3"
+        );
+
+        assert!(
+            commands[2] == "replicate-snapshot sample",
+            "Replicate message expected"
+        );
+
+        clean_env();
+     }
+
+    #[test]
     fn should_return_the_pedding_ops() {
         prep_env();
         let start = SystemTime::now();
