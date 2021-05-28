@@ -464,7 +464,7 @@ pub async fn start_replication_creator_thread(
                                 }
                             }
                             _ => {
-                                eprintln!("Error tryting to replicate to a nonexistest member")
+                                eprintln!("Error tryting to replicate to a non existent member")
                             }
                         }
                     }
@@ -690,6 +690,7 @@ fn start_sync_process(writer: &mut std::io::BufWriter<&std::net::TcpStream>, tcp
         ))
         .unwrap();
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -714,7 +715,7 @@ mod tests {
         let _f = get_log_file_append_mode(); //Get here to ensure the file exists
     }
 
-    fn prep_env() -> (Arc<Databases>, Sender<String>, Receiver<String>){
+    fn prep_env() -> (Arc<Databases>, Sender<String>, Receiver<String>) {
         thread::sleep(time::Duration::from_millis(50)); //give it time to the opperation to happen
         let (sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
 
@@ -782,9 +783,6 @@ mod tests {
     #[test]
     fn should_return_all_the_opps_if_since_is_0() {
         let (dbs, mut sender, replication_receiver) = prep_env();
-        dbs.node_state
-            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
-
         let dbs_to_thread = dbs.clone();
         let replication_thread = thread::spawn(|| async {
             start_replication_thread(replication_receiver, dbs_to_thread).await;
@@ -836,7 +834,7 @@ mod tests {
         );
 
         clean_env();
-     }
+    }
 
     #[test]
     fn should_return_the_pedding_ops() {

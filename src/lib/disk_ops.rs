@@ -21,6 +21,7 @@ const DIR_NAME: &'static str = "dbs";
 const KEYS_FILE: &'static str = "keys-nun.keys";
 
 const OP_LOG_FILE: &'static str = "oplog-nun.op";
+
 const OP_KEY_SIZE: usize = 8;
 const OP_DB_ID_SIZE: usize = 8;
 const OP_TIME_SIZE: usize = 8;
