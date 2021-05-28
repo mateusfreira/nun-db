@@ -701,6 +701,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
     use tokio_test;
 
+    pub const SAMPLE_NAME: &'static str = "sample";
+
     macro_rules! aw {
         ($e:expr) => {
             tokio_test::block_on($e)
@@ -712,13 +714,9 @@ mod tests {
         let _f = get_log_file_append_mode(); //Get here to ensure the file exists
     }
 
-    fn prep_env() {
+    fn prep_env() -> (Arc<Databases>, Sender<String>, Receiver<String>){
         thread::sleep(time::Duration::from_millis(50)); //give it time to the opperation to happen
-    }
-
-    #[test]
-    fn should_return_0_if_no_pending_ops() {
-        let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
 
         let keys_map = HashMap::new();
         let dbs = Arc::new(Databases::new(
@@ -731,6 +729,19 @@ mod tests {
             1 as u128,
         ));
 
+        dbs.node_state
+            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+
+        let name = String::from(SAMPLE_NAME);
+        let token = String::from(SAMPLE_NAME);
+        let (client, _) = Client::new_empty_and_receiver();
+        create_db(&name, &token, &dbs, &client);
+        (dbs, sender, replication_receiver)
+    }
+
+    #[test]
+    fn should_return_0_if_no_pending_ops() {
+        let (dbs, mut sender, replication_receiver) = prep_env();
         let dbs_to_thread = dbs.clone();
 
         let replication_thread = thread::spawn(|| async {
@@ -770,21 +781,7 @@ mod tests {
 
     #[test]
     fn should_return_all_the_opps_if_since_is_0() {
-        prep_env();
-        let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
-        let (_sender_fake, _): (Sender<String>, Receiver<String>) = channel(10);
-
-        let keys_map = HashMap::new();
-        let dbs = Arc::new(Databases::new(
-            String::from(""),
-            String::from(""),
-            String::from(""),
-            sender.clone(),
-            sender.clone(),
-            keys_map,
-            1 as u128,
-        ));
-
+        let (dbs, mut sender, replication_receiver) = prep_env();
         dbs.node_state
             .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
 
@@ -793,13 +790,9 @@ mod tests {
             start_replication_thread(replication_receiver, dbs_to_thread).await;
         });
 
-        let name = String::from("sample");
-        let token = String::from("sample");
-        let (client, _) = Client::new_empty_and_receiver();
-        create_db(&name, &token, &dbs, &client);
         {
             let map = dbs.map.read().unwrap();
-            let db = map.get(&name).unwrap();
+            let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
             set_key_value("key".to_string(), "value1".to_string(), db);
             set_key_value("key".to_string(), "value3".to_string(), db);
         }
@@ -847,7 +840,7 @@ mod tests {
 
     #[test]
     fn should_return_the_pedding_ops() {
-        prep_env();
+        let (dbs, _sender, _replication_receiver) = prep_env();
         let start = SystemTime::now();
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
@@ -855,34 +848,14 @@ mod tests {
         let test_start =
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
         let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
-        let (_sender_fake, _): (Sender<String>, Receiver<String>) = channel(10);
-
-        let keys_map = HashMap::new();
-        let dbs = Arc::new(Databases::new(
-            String::from(""),
-            String::from(""),
-            String::from(""),
-            sender.clone(),
-            sender.clone(),
-            keys_map,
-            1 as u128,
-        ));
-
-        dbs.node_state
-            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
-
         let dbs_to_thread = dbs.clone();
         let replication_thread = thread::spawn(|| async {
             start_replication_thread(replication_receiver, dbs_to_thread).await;
         });
 
-        let name = String::from("sample");
-        let token = String::from("sample");
-        let (client, _) = Client::new_empty_and_receiver();
-        create_db(&name, &token, &dbs, &client);
         {
             let map = dbs.map.read().unwrap();
-            let db = map.get(&name).unwrap();
+            let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
             //set_key_value("key".to_string(), "value".to_string(), db);
             set_key_value("key".to_string(), "value1".to_string(), db);
             set_key_value("key".to_string(), "value3".to_string(), db);
@@ -938,19 +911,7 @@ mod tests {
             .expect("Time went backwards");
         let test_start =
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
-        let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
-
-        let keys_map = HashMap::new();
-        let dbs = Arc::new(Databases::new(
-            String::from(""),
-            String::from(""),
-            String::from(""),
-            sender.clone(),
-            sender.clone(),
-            keys_map,
-            1 as u128,
-        ));
-
+        let (dbs, mut sender, replication_receiver) = prep_env();
         let dbs_to_thread = dbs.clone();
 
         let replication_thread = thread::spawn(|| async {
@@ -968,7 +929,6 @@ mod tests {
             set_key_value("key".to_string(), "value7".to_string(), db);
             set_key_value("key".to_string(), "value8".to_string(), db); // 11 recoreds on the op log
         }
-        //thread::sleep(time::Duration::from_millis(20));
 
         sender
             .try_send("replicate $admin key value".to_string())
