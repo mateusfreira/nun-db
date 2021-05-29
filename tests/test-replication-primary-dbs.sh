@@ -1,6 +1,7 @@
 #!/bin/bash
 
 command=$1
+command_to_run=$2
 echo $command;
 
 primaryHttpAddress="127.0.0.1:9092"
@@ -96,18 +97,33 @@ then
         RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$secoundary2HttpAddress" exec "auth mateus mateus; use-db \$admin mateus; snapshot;"
 fi
 
+if [ $command = "print-election-primary" ] || [ $command = "all" ]
+then
+	RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$primaryHttpAddress" exec "cluster-state";
+fi
 
-if [ $command = "create-vue" ] || [ $command = "all" ]
+if [ $command = "print-election-2" ] || [ $command = "all" ]
+then
+	RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$secoundary1HttpAddress" exec "cluster-state";
+fi
+
+if [ $command = "print-election-3" ] || [ $command = "all" ]
+then
+	RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$secoundary2HttpAddress" exec "cluster-state";
+fi
+
+
+if [ $command = "create-vue" ] || [ $command = "create-all" ]   || [ $command = "all" ]
 then
 	RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$primaryHttpAddress" exec "auth mateus mateus; create-db vue vue_pwd; use-db vue vue_pwd; snapshot";
 fi
 
-if [ $command = "create-test" ] || [ $command = "all" ]
+if [ $command = "create-test" ] || [ $command = "create-all" ]  || [ $command = "all" ]
 then
 	RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$primaryHttpAddress" exec "auth mateus mateus; create-db test test-pwd; use-db test test-pwd; snapshot";
 fi
 
-if [ $command = "create-blog" ] || [ $command = "all" ]
+if [ $command = "create-blog" ] || [ $command = "create-all" ]   || [ $command = "all" ]
 then
 	RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$primaryHttpAddress" exec "auth mateus mateus; create-db analitcs-blog analitcs-blog-2903uyi9ewrj; use-db analitcs-blog analitcs-blog-2903uyi9ewrj; snapshot;";
 fi

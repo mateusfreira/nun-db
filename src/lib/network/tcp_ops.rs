@@ -80,6 +80,37 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                                             }
                                         }
                                     }
+                                    ClusterRole::Secoundary => {
+                                        //New elections are only needed if the security fails
+                                        println!(
+                                            "Cluster member disconnected role : {} name {} : ",
+                                            m.role, m.name
+                                        );
+                                        // Need this fake_client here because client is borrow in
+                                        // `&*client.cluster_member.lock().unwrap()` as immutable
+                                        // leave request does not use the client, therefore this is safe!
+                                        // Double borrow here may leads to an dead lock
+                                        // Fake client needs to be auth
+                                        let (mut fake_client, _) = Client::new_empty_and_receiver();
+                                        fake_client.auth.store(true, Ordering::Relaxed);
+                                        match process_request(
+                                            &format!("replicate-leave {}", m.name),// Won't force election
+                                            &dbs,
+                                            &mut fake_client,
+                                        ) {
+                                            Response::Error { msg } => {
+                                                println!("Error: {}", msg);
+                                                client
+                                                    .sender
+                                                    .try_send(format!("error {} \n", msg))
+                                                    .unwrap();
+                                            }
+                                            _ => {
+                                                client.sender.try_send(format!("ok \n")).unwrap();
+                                                println!("Success processed");
+                                            }
+                                        }
+                                    }
                                     _ => (),
                                 }
                             }
