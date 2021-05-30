@@ -81,7 +81,6 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                                         }
                                     }
                                     ClusterRole::Secoundary => {
-                                        //New elections are only needed if the security fails
                                         println!(
                                             "Cluster member disconnected role : {} name {} : ",
                                             m.role, m.name
@@ -94,7 +93,7 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                                         let (mut fake_client, _) = Client::new_empty_and_receiver();
                                         fake_client.auth.store(true, Ordering::Relaxed);
                                         match process_request(
-                                            &format!("replicate-leave {}", m.name),// Won't force election
+                                            &format!("replicate-leave {}", m.name), // Won't force election
                                             &dbs,
                                             &mut fake_client,
                                         ) {

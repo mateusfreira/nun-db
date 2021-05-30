@@ -5,7 +5,6 @@ use futures::executor::block_on;
 use futures::join;
 use lib::*;
 use std::thread;
-use std::time;
 
 use std::sync::Arc;
 

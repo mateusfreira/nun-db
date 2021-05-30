@@ -18,7 +18,6 @@ pub fn join_as_secoundary_and_start_election(dbs: &Arc<Databases>, name: &String
 
 pub fn start_inital_election(dbs: Arc<Databases>) {
     println!("will run start_inital_election");
-    thread::sleep(time::Duration::from_millis(2000));
     println!("calling start_election");
     start_election(&dbs);
 }
@@ -33,7 +32,7 @@ pub fn start_election(dbs: &Arc<Databases>) {
         Ok(_) => (),
         Err(_) => println!("Error election cadidate"),
     }
-    thread::sleep(time::Duration::from_millis(2000));
+    thread::sleep(time::Duration::from_millis(1000));
     if dbs.is_eligible() {
         println!("winning the election");
         election_win(&dbs);

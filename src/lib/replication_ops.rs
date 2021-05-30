@@ -11,6 +11,7 @@ use std::sync::Arc;
 use crate::bo::*;
 use crate::db_ops::*;
 use crate::disk_ops::*;
+use crate::election_ops::*;
 
 pub fn replicate_web(replication_sender: &Sender<String>, message: String) {
     match replication_sender.clone().try_send(message.clone()) {
@@ -394,37 +395,50 @@ pub async fn start_replication_creator_thread(
                 match command_str {
                     // Add secoundary to primary
                     Some("secoundary") => {
-                        // Notify the members in the cluster about the new member
-                        send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                        let guard = add_sencoundary_to_primary(
-                            &sender,
-                            name.clone(),
-                            &tcp_addr,
-                            dbs.clone(),
-                            receiver,
-                        );
-                        guards.push(guard);
+                        if !dbs.has_cluster_memeber(&name) {
+                            // Notify the members in the cluster about the new member
+                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                            let guard = add_sencoundary_to_primary(
+                                &sender,
+                                name.clone(),
+                                &tcp_addr,
+                                dbs.clone(),
+                                receiver,
+                            );
+                            guards.push(guard);
+                        } else {
+                            panic!("Re-adding a secoundary that alrady exists!!!")
+                        }
                     }
 
                     Some("leave") => {
-                        println!(
-                            "[start_replication_creator_thread] removing {} from the cluster!!",
-                            name
-                        );
-                        dbs.remove_cluster_member(&name);
+                        if name != tcp_addr.to_string() {
+                            println!(
+                                "[start_replication_creator_thread] removing {} from the cluster!!",
+                                name
+                            );
+                            dbs.remove_cluster_member(&name);
+                        } else {
+                            println!("[start_replication_creator_thread-leave] Ignoring {} because it is from the same server sending the message!",  start_replicate_message)
+                        }
                     }
                     // Add primary to secoundary
                     Some("primary") => {
-                        // Notify the members in the cluster about the new member
-                        send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                        let guard = add_primary_to_secoundary(
-                            &sender,
-                            name.clone(),
-                            &tcp_addr,
-                            dbs.clone(),
-                            receiver,
-                        );
-                        guards.push(guard);
+                        if !dbs.has_cluster_memeber(&name) {
+                            // Notify the members in the cluster about the new member
+                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                            let guard = add_primary_to_secoundary(
+                                &sender,
+                                name.clone(),
+                                &tcp_addr,
+                                dbs.clone(),
+                                receiver,
+                            );
+                            guards.push(guard);
+                        } else {
+                            // If it is already exists I just need to promote it
+                            dbs.promote_member(&name);
+                        }
                     }
                     // Add secoundary to secoundary
                     Some("new-secoundary") => {
@@ -484,6 +498,16 @@ pub async fn start_replication_creator_thread(
                             Ok(_) => (),
                             Err(_) => println!("Error election cadidate"),
                         }
+                    }
+                    Some("force-new-election") => {
+                        //start_new_election(&dbs)//Slow operation here
+                    }
+                    Some(n) => {
+                        println!(
+                            "[start_replication_creator_thread] ignoring command not implement {}",
+                            n
+                        );
+                        ()
                     }
                     _ => (),
                 }

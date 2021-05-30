@@ -21,6 +21,7 @@ then
     echo "Will clean up the dbs"
      ./tests/test-replication-primary-dbs.sh kill
      ./tests/test-replication-primary-dbs.sh clean 
+     sleep $timeoutSpeep
 fi
 
 if [ $command = "start-1" ] || [ $command = "all" ]
@@ -54,7 +55,7 @@ fi
 if [ $command = "all" ]
 then
     echo "Giving time to election!!!"
-    sleep 10
+    sleep 20
 fi
 
 if [ $command = "cluster-state" ]
@@ -138,6 +139,7 @@ then
     snapshotResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; use-db test-db test-db-key; snapshot")
     echo "Snapshot result $snapshotResult"
     ./tests/test-replication-primary-dbs.sh save-admin
+    sleep $timeoutSpeep
 
     echo "Will start the tests of failure"
 

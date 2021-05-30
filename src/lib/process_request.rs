@@ -217,7 +217,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 Ok(_n) => (),
                 Err(e) => println!("Request::leave sender.send Error: {}", e),
             }
-            start_new_election(dbs);
+            start_new_election(&dbs); //Slow operation here
             Response::Ok {}
         }),
 

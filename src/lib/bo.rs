@@ -349,6 +349,21 @@ impl Databases {
         let members = cluster_state.members.lock().unwrap();
         return members.contains_key(name);
     }
+
+    pub fn promote_member(&self, name: &String) {
+        println!("Promoting {} to primary", name);
+        let sender = {
+            let cluster_state = (*self).cluster_state.lock().unwrap();
+            let members = cluster_state.members.lock().unwrap();
+            let old_member = members.get(name).unwrap();
+            old_member.sender.clone()
+        };
+        self.add_cluster_member(ClusterMember {
+            name: name.clone(),
+            role: ClusterRole::Primary,
+            sender: sender,
+        });
+    }
 }
 
 pub struct Watchers {
