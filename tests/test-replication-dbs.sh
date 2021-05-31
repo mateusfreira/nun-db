@@ -146,6 +146,6 @@ echo "========================================This is great success \o/!!!!!====
 
 echo "Will clean up the dbs"
 ./tests/commons.sh kill 2>/dev/null
-./tests/commons.sh clean 
+./tests/commons.sh clean 2>/dev/null
 
 exit 0
