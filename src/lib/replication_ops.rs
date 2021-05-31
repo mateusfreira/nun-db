@@ -11,7 +11,6 @@ use std::sync::Arc;
 use crate::bo::*;
 use crate::db_ops::*;
 use crate::disk_ops::*;
-use crate::election_ops::*;
 
 pub fn replicate_web(replication_sender: &Sender<String>, message: String) {
     match replication_sender.clone().try_send(message.clone()) {
@@ -530,10 +529,9 @@ pub fn ask_to_join(replica_addr: &String, tcp_addr: &String, user: &String, pwd:
                 .unwrap();
             writer.flush().unwrap();
         }
-        Err(e) => {
-            eprint!(
-                "Could not stablish the connection to replicate to {} error : {}",
-                replica_addr, e
+        Err(_) => {
+            println!(
+                "Could not stablish the connection to replicate to {}, verify if the replica set is up", replica_addr
             )
         }
     }

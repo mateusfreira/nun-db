@@ -13,5 +13,5 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: mkdir dbs&&cargo test --verbose
-#    - name: Test replication mult server
-#      run: ./tests/test-replication-dbs.sh
+    - name: Test replication mult server
+      run: ./tests/test-replication-dbs.sh

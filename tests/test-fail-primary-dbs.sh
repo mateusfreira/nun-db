@@ -19,8 +19,8 @@ then
     echo "Add trap if all"
     trap "kill 0" EXIT
     echo "Will clean up the dbs"
-     ./tests/test-replication-primary-dbs.sh kill
-     ./tests/test-replication-primary-dbs.sh clean 
+     ./tests/commons.sh kill
+     ./tests/commons.sh clean 
      sleep $timeoutSpeep
 fi
 
@@ -138,7 +138,7 @@ then
     echo  "Will snapshot all admin dbs before killing them and the test database"
     snapshotResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; use-db test-db test-db-key; snapshot")
     echo "Snapshot result $snapshotResult"
-    ./tests/test-replication-primary-dbs.sh save-admin
+    ./tests/commons.sh save-admin
     sleep $timeoutSpeep
 
     echo "Will start the tests of failure"
@@ -192,7 +192,7 @@ then
         echo "Request Ok"
     fi
     echo "Will restart primary"
-     ./tests/test-replication-primary-dbs.sh start-1
+     ./tests/commons.sh start-1
     echo "Will wait for the replication"
      sleep 10 # 
      echo "Read from the secoundary"

@@ -27,7 +27,7 @@
      - [x] Create a database from secundary
      - [x] Op log file reading as database
      - [x] Implement full sync (if op log fail)
-     - [ ] Fix primary disconnections election problem
+     - [x] Fix primary disconnections election problem
      - [ ] Stop using timestamp
      - [ ] Document db creation and deletion lock while restoring a replica set...
      - [ ] Document how to backup the admin datatabase

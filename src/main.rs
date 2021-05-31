@@ -79,7 +79,6 @@ fn start_db(
     let tcp_address_to_election = Arc::new(tcp_address.to_string());
     let _joi_thread = thread::spawn(move || {
         let tcp_address_to_election = tcp_address_to_election.to_string();
-        //thread::sleep(time::Duration::from_millis(3000)); // 2s to finishe inicial election
         if replicate_address_to_thread.len() > 0 {
             let mut parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
             parts.sort();
