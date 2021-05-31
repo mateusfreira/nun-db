@@ -35,11 +35,14 @@ fi
 if [ $command = "clean" ] || [ $command = "all" ]
 then
     echo "Clean!"
-    rm .secoundary.pid
-    rm .primary.pid
-    rm dbs/*
-    rm dbs1/*
-    rm dbs2/*
+    rm .secoundary.pid  2> /dev/null
+    rm .primary.pid 2> /dev/null
+    rm dbs/* 2> /dev/null || true
+    rm dbs1/* 2> /dev/null || true
+    rm dbs2/* 2> /dev/null || true
+    mkdir dbs/ 2> /dev/null || true
+    mkdir dbs1/ 2> /dev/null || true
+    mkdir dbs2/ 2> /dev/null || true
 fi
 
 if [ $command = "all" ]
