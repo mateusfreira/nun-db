@@ -77,23 +77,8 @@ fn start_db(
 
     let dbs_self_election = dbs.clone();
     let tcp_address_to_election = Arc::new(tcp_address.to_string());
-    let _joi_thread = thread::spawn(move || {
-        let tcp_address_to_election = tcp_address_to_election.to_string();
-        if replicate_address_to_thread.len() > 0 {
-            let mut parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
-            parts.sort();
-            for replica in parts {
-                if replica != tcp_address_to_election {
-                    let replica_str = String::from(replica);
-                    lib::replication_ops::ask_to_join(
-                        &replica_str,
-                        &tcp_address_to_election,
-                        &dbs_self_election.user,
-                        &dbs_self_election.pwd,
-                    );
-                }
-            }
-        }
+    let joi_thread = thread::spawn(move || {
+        lib::replication_ops::ask_to_join_all_replicas(&replicate_address_to_thread, &tcp_address_to_election.to_string(), &dbs_self_election.user.to_string(), &dbs_self_election.pwd.to_string())
     });
 
     let db_election = dbs.clone();
@@ -128,5 +113,6 @@ fn start_db(
     ws_thread.join().expect("WS thread died");
 
     election_thread.join().expect("election_thread thread died");
+    joi_thread.join().expect("joi_thread thread died");
     Ok(())
 }

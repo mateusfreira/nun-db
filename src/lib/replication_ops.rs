@@ -498,9 +498,6 @@ pub async fn start_replication_creator_thread(
                             Err(_) => println!("Error election cadidate"),
                         }
                     }
-                    Some("force-new-election") => {
-                        //start_new_election(&dbs)//Slow operation here
-                    }
                     Some(n) => {
                         println!(
                             "[start_replication_creator_thread] ignoring command not implement {}",
@@ -514,6 +511,24 @@ pub async fn start_replication_creator_thread(
             None => println!("replication::try_next::Empty message"),
         }
     }
+}
+
+pub fn ask_to_join_all_replicas(replicate_address_to_thread: &String, tcp_addr: &String, user: &String, pwd: &String) {
+        if replicate_address_to_thread.len() > 0 {
+            let mut parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
+            parts.sort();
+            for replica in parts {
+                if replica != tcp_addr {
+                    let replica_str = String::from(replica);
+                    ask_to_join(
+                        &replica_str,
+                        &tcp_addr,
+                        &user,
+                        &pwd,
+                    );
+                }
+            }
+        }
 }
 
 pub fn ask_to_join(replica_addr: &String, tcp_addr: &String, user: &String, pwd: &String) {
@@ -651,55 +666,59 @@ fn get_full_sync_opps(dbs: &Arc<Databases>) -> Vec<String> {
     opps_vec
 }
 
+fn get_pendding_opps_since_from_sync(since: u64, dbs: &Arc<Databases>) -> Vec<String> {
+    let opps = read_operations_since(since);
+    let mut opps_vec = Vec::new();
+    let id_keys_map = { dbs.id_keys_map.read().unwrap().clone() };
+    let id_name_db_map = { dbs.id_name_db_map.read().unwrap().clone() };
+    let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock"); // Will lock db creation I think
+    let mut last_db = "$admin";
+    let mut db: &Database = dbs_map.get(last_db).unwrap();
+    let mut vec_ops_to_process: Vec<&OpLogRecord> = opps.values().collect();
+    vec_ops_to_process.sort_by(|a, b| a.opp_position.cmp(&b.opp_position)); //sort by insert order
+    for op_record in vec_ops_to_process {
+        println!("{}", op_record.to_string());
+        //@todo sort by key to optmize speed
+        let opp = match op_record.opp {
+            ReplicateOpp::Update => {
+                let db_name = id_name_db_map.get(&op_record.db).unwrap();
+                let key_str = id_keys_map.get(&op_record.key).unwrap();
+                if last_db != db_name {
+                    db = dbs_map.get(db_name).unwrap();
+                    last_db = db_name;
+                }
+                let value = match get_key_value_new(key_str, &db) {
+                    Response::Value { key: _key, value } => value,
+                    _ => String::from(""),
+                };
+                format!("replicate {} {} {}", db_name, key_str, value)
+            }
+            ReplicateOpp::Remove => {
+                let db_name = id_name_db_map.get(&op_record.db).unwrap();
+                let key_str = id_keys_map.get(&op_record.key).unwrap();
+                format!("replicate-remove {} {}", db_name, key_str)
+            }
+            ReplicateOpp::CreateDb => {
+                let db_name = id_name_db_map.get(&op_record.db).unwrap();
+                let db = dbs_map.get(db_name).unwrap();
+                make_create_db_command(&db)
+            }
+
+            ReplicateOpp::Snapshot => {
+                let db_name = id_name_db_map.get(&op_record.db).unwrap();
+                format!("replicate-snapshot {}", db_name)
+            }
+        };
+        opps_vec.push(opp);
+    }
+    opps_vec
+}
+
 pub fn get_pendding_opps_since(since: u64, dbs: &Arc<Databases>) -> Vec<String> {
     if since == 0 {
         get_full_sync_opps(dbs)
     } else {
-        let opps = read_operations_since(since);
-        let mut opps_vec = Vec::new();
-        let id_keys_map = { dbs.id_keys_map.read().unwrap().clone() };
-        let id_name_db_map = { dbs.id_name_db_map.read().unwrap().clone() };
-        let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock"); // Will lock db creation I think
-        let mut last_db = "$admin";
-        let mut db: &Database = dbs_map.get(last_db).unwrap();
-        let mut vec_ops_to_process: Vec<&OpLogRecord> = opps.values().collect();
-        vec_ops_to_process.sort_by(|a, b| a.opp_position.cmp(&b.opp_position)); //sort by insert order
-        for op_record in vec_ops_to_process {
-            println!("{}", op_record.to_string());
-            // todo sort by key to optmize speed
-            let opp = match op_record.opp {
-                ReplicateOpp::Update => {
-                    let db_name = id_name_db_map.get(&op_record.db).unwrap();
-                    let key_str = id_keys_map.get(&op_record.key).unwrap();
-                    if last_db != db_name {
-                        db = dbs_map.get(db_name).unwrap();
-                        last_db = db_name;
-                    }
-                    let value = match get_key_value_new(key_str, &db) {
-                        Response::Value { key: _key, value } => value,
-                        _ => String::from(""),
-                    };
-                    format!("replicate {} {} {}", db_name, key_str, value)
-                }
-                ReplicateOpp::Remove => {
-                    let db_name = id_name_db_map.get(&op_record.db).unwrap();
-                    let key_str = id_keys_map.get(&op_record.key).unwrap();
-                    format!("replicate-remove {} {}", db_name, key_str)
-                }
-                ReplicateOpp::CreateDb => {
-                    let db_name = id_name_db_map.get(&op_record.db).unwrap();
-                    let db = dbs_map.get(db_name).unwrap();
-                    make_create_db_command(&db)
-                }
-
-                ReplicateOpp::Snapshot => {
-                    let db_name = id_name_db_map.get(&op_record.db).unwrap();
-                    format!("replicate-snapshot {}", db_name)
-                }
-            };
-            opps_vec.push(opp);
-        }
-        opps_vec
+        get_pendding_opps_since_from_sync(since, dbs)
     }
 }
 
