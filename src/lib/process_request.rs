@@ -204,7 +204,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         }),
 
         Request::Join { name } => apply_if_auth(&client.auth, &|| {
-            join_as_secoundary_and_start_election(&dbs, &name);
+            add_as_secoundary(&dbs, &name);
             Response::Ok {}
         }),
 

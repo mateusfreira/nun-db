@@ -4,18 +4,6 @@ use std::{thread, time};
 
 use crate::bo::*;
 
-pub fn join_as_secoundary_and_start_election(dbs: &Arc<Databases>, name: &String) {
-    match dbs
-        .start_replication_sender
-        .clone()
-        .try_send(format!("secoundary {}", name))
-    {
-        Ok(_n) => (),
-        Err(e) => println!("Request::Join sender.send Error: {}", e),
-    }
-    start_election(dbs);
-}
-
 pub fn start_inital_election(dbs: Arc<Databases>) {
     println!("will run start_inital_election");
     println!("calling start_election");

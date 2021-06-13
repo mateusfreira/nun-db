@@ -78,7 +78,12 @@ fn start_db(
     let dbs_self_election = dbs.clone();
     let tcp_address_to_election = Arc::new(tcp_address.to_string());
     let joi_thread = thread::spawn(move || {
-        lib::replication_ops::ask_to_join_all_replicas(&replicate_address_to_thread, &tcp_address_to_election.to_string(), &dbs_self_election.user.to_string(), &dbs_self_election.pwd.to_string())
+        lib::replication_ops::ask_to_join_all_replicas(
+            &replicate_address_to_thread,
+            &tcp_address_to_election.to_string(),
+            &dbs_self_election.user.to_string(),
+            &dbs_self_election.pwd.to_string(),
+        )
     });
 
     let db_election = dbs.clone();

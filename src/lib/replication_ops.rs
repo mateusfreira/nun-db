@@ -513,22 +513,22 @@ pub async fn start_replication_creator_thread(
     }
 }
 
-pub fn ask_to_join_all_replicas(replicate_address_to_thread: &String, tcp_addr: &String, user: &String, pwd: &String) {
-        if replicate_address_to_thread.len() > 0 {
-            let mut parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
-            parts.sort();
-            for replica in parts {
-                if replica != tcp_addr {
-                    let replica_str = String::from(replica);
-                    ask_to_join(
-                        &replica_str,
-                        &tcp_addr,
-                        &user,
-                        &pwd,
-                    );
-                }
+pub fn ask_to_join_all_replicas(
+    replicate_address_to_thread: &String,
+    tcp_addr: &String,
+    user: &String,
+    pwd: &String,
+) {
+    if replicate_address_to_thread.len() > 0 {
+        let mut parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
+        parts.sort();
+        for replica in parts {
+            if replica != tcp_addr {
+                let replica_str = String::from(replica);
+                ask_to_join(&replica_str, &tcp_addr, &user, &pwd);
             }
         }
+    }
 }
 
 pub fn ask_to_join(replica_addr: &String, tcp_addr: &String, user: &String, pwd: &String) {
@@ -730,6 +730,17 @@ fn start_sync_process(writer: &mut std::io::BufWriter<&std::net::TcpStream>, tcp
             last_op_time()
         ))
         .unwrap();
+}
+
+pub fn add_as_secoundary(dbs: &Arc<Databases>, name: &String) {
+    match dbs
+        .start_replication_sender
+        .clone()
+        .try_send(format!("secoundary {}", name))
+    {
+        Ok(_n) => (),
+        Err(e) => println!("Request::Join sender.send Error: {}", e),
+    }
 }
 
 #[cfg(test)]
