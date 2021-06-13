@@ -230,7 +230,6 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 Ok(_n) => (),
                 Err(e) => println!("Request::replicateLeave sender.send Error: {}", e),
             }
-            start_election(dbs);
             Response::Ok {}
         }),
 
