@@ -22,7 +22,7 @@ fi
 if [ $command = "snapshot-all" ] || [ $command = "all" ] || [ $command = "kill" ]
 then
     echo "snapshot all dbs"
-    RUST_BACKTRACE=1 ./target/debug/nun-db --user $NUN_USER  -p $NUN_PWD --host "http://$primaryHttpAddress" exec "use-db \$admin $password; keys" | tr "," "\n" | sort  | grep -v "lost+found" | tail +5 | xargs  -I '{}' nun-db --user $user  -p $password --host "http://$primaryHttpAddress" exec "replicate-snapshot {}"
+    (RUST_BACKTRACE=1 ./target/debug/nun-db --user $NUN_USER  -p $NUN_PWD --host "http://$primaryHttpAddress" exec "use-db \$admin $password; keys" | tr "," "\n" | sort  | grep -v "lost+found" | tail +5 | xargs  -I '{}' nun-db --user $user  -p $password --host "http://$primaryHttpAddress" exec "replicate-snapshot {}") &> /dev/null
 fi
 
 
