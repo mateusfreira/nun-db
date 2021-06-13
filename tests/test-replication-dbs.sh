@@ -10,39 +10,23 @@ user="mateus"
 password="$user"
 timeoutSpeep=0.1
 RUST_BACKTRACE=0
+command=$1
 
 cargo build
-./target/debug/nun-db --user $user -p $user start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "127.0.0.1:3058">primary.log&
-PRIMARY_PID=$!
-
-echo "Starting secoundary 1"
-
-./target/debug/nun-db --user $user -p $user start --http-address "$secoundary1HttpAddress" --tcp-address "127.0.0.1:3016" --ws-address "127.0.0.1:3057">secoundary.log&
-SECOUNDARY_PID=$!
-
-
-echo "Starting secoundary 2"
-
-./target/debug/nun-db --user $user -p $user start --http-address "$secoundary2HttpAddress" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059">secoundary.2.log&
-SECOUNDARY_2_PID=$!
+echo "Add trap if all"
+trap "kill 0" EXIT
+echo "Will clean up the dbs"
+./tests/commons.sh kill 2> /dev/null
+./tests/commons.sh clean 2> /dev/null
 sleep $timeoutSpeep
 
-echo "Will Connect the secoundaries to the primary"
-echo "Election result: $electionResult"
-joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; join 127.0.0.1:3016")
-echo "Join 1 done"
+./tests/commons.sh start-1
+./tests/commons.sh start-2
+./tests/commons.sh start-3
 
-clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Primary: $clusterStatePrimary"
-
-joinResult=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; join 127.0.0.1:3018")
-echo "Join 2 done"
 sleep $timeoutSpeep
-clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Primary: $clusterStatePrimary"
 sleep $timeoutSpeep
-clusterStateSecoundary=$(curl -s -X "POST" "$secoundary1HttpAddress" -d "auth $user $user; cluster-state;")
-echo "Final Secoundary: $clusterStateSecoundary"
+sleep $timeoutSpeep
 
 clusterStateSecoundary2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "auth $user $user; cluster-state;")
 echo "Final Secoundary2: $clusterStateSecoundary2"
@@ -109,12 +93,12 @@ echo "Total of $elapsed seconds elapsed for process"
 
 
 echo "Will start the tests of failure"
-
-#kill -9 $PRIMARY_PID
-kill -9 $SECOUNDARY_PID
+cat .secoundary.pid | head -1 | xargs -I '{}' kill -9 {}
 sleep $timeoutSpeep
+
 echo 'Rebuilding the cluster'
 sleep $timeoutSpeep
+
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")
 echo $clusterStatePrimary
 
@@ -158,5 +142,10 @@ if [ "$clusterStatePrimary" !=  "$expectedCluster" ]; then
 else
     echo "Request Ok"
 fi
+echo "========================================This is great success \o/!!!!!======================="
+
+echo "Will clean up the dbs"
+./tests/commons.sh kill 2>/dev/null
+./tests/commons.sh clean 2>/dev/null
 
 exit 0

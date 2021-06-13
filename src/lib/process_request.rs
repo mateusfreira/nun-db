@@ -132,9 +132,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         }),
 
         Request::UseDb { name, token } => {
-            println!("here");
             let mut db_name_state = client.selected_db.name.write().unwrap();
-            println!("here1");
             let dbs = dbs.map.read().expect("Could not lock the mao mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => {
@@ -174,7 +172,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 println!("Got a set primary from {} but already is a primary... There is going to be war!!", name);
             }
             match dbs
-                .start_replication_sender
+                .replication_supervisor_sender
                 .clone()
                 .try_send(format!("primary {}", name))
             {
@@ -206,39 +204,38 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         }),
 
         Request::Join { name } => apply_if_auth(&client.auth, &|| {
-            join_as_secoundary_and_start_election(&dbs, &name);
+            add_as_secoundary(&dbs, &name);
             Response::Ok {}
         }),
 
         Request::Leave { name } => apply_if_auth(&client.auth, &|| {
             match dbs
-                .start_replication_sender
+                .replication_supervisor_sender
                 .clone()
                 .try_send(format!("leave {}", name))
             {
                 Ok(_n) => (),
                 Err(e) => println!("Request::leave sender.send Error: {}", e),
             }
-            start_new_election(dbs);
+            start_new_election(&dbs); //Slow operation here
             Response::Ok {}
         }),
 
         Request::ReplicateLeave { name } => apply_if_auth(&client.auth, &|| {
             match dbs
-                .start_replication_sender
+                .replication_supervisor_sender
                 .clone()
                 .try_send(format!("leave {}", name))
             {
                 Ok(_n) => (),
                 Err(e) => println!("Request::replicateLeave sender.send Error: {}", e),
             }
-            start_election(dbs);
             Response::Ok {}
         }),
 
         Request::ReplicateJoin { name } => apply_if_auth(&client.auth, &|| {
             match dbs
-                .start_replication_sender
+                .replication_supervisor_sender
                 .clone()
                 .try_send(format!("new-secoundary {}", name))
             {
@@ -253,7 +250,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
             start_at,
         } => apply_if_auth(&client.auth, &|| {
             match dbs
-                .start_replication_sender
+                .replication_supervisor_sender
                 .clone()
                 .try_send(format!("replicate-since-to {} {}", node_name, start_at))
             {

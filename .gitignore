@@ -11,3 +11,7 @@ Cargo.lock
 # Ignore data file
 dbs/
 *.log
+*.data
+*.op
+*.madadata
+*.pid

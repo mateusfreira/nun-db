@@ -369,8 +369,8 @@ fn add_sencoundary_to_secoundary(
  *
  */
 
-pub async fn start_replication_creator_thread(
-    mut replication_start_receiver: Receiver<String>,
+pub async fn start_replication_supervisor(
+    mut replication_supervisor_receiver: Receiver<String>,
     dbs: Arc<Databases>,
     tcp_addr: Arc<String>,
 ) {
@@ -378,7 +378,7 @@ pub async fn start_replication_creator_thread(
     let mut guards = Vec::with_capacity(10); // Max 10 servers
     loop {
         println!("[start_replication_creator_thread] loop");
-        let message_opt = replication_start_receiver.next().await;
+        let message_opt = replication_supervisor_receiver.next().await;
         match message_opt {
             Some(start_replicate_message) => {
                 println!(
@@ -394,37 +394,50 @@ pub async fn start_replication_creator_thread(
                 match command_str {
                     // Add secoundary to primary
                     Some("secoundary") => {
-                        // Notify the members in the cluster about the new member
-                        send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                        let guard = add_sencoundary_to_primary(
-                            &sender,
-                            name.clone(),
-                            &tcp_addr,
-                            dbs.clone(),
-                            receiver,
-                        );
-                        guards.push(guard);
+                        if !dbs.has_cluster_memeber(&name) {
+                            // Notify the members in the cluster about the new member
+                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                            let guard = add_sencoundary_to_primary(
+                                &sender,
+                                name.clone(),
+                                &tcp_addr,
+                                dbs.clone(),
+                                receiver,
+                            );
+                            guards.push(guard);
+                        } else {
+                            panic!("Re-adding a secoundary that alrady exists!!!")
+                        }
                     }
 
                     Some("leave") => {
-                        println!(
-                            "[start_replication_creator_thread] removing {} from the cluster!!",
-                            name
-                        );
-                        dbs.remove_cluster_member(&name);
+                        if name != tcp_addr.to_string() {
+                            println!(
+                                "[start_replication_creator_thread] removing {} from the cluster!!",
+                                name
+                            );
+                            dbs.remove_cluster_member(&name);
+                        } else {
+                            println!("[start_replication_creator_thread-leave] Ignoring {} because it is from the same server sending the message!",  start_replicate_message)
+                        }
                     }
                     // Add primary to secoundary
                     Some("primary") => {
-                        // Notify the members in the cluster about the new member
-                        send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                        let guard = add_primary_to_secoundary(
-                            &sender,
-                            name.clone(),
-                            &tcp_addr,
-                            dbs.clone(),
-                            receiver,
-                        );
-                        guards.push(guard);
+                        if !dbs.has_cluster_memeber(&name) {
+                            // Notify the members in the cluster about the new member
+                            send_cluster_state_to_the_new_member(&sender, &dbs, &name);
+                            let guard = add_primary_to_secoundary(
+                                &sender,
+                                name.clone(),
+                                &tcp_addr,
+                                dbs.clone(),
+                                receiver,
+                            );
+                            guards.push(guard);
+                        } else {
+                            // If it is already exists I just need to promote it
+                            dbs.promote_member(&name);
+                        }
                     }
                     // Add secoundary to secoundary
                     Some("new-secoundary") => {
@@ -464,7 +477,7 @@ pub async fn start_replication_creator_thread(
                                 }
                             }
                             _ => {
-                                eprintln!("Error tryting to replicate to a nonexistest member")
+                                eprintln!("Error tryting to replicate to a non existent member")
                             }
                         }
                     }
@@ -485,10 +498,35 @@ pub async fn start_replication_creator_thread(
                             Err(_) => println!("Error election cadidate"),
                         }
                     }
+                    Some(n) => {
+                        println!(
+                            "[start_replication_creator_thread] ignoring command not implement {}",
+                            n
+                        );
+                        ()
+                    }
                     _ => (),
                 }
             }
             None => println!("replication::try_next::Empty message"),
+        }
+    }
+}
+
+pub fn ask_to_join_all_replicas(
+    replicate_address_to_thread: &String,
+    tcp_addr: &String,
+    user: &String,
+    pwd: &String,
+) {
+    if replicate_address_to_thread.len() > 0 {
+        let mut parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
+        parts.sort();
+        for replica in parts {
+            if replica != tcp_addr {
+                let replica_str = String::from(replica);
+                ask_to_join(&replica_str, &tcp_addr, &user, &pwd);
+            }
         }
     }
 }
@@ -506,10 +544,9 @@ pub fn ask_to_join(replica_addr: &String, tcp_addr: &String, user: &String, pwd:
                 .unwrap();
             writer.flush().unwrap();
         }
-        Err(e) => {
-            eprint!(
-                "Could not stablish the connection to replicate to {} error : {}",
-                replica_addr, e
+        Err(_) => {
+            println!(
+                "Could not stablish the connection to replicate to {}, verify if the replica set is up", replica_addr
             )
         }
     }
@@ -591,11 +628,49 @@ pub fn auth_on_replication(
     }
 }
 
-pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<String> {
+fn make_create_db_command(db: &Database) -> String {
+    let db_name = db.name.clone();
+    let key_str = String::from(TOKEN_KEY);
+    let token = match get_key_value_new(&key_str, &db) {
+        Response::Value { key: _key, value } => value,
+        _ => String::from("none"),
+    };
+    format!("create-db {} {}", db_name, token)
+}
+
+fn get_full_sync_opps(dbs: &Arc<Databases>) -> Vec<String> {
+    println!("Will perform a full sync!");
+    let mut opps_vec = Vec::new();
+    let dbs = dbs.map.read().unwrap(); // Will lock db creation and deletion for a long time...
+    let db_list: Vec<&Database> = dbs.values().collect();
+    for db in db_list {
+        let db_name = db.name.clone();
+        if db_name != ADMIN_DB {
+            println!("Praparing the db {}", db_name);
+            opps_vec.push(make_create_db_command(&db));
+            let map_values = {
+                let values = db.map.read().unwrap();
+                values.clone()
+            };
+            for (key, value) in &map_values {
+                if key != TOKEN_KEY && key != CONNECTIONS_KEY {
+                    opps_vec.push(format!("replicate {} {} {}", db_name, key, value));
+                }
+            }
+
+            opps_vec.push(format!("replicate-snapshot {}", db_name));
+            println!("Done the the db {}", db_name);
+        }
+    }
+
+    opps_vec
+}
+
+fn get_pendding_opps_since_from_sync(since: u64, dbs: &Arc<Databases>) -> Vec<String> {
+    let opps = read_operations_since(since);
+    let mut opps_vec = Vec::new();
     let id_keys_map = { dbs.id_keys_map.read().unwrap().clone() };
     let id_name_db_map = { dbs.id_name_db_map.read().unwrap().clone() };
-    let opps = read_operations_since(timestamp);
-    let mut opps_vec = Vec::new();
     let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock"); // Will lock db creation I think
     let mut last_db = "$admin";
     let mut db: &Database = dbs_map.get(last_db).unwrap();
@@ -603,7 +678,7 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
     vec_ops_to_process.sort_by(|a, b| a.opp_position.cmp(&b.opp_position)); //sort by insert order
     for op_record in vec_ops_to_process {
         println!("{}", op_record.to_string());
-        // todo sort by key to optmize speed
+        //@todo sort by key to optmize speed
         let opp = match op_record.opp {
             ReplicateOpp::Update => {
                 let db_name = id_name_db_map.get(&op_record.db).unwrap();
@@ -626,12 +701,7 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
             ReplicateOpp::CreateDb => {
                 let db_name = id_name_db_map.get(&op_record.db).unwrap();
                 let db = dbs_map.get(db_name).unwrap();
-                let key_str = String::from(TOKEN_KEY);
-                let token = match get_key_value_new(&key_str, &db) {
-                    Response::Value { key: _key, value } => value,
-                    _ => String::from("none"),
-                };
-                format!("create-db {} {}", db_name, token)
+                make_create_db_command(&db)
             }
 
             ReplicateOpp::Snapshot => {
@@ -644,6 +714,14 @@ pub fn get_pendding_opps_since(timestamp: u64, dbs: &Arc<Databases>) -> Vec<Stri
     opps_vec
 }
 
+pub fn get_pendding_opps_since(since: u64, dbs: &Arc<Databases>) -> Vec<String> {
+    if since == 0 {
+        get_full_sync_opps(dbs)
+    } else {
+        get_pendding_opps_since_from_sync(since, dbs)
+    }
+}
+
 fn start_sync_process(writer: &mut std::io::BufWriter<&std::net::TcpStream>, tcp_addr: &String) {
     writer
         .write_fmt(format_args!(
@@ -653,6 +731,18 @@ fn start_sync_process(writer: &mut std::io::BufWriter<&std::net::TcpStream>, tcp
         ))
         .unwrap();
 }
+
+pub fn add_as_secoundary(dbs: &Arc<Databases>, name: &String) {
+    match dbs
+        .replication_supervisor_sender
+        .clone()
+        .try_send(format!("secoundary {}", name))
+    {
+        Ok(_n) => (),
+        Err(e) => println!("Request::Join sender.send Error: {}", e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -663,6 +753,8 @@ mod tests {
     use std::time;
     use std::time::{SystemTime, UNIX_EPOCH};
     use tokio_test;
+
+    pub const SAMPLE_NAME: &'static str = "sample";
 
     macro_rules! aw {
         ($e:expr) => {
@@ -675,13 +767,9 @@ mod tests {
         let _f = get_log_file_append_mode(); //Get here to ensure the file exists
     }
 
-    fn prep_env() {
+    fn prep_env() -> (Arc<Databases>, Sender<String>, Receiver<String>) {
         thread::sleep(time::Duration::from_millis(50)); //give it time to the opperation to happen
-    }
-
-    #[test]
-    fn should_return_0_if_no_pending_ops() {
-        let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
 
         let keys_map = HashMap::new();
         let dbs = Arc::new(Databases::new(
@@ -694,6 +782,19 @@ mod tests {
             1 as u128,
         ));
 
+        dbs.node_state
+            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+
+        let name = String::from(SAMPLE_NAME);
+        let token = String::from(SAMPLE_NAME);
+        let (client, _) = Client::new_empty_and_receiver();
+        create_db(&name, &token, &dbs, &client);
+        (dbs, sender, replication_receiver)
+    }
+
+    #[test]
+    fn should_return_0_if_no_pending_ops() {
+        let (dbs, mut sender, replication_receiver) = prep_env();
         let dbs_to_thread = dbs.clone();
 
         let replication_thread = thread::spawn(|| async {
@@ -732,8 +833,64 @@ mod tests {
     }
 
     #[test]
+    fn should_return_all_the_opps_if_since_is_0() {
+        let (dbs, mut sender, replication_receiver) = prep_env();
+        let dbs_to_thread = dbs.clone();
+        let replication_thread = thread::spawn(|| async {
+            start_replication_thread(replication_receiver, dbs_to_thread).await;
+        });
+
+        {
+            let map = dbs.map.read().unwrap();
+            let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
+            set_key_value("key".to_string(), "value1".to_string(), db);
+            set_key_value("key".to_string(), "value3".to_string(), db);
+        }
+
+        thread::sleep(time::Duration::from_millis(10));
+        sender
+            .try_send("create-db sample sample".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate sample key value".to_string())
+            .unwrap();
+
+        sender
+            .try_send("replicate sample key value1".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate sample key value3".to_string())
+            .unwrap();
+        sender
+            .try_send("replicate-snapshot sample".to_string())
+            .unwrap();
+
+        sender.try_send("exit".to_string()).unwrap();
+        aw!(replication_thread.join().expect("thread died"));
+        let commands = get_pendding_opps_since(0, &dbs);
+        println!("{:?}", commands);
+        assert!(commands.len() == 3, "Only 3 command expected");
+        assert!(
+            commands[0] == "create-db sample sample",
+            "Create sample comman error"
+        );
+
+        assert!(
+            commands[1] == "replicate sample key value3",
+            "Expected secound message to be sample key value3"
+        );
+
+        assert!(
+            commands[2] == "replicate-snapshot sample",
+            "Replicate message expected"
+        );
+
+        clean_env();
+    }
+
+    #[test]
     fn should_return_the_pedding_ops() {
-        prep_env();
+        let (dbs, _sender, _replication_receiver) = prep_env();
         let start = SystemTime::now();
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
@@ -741,34 +898,14 @@ mod tests {
         let test_start =
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
         let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
-        let (_sender_fake, _): (Sender<String>, Receiver<String>) = channel(10);
-
-        let keys_map = HashMap::new();
-        let dbs = Arc::new(Databases::new(
-            String::from(""),
-            String::from(""),
-            String::from(""),
-            sender.clone(),
-            sender.clone(),
-            keys_map,
-            1 as u128,
-        ));
-
-        dbs.node_state
-            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
-
         let dbs_to_thread = dbs.clone();
         let replication_thread = thread::spawn(|| async {
             start_replication_thread(replication_receiver, dbs_to_thread).await;
         });
 
-        let name = String::from("sample");
-        let token = String::from("sample");
-        let (client, _) = Client::new_empty_and_receiver();
-        create_db(&name, &token, &dbs, &client);
         {
             let map = dbs.map.read().unwrap();
-            let db = map.get(&name).unwrap();
+            let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
             //set_key_value("key".to_string(), "value".to_string(), db);
             set_key_value("key".to_string(), "value1".to_string(), db);
             set_key_value("key".to_string(), "value3".to_string(), db);
@@ -824,19 +961,7 @@ mod tests {
             .expect("Time went backwards");
         let test_start =
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
-        let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
-
-        let keys_map = HashMap::new();
-        let dbs = Arc::new(Databases::new(
-            String::from(""),
-            String::from(""),
-            String::from(""),
-            sender.clone(),
-            sender.clone(),
-            keys_map,
-            1 as u128,
-        ));
-
+        let (dbs, mut sender, replication_receiver) = prep_env();
         let dbs_to_thread = dbs.clone();
 
         let replication_thread = thread::spawn(|| async {
@@ -854,7 +979,6 @@ mod tests {
             set_key_value("key".to_string(), "value7".to_string(), db);
             set_key_value("key".to_string(), "value8".to_string(), db); // 11 recoreds on the op log
         }
-        //thread::sleep(time::Duration::from_millis(20));
 
         sender
             .try_send("replicate $admin key value".to_string())

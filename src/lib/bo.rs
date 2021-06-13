@@ -133,7 +133,7 @@ pub struct Databases {
     pub id_keys_map: std::sync::RwLock<HashMap<u64, String>>,
     pub to_snapshot: RwLock<Vec<String>>,
     pub cluster_state: Mutex<ClusterState>,
-    pub start_replication_sender: Sender<String>,
+    pub replication_supervisor_sender: Sender<String>,
     pub replication_sender: Sender<String>,
     pub node_state: Arc<AtomicUsize>,
     pub tcp_address: String,
@@ -242,7 +242,7 @@ impl Databases {
         user: String,
         pwd: String,
         tcp_address: String,
-        start_replication_sender: Sender<String>,
+        replication_supervisor_sender: Sender<String>,
         replication_sender: Sender<String>,
         keys_map: HashMap<String, u64>,
         process_id: u128,
@@ -262,7 +262,7 @@ impl Databases {
             cluster_state: Mutex::new(ClusterState {
                 members: Mutex::new(HashMap::new()),
             }),
-            start_replication_sender: start_replication_sender,
+            replication_supervisor_sender: replication_supervisor_sender,
             replication_sender: replication_sender,
             user: user,
             pwd: pwd.to_string(),
@@ -348,6 +348,21 @@ impl Databases {
         let cluster_state = (*self).cluster_state.lock().unwrap();
         let members = cluster_state.members.lock().unwrap();
         return members.contains_key(name);
+    }
+
+    pub fn promote_member(&self, name: &String) {
+        println!("Promoting {} to primary", name);
+        let sender = {
+            let cluster_state = (*self).cluster_state.lock().unwrap();
+            let members = cluster_state.members.lock().unwrap();
+            let old_member = members.get(name).unwrap();
+            old_member.sender.clone()
+        };
+        self.add_cluster_member(ClusterMember {
+            name: name.clone(),
+            role: ClusterRole::Primary,
+            sender: sender,
+        });
     }
 }
 

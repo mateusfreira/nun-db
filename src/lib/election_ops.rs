@@ -4,21 +4,8 @@ use std::{thread, time};
 
 use crate::bo::*;
 
-pub fn join_as_secoundary_and_start_election(dbs: &Arc<Databases>, name: &String) {
-    match dbs
-        .start_replication_sender
-        .clone()
-        .try_send(format!("secoundary {}", name))
-    {
-        Ok(_n) => (),
-        Err(e) => println!("Request::Join sender.send Error: {}", e),
-    }
-    start_election(dbs);
-}
-
 pub fn start_inital_election(dbs: Arc<Databases>) {
     println!("will run start_inital_election");
-    thread::sleep(time::Duration::from_millis(3000));
     println!("calling start_election");
     start_election(&dbs);
 }
@@ -33,7 +20,7 @@ pub fn start_election(dbs: &Arc<Databases>) {
         Ok(_) => (),
         Err(_) => println!("Error election cadidate"),
     }
-    thread::sleep(time::Duration::from_millis(2000));
+    thread::sleep(time::Duration::from_millis(1000));
     if dbs.is_eligible() {
         println!("winning the election");
         election_win(&dbs);
@@ -77,7 +64,7 @@ pub fn election_eval(dbs: &Arc<Databases>, candidate_id: u128) -> Response {
 pub fn election_win(dbs: &Arc<Databases>) -> Response {
     println!("Setting this server as a primary!");
     match dbs
-        .start_replication_sender
+        .replication_supervisor_sender
         .clone()
         .try_send(format!("election-win self"))
     {

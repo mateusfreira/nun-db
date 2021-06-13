@@ -18,7 +18,7 @@ mod tests {
 
     #[test]
     fn should_clean_user_and_pwd() -> Result<(), String> {
-        let (start_replication_sender, _receiver): (Sender<String>, Receiver<String>) =
+        let (replication_supervisor_sender, _receiver): (Sender<String>, Receiver<String>) =
             channel(100);
         let (replication_sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         let tcp_addr = String::from("127.0.0.1");
@@ -27,7 +27,7 @@ mod tests {
             String::from("mateus"),
             String::from("mateus-123"),
             tcp_addr,
-            start_replication_sender,
+            replication_supervisor_sender,
             replication_sender,
             keys_map,
         );

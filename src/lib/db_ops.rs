@@ -207,7 +207,7 @@ pub fn create_init_dbs(
     user: String,
     pwd: String,
     tcp_address: String,
-    start_replication_sender: Sender<String>,
+    replication_supervisor_sender: Sender<String>,
     replication_sender: Sender<String>,
     keys_map: HashMap<String, u64>,
 ) -> Arc<Databases> {
@@ -220,7 +220,7 @@ pub fn create_init_dbs(
         user,
         pwd,
         tcp_address,
-        start_replication_sender,
+        replication_supervisor_sender,
         replication_sender,
         keys_map,
         since_the_epoch.as_millis(),

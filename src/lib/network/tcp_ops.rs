@@ -30,6 +30,24 @@ pub fn start_tcp_client(dbs: Arc<Databases>, tcp_addressed: &str) {
     };
 }
 
+fn process_leave_request(leave_message: &String, dbs: &Arc<Databases>) {
+    // Need this fake_client here because client is borrow in
+    // `&*client.cluster_member.lock().unwrap()` as immutable
+    // leave request does not use the client, therefore this is safe!
+    // Double borrow here may leads to an dead lock
+    // Fake client needs to be auth
+    let (mut fake_client, _) = Client::new_empty_and_receiver();
+    fake_client.auth.store(true, Ordering::Relaxed);
+    match process_request(&leave_message, dbs, &mut fake_client) {
+        Response::Error { msg } => {
+            println!("Error: {} trying to process {}", msg, leave_message);
+        }
+        _ => {
+            println!("{} Success processed", leave_message);
+        }
+    }
+}
+
 fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
     let mut reader = BufReader::new(&stream);
     let writer = &mut BufWriter::new(&stream);
@@ -46,45 +64,25 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                         println!("killing socket client, because of disconnected!!");
                         process_request("unwatch-all", &dbs, &mut client);
                         let member = &*client.cluster_member.lock().unwrap();
-                        match member {
-                            Some(m) => {
-                                match m.role {
-                                    ClusterRole::Primary => {
-                                        //New elections are only needed if the primary fails
-                                        println!(
-                                            "Cluster member disconnected role : {} name {} : ",
-                                            m.role, m.name
-                                        );
-                                        // Need this fake_client here because client is borrow in
-                                        // `&*client.cluster_member.lock().unwrap()` as immutable
-                                        // leave request does not use the client, therefore this is safe!
-                                        // Double borrow here may leads to an dead lock
-                                        // Fake client needs to be auth
-                                        let (mut fake_client, _) = Client::new_empty_and_receiver();
-                                        fake_client.auth.store(true, Ordering::Relaxed);
-                                        match process_request(
-                                            &format!("leave {}", m.name),
-                                            &dbs,
-                                            &mut fake_client,
-                                        ) {
-                                            Response::Error { msg } => {
-                                                println!("Error: {}", msg);
-                                                client
-                                                    .sender
-                                                    .try_send(format!("error {} \n", msg))
-                                                    .unwrap();
-                                            }
-                                            _ => {
-                                                client.sender.try_send(format!("ok \n")).unwrap();
-                                                println!("Success processed");
-                                            }
-                                        }
-                                    }
-                                    _ => (),
+                        if let Some(m) = member {
+                            match m.role {
+                                ClusterRole::Primary => {
+                                    println!(
+                                        "Primary Cluster member disconnected: {}",
+                                        m.name
+                                    );
+                                    process_leave_request(&format!("leave {}", m.name), &dbs);
                                 }
+                                ClusterRole::Secoundary => {
+                                    println!(
+                                        "Secoundary Cluster member disconnected: {}",
+                                        m.name
+                                    );
+                                    process_leave_request(&format!("replicate-leave {}", m.name), &dbs);// replicate-leave does not efornce election
+                                }
+                                _ => (),
                             }
-                            None => (),
-                        };
+                        }
                         client.left(&dbs);
                         break;
                     }
