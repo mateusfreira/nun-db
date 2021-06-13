@@ -42,8 +42,10 @@ fn start_db(
     let (replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =
         channel(100);
 
-    let (start_replication_sender, start_replication_receiver): (Sender<String>, Receiver<String>) =
-        channel(100);
+    let (replication_supervisor_sender, replication_supervisor_receiver): (
+        Sender<String>,
+        Receiver<String>,
+    ) = channel(100);
     let keys_map = disk_ops::load_keys_map_from_disk();
     println!("Keys {}", keys_map.len());
 
@@ -51,7 +53,7 @@ fn start_db(
         user.to_string(),
         pwd.to_string(),
         tcp_address.to_string(),
-        start_replication_sender,
+        replication_supervisor_sender,
         replication_sender.clone(),
         keys_map,
     );
@@ -59,9 +61,9 @@ fn start_db(
     let db_replication_start = dbs.clone();
     let tcp_address_to_relication = Arc::new(tcp_address.to_string());
     let replication_thread_creator = async {
-        println!("lib::replication_ops::start_replication_creator_thread");
-        lib::replication_ops::start_replication_creator_thread(
-            start_replication_receiver,
+        println!("lib::replication_ops::start_replication_supervisor");
+        lib::replication_ops::start_replication_supervisor(
+            replication_supervisor_receiver,
             db_replication_start,
             tcp_address_to_relication,
         )

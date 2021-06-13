@@ -369,8 +369,8 @@ fn add_sencoundary_to_secoundary(
  *
  */
 
-pub async fn start_replication_creator_thread(
-    mut replication_start_receiver: Receiver<String>,
+pub async fn start_replication_supervisor(
+    mut replication_supervisor_receiver: Receiver<String>,
     dbs: Arc<Databases>,
     tcp_addr: Arc<String>,
 ) {
@@ -378,7 +378,7 @@ pub async fn start_replication_creator_thread(
     let mut guards = Vec::with_capacity(10); // Max 10 servers
     loop {
         println!("[start_replication_creator_thread] loop");
-        let message_opt = replication_start_receiver.next().await;
+        let message_opt = replication_supervisor_receiver.next().await;
         match message_opt {
             Some(start_replicate_message) => {
                 println!(
@@ -734,7 +734,7 @@ fn start_sync_process(writer: &mut std::io::BufWriter<&std::net::TcpStream>, tcp
 
 pub fn add_as_secoundary(dbs: &Arc<Databases>, name: &String) {
     match dbs
-        .start_replication_sender
+        .replication_supervisor_sender
         .clone()
         .try_send(format!("secoundary {}", name))
     {

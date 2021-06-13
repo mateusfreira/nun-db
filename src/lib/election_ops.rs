@@ -64,7 +64,7 @@ pub fn election_eval(dbs: &Arc<Databases>, candidate_id: u128) -> Response {
 pub fn election_win(dbs: &Arc<Databases>) -> Response {
     println!("Setting this server as a primary!");
     match dbs
-        .start_replication_sender
+        .replication_supervisor_sender
         .clone()
         .try_send(format!("election-win self"))
     {

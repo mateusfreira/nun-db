@@ -172,7 +172,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 println!("Got a set primary from {} but already is a primary... There is going to be war!!", name);
             }
             match dbs
-                .start_replication_sender
+                .replication_supervisor_sender
                 .clone()
                 .try_send(format!("primary {}", name))
             {
@@ -210,7 +210,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
 
         Request::Leave { name } => apply_if_auth(&client.auth, &|| {
             match dbs
-                .start_replication_sender
+                .replication_supervisor_sender
                 .clone()
                 .try_send(format!("leave {}", name))
             {
@@ -223,7 +223,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
 
         Request::ReplicateLeave { name } => apply_if_auth(&client.auth, &|| {
             match dbs
-                .start_replication_sender
+                .replication_supervisor_sender
                 .clone()
                 .try_send(format!("leave {}", name))
             {
@@ -236,7 +236,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
 
         Request::ReplicateJoin { name } => apply_if_auth(&client.auth, &|| {
             match dbs
-                .start_replication_sender
+                .replication_supervisor_sender
                 .clone()
                 .try_send(format!("new-secoundary {}", name))
             {
@@ -251,7 +251,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
             start_at,
         } => apply_if_auth(&client.auth, &|| {
             match dbs
-                .start_replication_sender
+                .replication_supervisor_sender
                 .clone()
                 .try_send(format!("replicate-since-to {} {}", node_name, start_at))
             {
