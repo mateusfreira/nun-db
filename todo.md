@@ -38,7 +38,7 @@
      - [ ] What if oplog file became too big? We need a command to clean oplog file
      - [ ] Some times election falling in ./tests/test-fail-primary-dbs.sh all
      - [ ] Implement ping command
-     - [ ] Add command to estimate op log size
+     - [x] Add command to estimate op log size -> Create a issue to it
 - [ ] Read https://jepsen.io/analyses/redis-raft-1b3fbf6
 - [x] Add cli interface
 - [x] Remove the need to admin auth to use an database  

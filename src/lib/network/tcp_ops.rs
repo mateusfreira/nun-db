@@ -80,7 +80,13 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                                     );
                                     process_leave_request(&format!("replicate-leave {}", m.name), &dbs);// replicate-leave does not efornce election
                                 }
-                                _ => (),
+                                ClusterRole::StartingUp => {
+                                    println!(
+                                        "ClusterMember {} died while still in StartingUp mode",
+                                        m.name
+                                    );
+                                    process_leave_request(&format!("replicate-leave {}", m.name), &dbs);// replicate-leave does not efornce election
+                                }
                             }
                         }
                         client.left(&dbs);

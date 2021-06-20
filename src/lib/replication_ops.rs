@@ -208,6 +208,8 @@ pub async fn start_replication_thread(
                         let key_id = get_key_id(key, &dbs);
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove);
                     }
+
+                    Request::SetPrimary { name : _ } => (),//Election events won't be registed in OpLog
                     _ => println!(
                         "Ignoring command {} in replication oplog register! not unimplemented!",
                         message
