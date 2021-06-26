@@ -12,7 +12,7 @@ We believe we can keep Nun DB simple and at the same time it can power lots of d
 
 Checkout our examples of integration and see what we can do for your app
 
-* Vue.js + Nun DB
+* [Vue.js + Nun DB jsfiddle](https://jsfiddle.net/2op63ctk/)
 * React.js Realtime Todo app 
 
 
