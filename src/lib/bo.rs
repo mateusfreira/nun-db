@@ -1,4 +1,5 @@
 use futures::channel::mpsc::{channel, Receiver, Sender};
+use log;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -202,13 +203,13 @@ impl Database {
         match watchers.get(&key) {
             Some(senders) => {
                 for sender in senders {
-                    println!("Sending to another client");
+                    log::debug!("Sending to another client");
                     match sender.clone().try_send(
                         format_args!("changed {} {}\n", key.to_string(), value.to_string())
                             .to_string(),
                     ) {
                         Ok(_n) => (),
-                        Err(e) => println!("Request::Set sender.send Error: {}", e),
+                        Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
                     }
                 }
             }
@@ -223,12 +224,12 @@ impl Database {
         match watchers.get_mut(&key) {
             Some(senders) => {
                 for sender in senders {
-                    println!("Sending to another client");
+                    log::debug!("Sending to another client");
                     match sender
                         .try_send(format_args!("changed {} <Empty>\n", key.to_string()).to_string())
                     {
                         Ok(_n) => (),
-                        Err(e) => println!("Request::Remove sender.send Error: {}", e),
+                        Err(e) => log::warn!("Request::Remove sender.send Error: {}", e),
                     }
                 }
             }
@@ -280,7 +281,7 @@ impl Databases {
     }
 
     pub fn add_database(&self, name: &String, database: Database) -> Response {
-        println!("add_database {}", name.to_string());
+        log::debug!("add_database {}", name.to_string());
         let mut dbs = self.map.write().unwrap();
         match dbs.get(name) {
             None => {
@@ -316,7 +317,7 @@ impl Databases {
         let cluster_state = (*self).cluster_state.lock().unwrap();
         let mut members = cluster_state.members.lock().unwrap();
         if member.role == ClusterRole::Primary {
-            println!("New primary added channging all old to secundary");
+            log::debug!("New primary added channging all old to secundary");
             for (name, old_member) in members.clone().iter() {
                 members.insert(
                     name.to_string(),
@@ -351,7 +352,7 @@ impl Databases {
     }
 
     pub fn promote_member(&self, name: &String) {
-        println!("Promoting {} to primary", name);
+        log::info!("Promoting {} to primary", name);
         let sender = {
             let cluster_state = (*self).cluster_state.lock().unwrap();
             let members = cluster_state.members.lock().unwrap();

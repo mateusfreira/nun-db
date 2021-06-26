@@ -264,7 +264,7 @@ impl Request {
                         })
                     }
                     None => {
-                        println!("replicate needs to provide an db name");
+                        log::debug!("replicate needs to provide an db name");
                         Err(format!("no command sent"))
                     }
                 };

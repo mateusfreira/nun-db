@@ -1,4 +1,5 @@
 use clap::{App, Arg, ArgMatches, SubCommand};
+use log;
 
 pub fn prepare_args<'a>() -> ArgMatches<'static> {
     return App::new("Nun-db")
@@ -91,7 +92,7 @@ pub fn prepare_args<'a>() -> ArgMatches<'static> {
 
 pub fn exec_command(matches: &ArgMatches<'_>) -> Result<(), String> {
     if let Some(create_db_matches) = matches.subcommand_matches("create-db") {
-        println!(
+        log::debug!(
             "Will create the database {}, with the token {}",
             create_db_matches.value_of("db-name").unwrap(),
             create_db_matches.value_of("db-token").unwrap()
@@ -116,7 +117,7 @@ pub fn exec_command(matches: &ArgMatches<'_>) -> Result<(), String> {
     }
 
     if let Some(exec_matches) = matches.subcommand_matches("exec") {
-        println!(
+        log::debug!(
             "Will execute the commands database {}",
             exec_matches.value_of("commands").unwrap(),
         );

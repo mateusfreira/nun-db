@@ -1,3 +1,4 @@
+use log;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::{thread, time};
@@ -5,55 +6,56 @@ use std::{thread, time};
 use crate::bo::*;
 
 pub fn start_inital_election(dbs: Arc<Databases>) {
-    println!("will run start_inital_election");
-    println!("calling start_election");
+    log::info!("will run start_inital_election");
+    log::info!("calling start_election");
     start_election(&dbs);
 }
 
 pub fn start_election(dbs: &Arc<Databases>) {
-    println!("Will start election");
+    log::info!("Will start election");
     match dbs
         .replication_sender
         .clone()
         .try_send(format!("election cadidate {}", dbs.process_id))
     {
         Ok(_) => (),
-        Err(_) => println!("Error election cadidate"),
+        Err(_) => log::warn!("Error election cadidate"),
     }
     thread::sleep(time::Duration::from_millis(1000));
     if dbs.is_eligible() {
-        println!("winning the election");
+        log::info!("winning the election");
         election_win(&dbs);
     }
 }
 
 pub fn start_new_election(dbs: &Arc<Databases>) {
-    println!("Will start new election");
+    log::info!("Will start new election");
     dbs.node_state
         .swap(ClusterRole::StartingUp as usize, Ordering::Relaxed);
     start_election(&dbs);
 }
 
 pub fn election_eval(dbs: &Arc<Databases>, candidate_id: u128) -> Response {
-    println!(
+    log::info!(
         "Election received candidate_id : {} ,dbs.process_id : {}",
-        candidate_id, dbs.process_id
+        candidate_id,
+        dbs.process_id
     );
 
     if candidate_id == dbs.process_id {
-        println!("Ignoring same node election");
+        log::debug!("Ignoring same node election");
     } else if candidate_id > dbs.process_id {
-        println!("Will run the start_election");
+        log::info!("Will run the start_election");
         start_election(dbs);
     } else {
-        println!("Won't run the start_election");
+        log::info!("Won't run the start_election");
         match dbs
             .replication_sender
             .clone()
             .try_send(format!("election alive"))
         {
             Ok(_) => (),
-            Err(_) => println!("Error election alive"),
+            Err(_) => log::warn!("Error election alive"),
         }
         dbs.node_state
             .swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
@@ -62,14 +64,14 @@ pub fn election_eval(dbs: &Arc<Databases>, candidate_id: u128) -> Response {
 }
 
 pub fn election_win(dbs: &Arc<Databases>) -> Response {
-    println!("Setting this server as a primary!");
+    log::info!("Setting this server as a primary!");
     match dbs
         .replication_supervisor_sender
         .clone()
         .try_send(format!("election-win self"))
     {
         Ok(_n) => (),
-        Err(e) => println!("Request::ElectionWin sender.send Error: {}", e),
+        Err(e) => log::warn!("Request::ElectionWin sender.send Error: {}", e),
     }
 
     dbs.node_state

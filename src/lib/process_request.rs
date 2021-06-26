@@ -8,10 +8,11 @@ use crate::db_ops::*;
 use crate::election_ops::*;
 use crate::replication_ops::*;
 use crate::security::*;
+use log;
 
 pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -> Response {
     let input_to_log = clean_string_to_log(input, &dbs);
-    println!(
+    log::debug!(
         "[{}] process_request got message '{}'. ",
         thread_id::get(),
         input_to_log
@@ -24,7 +25,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         Err(e) => return Response::Error { msg: e },
     };
 
-    println!(
+    log::debug!(
         "[{}] process_request parsed message '{}'. ",
         thread_id::get(),
         input_to_log
@@ -44,7 +45,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
             };
             match client.sender.clone().try_send(message) {
                 Ok(_n) => (),
-                Err(e) => println!("Request::Auth sender.send Error: {}", e),
+                Err(e) => log::debug!("Request::Auth sender.send Error: {}", e),
             };
             Response::Ok {}
         }
@@ -73,7 +74,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => remove_key(&key, db),
                 _ => {
-                    println!("Not a valid database name");
+                    log::debug!("Not a valid database name");
                     Response::Error {
                         msg: "Not a valid database name".to_string(),
                     }
@@ -91,7 +92,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => set_key_value(key.clone(), value.clone(), db),
                 _ => {
-                    println!("Not a valid database name");
+                    log::debug!("Not a valid database name");
                     Response::Error {
                         msg: "Not a valid database name".to_string(),
                     }
@@ -148,7 +149,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                     }
                 }
                 _ => {
-                    println!("Not a valid database name");
+                    log::debug!("Not a valid database name");
                     Response::Error {
                         msg: "Not a valid database name".to_string(),
                     }
@@ -167,9 +168,9 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
 
         Request::SetPrimary { name } => apply_if_auth(&client.auth, &|| {
             if !dbs.is_primary() {
-                println!("Setting {} as primary!", name);
+                log::info!("Setting {} as primary!", name);
             } else {
-                println!("Got a set primary from {} but already is a primary... There is going to be war!!", name);
+                log::warn!("Got a set primary from {} but already is a primary... There is going to be war!!", name);
             }
             match dbs
                 .replication_supervisor_sender
@@ -177,7 +178,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 .try_send(format!("primary {}", name))
             {
                 Ok(_n) => (),
-                Err(e) => println!("Request::SetPrimary sender.send Error: {}", e),
+                Err(e) => log::error!("Request::SetPrimary sender.send Error: {}", e),
             }
             dbs.node_state
                 .swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
@@ -192,7 +193,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         }),
 
         Request::SetScoundary { name } => apply_if_auth(&client.auth, &|| {
-            println!("Setting {} as secoundary!", name);
+            log::info!("Setting {} as secoundary!", name);
             let member = Some(ClusterMember {
                 name: name.clone(),
                 role: ClusterRole::Secoundary,
@@ -215,7 +216,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 .try_send(format!("leave {}", name))
             {
                 Ok(_n) => (),
-                Err(e) => println!("Request::leave sender.send Error: {}", e),
+                Err(e) => log::debug!("Request::leave sender.send Error: {}", e),
             }
             start_new_election(&dbs); //Slow operation here
             Response::Ok {}
@@ -228,7 +229,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 .try_send(format!("leave {}", name))
             {
                 Ok(_n) => (),
-                Err(e) => println!("Request::replicateLeave sender.send Error: {}", e),
+                Err(e) => log::debug!("Request::replicateLeave sender.send Error: {}", e),
             }
             Response::Ok {}
         }),
@@ -240,7 +241,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 .try_send(format!("new-secoundary {}", name))
             {
                 Ok(_n) => (),
-                Err(e) => println!("Request::ReplicateJoin sender.send Error: {}", e),
+                Err(e) => log::debug!("Request::ReplicateJoin sender.send Error: {}", e),
             }
             Response::Ok {}
         }),
@@ -255,13 +256,12 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 .try_send(format!("replicate-since-to {} {}", node_name, start_at))
             {
                 Ok(_n) => (),
-                Err(e) => println!("Request::ReplicateJoin sender.send Error: {}", e),
+                Err(e) => log::warn!("Request::ReplicateJoin sender.send Error: {}", e),
             }
             Response::Ok {}
         }),
 
         Request::ClusterState {} => apply_if_auth(&client.auth, &|| {
-            println!("Cluster here");
             let mut members: Vec<String> = dbs
                 .cluster_state
                 .lock()
@@ -273,7 +273,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 .map(|(_name, member)| format!("{}:{}", member.name, member.role))
                 .collect();
             members.sort(); //OMG try not to use this
-            println!("ClusterMember {}", members.len());
+            log::debug!("ClusterMember {}", members.len());
             let cluster_state_str = members.iter().fold(String::from(""), |current, acc| {
                 format!("{} {},", current, acc)
             });
@@ -282,7 +282,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 .clone()
                 .try_send(format_args!("cluster-state {}\n", cluster_state_str).to_string())
             {
-                Err(e) => println!("Request::ClusterState sender.send Error: {}", e),
+                Err(e) => log::warn!("Request::ClusterState sender.send Error: {}", e),
                 _ => (),
             }
 
@@ -310,7 +310,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 .clone()
                 .try_send(format_args!("keys {}\n", keys).to_string())
             {
-                Err(e) => println!("Request::ClusterState sender.send Error: {}", e),
+                Err(e) => log::warn!("Request::ClusterState sender.send Error: {}", e),
                 _ => (),
             }
 
@@ -322,7 +322,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
     };
 
     let elapsed = start.elapsed();
-    println!(
+    log::info!(
         "[{}] Server processed message '{}' in {:?}",
         thread_id::get(),
         input_to_log,

@@ -1,6 +1,7 @@
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
 use futures::stream::StreamExt;
+use log;
 use std::sync::Arc;
 use std::thread;
 
@@ -32,21 +33,21 @@ impl Handler for Server {
                     match message {
                         Some(message) => match message.as_ref() {
                             TO_CLOSE => {
-                                println!("Closing server connection");
+                                log::debug!("Closing server connection");
                                 break;
                             }
                             message => {
-                                println!("ws_ops::_read_thread::message {}", message);
+                                log::debug!("ws_ops::_read_thread::message {}", message);
                                 match ws_sender.send(message) {
                                     Ok(_) => {}
                                     Err(e) => {
-                                        println!("ws_ops::_read_thread::send::Error {}", e)
+                                        log::warn!("ws_ops::_read_thread::send::Error {}", e)
                                     }
                                 };
                             }
                         },
                         None => {
-                            println!("ws_ops::_read_thread::error::None");
+                            log::warn!("ws_ops::_read_thread::error::None");
                         }
                     }
                 }
@@ -58,17 +59,17 @@ impl Handler for Server {
 
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
         let message = msg.as_text().unwrap();
-        println!(
+        log::debug!(
             "[{}] Server got message '{}'. ",
             thread_id::get(),
             clean_string_to_log(&message, &self.dbs)
         );
         match process_request(&message, &self.dbs, &mut self.client) {
             Response::Error { msg } => {
-                println!("Error: {}", msg);
+                log::debug!("Error: {}", msg);
                 match self.client.sender.try_send(format!("error {} \n", msg)) {
                     Ok(_) => {}
-                    Err(e) => println!(
+                    Err(e) => log::warn!(
                         "ws_ops::_read_thread::process_request::try_send::Error {}",
                         e
                     ),
@@ -77,12 +78,12 @@ impl Handler for Server {
             _ => {
                 match self.client.sender.try_send(format!("ok \n")) {
                     Ok(_) => {}
-                    Err(e) => println!(
+                    Err(e) => log::warn!(
                         "ws_ops::_read_thread::process_request::_::try_send::Error {}",
                         e
                     ),
                 }
-                println!("ws::Success processed");
+                log::debug!("ws::Success processed");
             }
         }
 
@@ -90,11 +91,11 @@ impl Handler for Server {
     }
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
-        println!("WebSocket closing for ({:?}) {}", code, reason);
+        log::debug!("WebSocket closing for ({:?}) {}", code, reason);
         match self.client.sender.try_send(TO_CLOSE.to_string()) {
             //To close the read thread
             Ok(_) => {}
-            Err(e) => println!("on_close::Error {}", e),
+            Err(e) => log::warn!("on_close::Error {}", e),
         }
         process_request("unwatch-all", &self.dbs, &mut self.client);
         self.client.left(&self.dbs);
@@ -103,7 +104,7 @@ impl Handler for Server {
 
 pub fn start_web_socket_client(dbs: Arc<Databases>, ws_address: Arc<String>) {
     let ws_address = ws_address.to_string();
-    println!("Starting the web socket client with addr: {}", ws_address);
+    log::debug!("Starting the web socket client with addr: {}", ws_address);
     let server = thread::spawn(move || {
         let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
         ws::Builder::new()
@@ -121,6 +122,6 @@ pub fn start_web_socket_client(dbs: Arc<Databases>, ws_address: Arc<String>) {
             .unwrap()
     });
 
-    println!("WebSocket started ");
+    log::debug!("WebSocket started ");
     let _ = server.join();
 }

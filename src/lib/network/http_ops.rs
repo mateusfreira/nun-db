@@ -20,10 +20,10 @@ fn process_commands(
             match process_request(clean_command, dbs, client) {
                 Response::Error { msg } => {
                     responses.push(msg.clone());
-                    println!("Http response Error: {}", msg);
+                    log::debug!("Http response Error: {}", msg);
                 }
                 _ => {
-                    println!("[http] - success processed");
+                    log::debug!("[http] - success processed");
                     match receiver.try_next() {
                         Ok(message_opt) => match message_opt {
                             Some(message) => {
@@ -31,14 +31,15 @@ fn process_commands(
                             }
                             _ => {
                                 responses.push("empty".to_string());
-                                println!("http_ops::process_message::Empty message");
+                                log::debug!("http_ops::process_message::Empty message");
                             }
                         },
                         Err(e) => {
                             responses.push("empty".to_string());
-                            println!(
+                            log::debug!(
                                 "http_ops::receiver.try_next empty for {}, message {}",
-                                clean_command, e
+                                clean_command,
+                                e
                             )
                         }
                     }
@@ -54,7 +55,7 @@ fn process_commands(
 }
 pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
     let http_address = http_address.to_string();
-    println!(
+    log::debug!(
         "Starting the http client with 4 threads in the addr: {}",
         http_address
     );
@@ -71,23 +72,23 @@ pub fn start_http_client(dbs: Arc<Databases>, http_address: Arc<String>) {
             match server.recv() {
                 Ok(mut rq) => match rq.as_reader().read_to_string(&mut body) {
                     Ok(_) => {
-                        println!("[http] body {}", clean_string_to_log(&body, &dbs));
+                        log::debug!("[http] body {}", clean_string_to_log(&body, &dbs));
                         let commands: Vec<&str> = body.split(';').collect();
                         let responses =
                             process_commands(&commands, &mut receiver, &dbs, &mut client);
                         let response = tiny_http::Response::from_string(responses.join(";"));
                         match rq.respond(response) {
                             Ok(_) => {}
-                            Err(e) => println!("http_ops response error {}", e),
+                            Err(e) => log::warn!("http_ops response error {}", e),
                         }
-                        println!(
+                        log::debug!(
                             "[http] Processing the body{}",
                             clean_string_to_log(&body, &dbs)
                         );
                     }
-                    Err(e) => println!("error {}", e),
+                    Err(e) => log::warn!("error {}", e),
                 },
-                Err(e) => println!("server.recv::error {}", e),
+                Err(e) => log::error!("server.recv::error {}", e),
             }
         });
         guards.push(guard);

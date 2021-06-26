@@ -1,4 +1,5 @@
 use futures::channel::mpsc::Sender;
+use log;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -24,7 +25,7 @@ pub fn apply_to_database(
                 .try_send(String::from("error no-db-selected\n"))
             {
                 Ok(_) => {}
-                Err(e) => println!("apply_to_database::try_send {}", e),
+                Err(e) => log::warn!("apply_to_database::try_send {}", e),
             }
             return Response::Error {
                 msg: "No database found!".to_string(),
@@ -60,7 +61,7 @@ pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &C
                             .try_send("create-db success\n".to_string())
                         {
                             Ok(_n) => (),
-                            Err(e) => eprintln!("Request::CreateDb  Error: {}", e),
+                            Err(e) => log::warn!("Request::CreateDb  Error: {}", e),
                         }
                         Response::Ok {}
                     }
@@ -68,7 +69,7 @@ pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &C
                 }
             }
             _ => {
-                println!("Could not create the database");
+                log::debug!("Could not create the database");
                 match client
                     .sender
                     .clone()
@@ -78,7 +79,7 @@ pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &C
                         msg: String::from("Error clreating the DB"),
                     },
                     Err(e) => {
-                        println!("Request::Set sender.send Error: {}", e);
+                        log::warn!("Request::Set sender.send Error: {}", e);
                         Response::Error {
                             msg: String::from("Error to send client response"),
                         }
@@ -111,7 +112,7 @@ pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Re
         .try_send(format_args!("value {}\n", value.to_string()).to_string())
     {
         Ok(_n) => (),
-        Err(e) => println!("Request::Get sender.send Error: {}", e),
+        Err(e) => log::warn!("Request::Get sender.send Error: {}", e),
     }
     Response::Value {
         key: key.clone(),
@@ -139,7 +140,7 @@ pub fn is_valid_token(token: &String, db: &Database) -> bool {
     let db = db.map.read().unwrap();
     match db.get(&TOKEN_KEY.to_string()) {
         Some(value) => {
-            println!("[is_valid_token] Token {} value {}", value, token);
+            log::debug!("[is_valid_token] Token {} value {}", value, token);
             value == token
         }
         None => false,
@@ -160,9 +161,9 @@ pub fn set_key_value(key: String, value: String, db: &Database) -> Response {
 
 pub fn unwatch_key(key: &String, sender: &Sender<String>, db: &Database) -> Response {
     let mut senders = get_senders(&key, &db.watchers);
-    println!("Senders before unwatch {:?}", senders.len());
+    log::debug!("Senders before unwatch {:?}", senders.len());
     senders.retain(|x| !x.same_receiver(&sender));
-    println!("Senders after unwatch {:?}", senders.len());
+    log::debug!("Senders after unwatch {:?}", senders.len());
     let mut watchers = db.watchers.map.write().expect("db.watchers.map.lock");
     watchers.insert(key.clone(), senders);
     Response::Ok {}
@@ -180,7 +181,7 @@ pub fn watch_key(key: &String, sender: &Sender<String>, db: &Database) -> Respon
 }
 
 pub fn unwatch_all(sender: &Sender<String>, db: &Database) -> Response {
-    println!("Will unwatch_all");
+    log::debug!("Will unwatch_all");
     let watchers = db
         .watchers
         .map
@@ -190,7 +191,7 @@ pub fn unwatch_all(sender: &Sender<String>, db: &Database) -> Response {
     for (key, _val) in watchers.iter() {
         unwatch_key(&key, &sender, &db);
     }
-    println!("Done unwatch_all");
+    log::debug!("Done unwatch_all");
     Response::Ok {}
 }
 
