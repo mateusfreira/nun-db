@@ -211,3 +211,11 @@ Open an issue I will follow as soon as possible.
 
 Talk to me @mateusfreira I will help you get it to the scale you need.
 
+# How-tos
+
+[NunDb How to backup one or all databases](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
+
+## Technical documentations
+
+[A fast-to-sync/search and space-optimized replication algorithm written in rust, The Nun-db data replication model](https://mateusfreira.github.io/@mateusfreira-a-fast-to-sync-search-and-space-optimized-replication-algorithm-written-in-rust-the-Nun-db-data-replication-model/)
+
