@@ -4,6 +4,7 @@ use std::thread;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
 use futures::stream::StreamExt;
+use log;
 
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
@@ -15,7 +16,7 @@ use crate::disk_ops::*;
 pub fn replicate_web(replication_sender: &Sender<String>, message: String) {
     match replication_sender.clone().try_send(message.clone()) {
         Ok(_) => (),
-        Err(_) => println!("Error replicating message {}", message),
+        Err(_) => log::error!("Error replicating message {}", message),
     }
 }
 
@@ -39,12 +40,12 @@ pub fn replicate_request(
             Response::Error { msg: _ } => response,
             _ => match input {
                 Request::CreateDb { name, token } => {
-                    println!("Will replicate command a created database name {}", name);
+                    log::debug!("Will replicate command a created database name {}", name);
                     replicate_web(replication_sender, format!("create-db {} {}", name, token));
                     Response::Ok {}
                 }
                 Request::Snapshot {} => {
-                    println!("Will replicate a snapshot to the database {}", db_name);
+                    log::debug!("Will replicate a snapshot to the database {}", db_name);
                     replicate_web(
                         replication_sender,
                         format!("replicate-snapshot {}", db_name),
@@ -52,7 +53,7 @@ pub fn replicate_request(
                     Response::Ok {}
                 }
                 Request::Set { value, key } => {
-                    println!("Will replicate the set of the key {} to {} ", key, value);
+                    log::debug!("Will replicate the set of the key {} to {} ", key, value);
                     replicate_web(
                         replication_sender,
                         get_replicate_message(db_name.to_string(), key, value),
@@ -61,7 +62,7 @@ pub fn replicate_request(
                 }
 
                 Request::Remove { key } => {
-                    println!("Will replicate the remove of the key {} ", key);
+                    log::debug!("Will replicate the remove of the key {} ", key);
                     replicate_web(
                         replication_sender,
                         get_replicate_remove_message(db_name.to_string(), key),
@@ -86,7 +87,7 @@ pub fn replicate_request(
 
                 Request::ReplicateSet { db, value, key } => {
                     if is_primary {
-                        println!("Will replicate the set of the key {} to {} ", key, value);
+                        log::debug!("Will replicate the set of the key {} to {} ", key, value);
                         replicate_web(
                             replication_sender,
                             get_replicate_message(db.to_string(), key, value),
@@ -109,20 +110,20 @@ pub fn replicate_request(
 fn replicate_if_some(opt_sender: &Option<Sender<String>>, message: &String, name: &String) {
     match opt_sender {
         Some(member_sender) => {
-            println!("Replicating {} to {}", message, name);
+            log::debug!("Replicating {} to {}", message, name);
             match member_sender.clone().try_send(message.to_string()) {
                 Ok(_) => (),
-                Err(e) => println!("replicate_if_some sender.send Error: {}", e),
+                Err(e) => log::warn!("replicate_if_some sender.send Error: {}", e),
             }
         }
-        None => println!(
+        None => log::info!(
             "start_replication_thread:: Not replicatin {}, None sender",
             message
         ),
     }
 }
 fn replicate_message_to_secoundary(message: String, dbs: &Arc<Databases>) {
-    println!("Got the message {} to replicate ", message);
+    log::debug!("Got the message {} to replicate ", message);
     let state = dbs.cluster_state.lock().unwrap();
     for (_name, member) in state.members.lock().unwrap().iter() {
         match member.role {
@@ -134,7 +135,7 @@ fn replicate_message_to_secoundary(message: String, dbs: &Arc<Databases>) {
 }
 
 pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
-    println!("Got the message {} to send to primary", message);
+    log::debug!("Got the message {} to send to primary", message);
     let state = dbs.cluster_state.lock().unwrap();
     for (_name, member) in state.members.lock().unwrap().iter() {
         match member.role {
@@ -159,7 +160,7 @@ fn get_key_id(key: String, dbs: &Arc<Databases>) -> u64 {
         let mut id_keys_map = { dbs.id_keys_map.write().unwrap() };
         keys_map.insert(key.clone(), id);
         id_keys_map.insert(id, key.to_string());
-        println!("Key {}, id {}", key, id);
+        log::debug!("Key {}, id {}", key, id);
         id
     }
 }
@@ -179,7 +180,7 @@ pub async fn start_replication_thread(
         match message_opt {
             Some(message) => {
                 if message == "exit" {
-                    println!("replication_ops::start_replication_thread will exist!");
+                    log::info!("replication_ops::start_replication_thread will exist!");
                     break;
                 }
                 replicate_message_to_secoundary(message.to_string(), &dbs);
@@ -188,13 +189,13 @@ pub async fn start_replication_thread(
                     Request::CreateDb { name, token: _ } => {
                         let db_id = get_db_id(name, &dbs);
                         let key_id = 1;
-                        println!("Will write CreateDb");
+                        log::debug!("Will write CreateDb");
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::CreateDb);
                     }
                     Request::ReplicateSnapshot { db } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = 2; //has to be different
-                        println!("Will write ReplicateSnapshot");
+                        log::debug!("Will write ReplicateSnapshot");
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot);
                     }
                     Request::ReplicateSet { db, key, value: _ } => {
@@ -209,14 +210,14 @@ pub async fn start_replication_thread(
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove);
                     }
 
-                    Request::SetPrimary { name : _ } => (),//Election events won't be registed in OpLog
-                    _ => println!(
+                    Request::SetPrimary { name: _ } => (), //Election events won't be registed in OpLog
+                    _ => log::debug!(
                         "Ignoring command {} in replication oplog register! not unimplemented!",
                         message
                     ),
                 }
             }
-            _ => println!("Passed"),
+            _ => log::warn!("Non part in replication"),
         }
     }
 }
@@ -224,7 +225,7 @@ pub async fn start_replication_thread(
 fn replicate_join(sender: Sender<String>, name: String) {
     match sender.clone().try_send(format!("replicate-join {}", name)) {
         Ok(_n) => (),
-        Err(e) => println!("secoundary::replicate_join sender.send Error: {}", e),
+        Err(e) => log::warn!("secoundary::replicate_join sender.send Error: {}", e),
     }
 }
 
@@ -250,7 +251,9 @@ fn send_cluster_state_to_the_new_member(
                         replicate_join(member_sender.clone(), name.to_string());
                     }
                     None => {
-                        println!("[start_replication_creator_thread] not replicate_join None found")
+                        log::warn!(
+                            "[start_replication_creator_thread] not replicate_join None found"
+                        )
                     }
                 }
             }
@@ -309,7 +312,7 @@ fn add_sencoundary_to_primary(
             true,
         );
 
-        println!(
+        log::info!(
             "Removing member {} from cluster add_sencoundary_to_primary died!",
             name
         );
@@ -346,7 +349,7 @@ fn add_sencoundary_to_secoundary(
             false,
         );
 
-        println!(
+        log::info!(
             "Removing member {} from cluster add_sencoundary_to_secoundary!",
             name
         );
@@ -376,14 +379,14 @@ pub async fn start_replication_supervisor(
     dbs: Arc<Databases>,
     tcp_addr: Arc<String>,
 ) {
-    println!("Will start the start_replication_creator_thread");
+    log::debug!("Will start the start_replication_creator_thread");
     let mut guards = Vec::with_capacity(10); // Max 10 servers
     loop {
-        println!("[start_replication_creator_thread] loop");
+        log::debug!("[start_replication_creator_thread] loop");
         let message_opt = replication_supervisor_receiver.next().await;
         match message_opt {
             Some(start_replicate_message) => {
-                println!(
+                log::debug!(
                     "[start_replication_creator_thread] got {}",
                     start_replicate_message
                 );
@@ -414,13 +417,13 @@ pub async fn start_replication_supervisor(
 
                     Some("leave") => {
                         if name != tcp_addr.to_string() {
-                            println!(
+                            log::info!(
                                 "[start_replication_creator_thread] removing {} from the cluster!!",
                                 name
                             );
                             dbs.remove_cluster_member(&name);
                         } else {
-                            println!("[start_replication_creator_thread-leave] Ignoring {} because it is from the same server sending the message!",  start_replicate_message)
+                            log::info!("[start_replication_creator_thread-leave] Ignoring {} because it is from the same server sending the message!",  start_replicate_message)
                         }
                     }
                     // Add primary to secoundary
@@ -469,7 +472,7 @@ pub async fn start_replication_supervisor(
                         match members.get(&name) {
                             Some(member) => {
                                 let commands = get_pendding_opps_since(start_at, &dbs);
-                                println!(
+                                log::debug!(
                                     "Will replicate {} messages to {}",
                                     commands.len(),
                                     member.name
@@ -479,7 +482,7 @@ pub async fn start_replication_supervisor(
                                 }
                             }
                             _ => {
-                                eprintln!("Error tryting to replicate to a non existent member")
+                                log::warn!("Error tryting to replicate to a non existent member")
                             }
                         }
                     }
@@ -497,11 +500,11 @@ pub async fn start_replication_supervisor(
                             .try_send(format!("set-primary {}", tcp_addr))
                         {
                             Ok(_) => (),
-                            Err(_) => println!("Error election cadidate"),
+                            Err(_) => log::warn!("Error election cadidate"),
                         }
                     }
                     Some(n) => {
-                        println!(
+                        log::warn!(
                             "[start_replication_creator_thread] ignoring command not implement {}",
                             n
                         );
@@ -510,7 +513,7 @@ pub async fn start_replication_supervisor(
                     _ => (),
                 }
             }
-            None => println!("replication::try_next::Empty message"),
+            None => log::warn!("replication::try_next::Empty message"),
         }
     }
 }
@@ -547,7 +550,7 @@ pub fn ask_to_join(replica_addr: &String, tcp_addr: &String, user: &String, pwd:
             writer.flush().unwrap();
         }
         Err(_) => {
-            println!(
+            log::warn!(
                 "Could not stablish the connection to replicate to {}, verify if the replica set is up", replica_addr
             )
         }
@@ -561,7 +564,7 @@ fn start_replication(
     tcp_addr: String,
     is_primary: bool,
 ) {
-    println!(
+    log::info!(
         "replicating to tcp client in the addr: {}",
         replicate_address
     );
@@ -574,18 +577,18 @@ fn start_replication(
                     let message_opt = command_receiver.next().await;
                     match message_opt {
                         Some(message) => {
-                            println!("Will replicate {}", message);
+                            log::debug!("Will replicate {}", message);
                             writer.write_fmt(format_args!("{}\n", message)).unwrap();
                             match writer.flush() {
                                 Err(e) => {
-                                    println!("replication error: {}", e);
+                                    log::warn!("replication error: {}", e);
                                     break;
                                 }
                                 _ => (),
                             }
                         }
                         None => {
-                            println!("replication::next::Empty message");
+                            log::warn!("replication::next::Empty message");
                             break;
                         }
                     }
@@ -594,9 +597,10 @@ fn start_replication(
             block_on(fut);
         }
         Err(e) => {
-            eprint!(
+            log::warn!(
                 "Could not stablish the connection to replicate to {} error : {}",
-                replicate_address, e
+                replicate_address,
+                e
             )
         }
     };
@@ -625,7 +629,7 @@ pub fn auth_on_replication(
         start_sync_process(writer, &tcp_addr);
     }
     match writer.flush() {
-        Err(e) => println!("auth replication error: {}", e),
+        Err(e) => log::warn!("auth replication error: {}", e),
         _ => (),
     }
 }
@@ -641,14 +645,14 @@ fn make_create_db_command(db: &Database) -> String {
 }
 
 fn get_full_sync_opps(dbs: &Arc<Databases>) -> Vec<String> {
-    println!("Will perform a full sync!");
+    log::info!("Will perform a full sync!");
     let mut opps_vec = Vec::new();
     let dbs = dbs.map.read().unwrap(); // Will lock db creation and deletion for a long time...
     let db_list: Vec<&Database> = dbs.values().collect();
     for db in db_list {
         let db_name = db.name.clone();
         if db_name != ADMIN_DB {
-            println!("Praparing the db {}", db_name);
+            log::debug!("Praparing the db {}", db_name);
             opps_vec.push(make_create_db_command(&db));
             let map_values = {
                 let values = db.map.read().unwrap();
@@ -661,7 +665,7 @@ fn get_full_sync_opps(dbs: &Arc<Databases>) -> Vec<String> {
             }
 
             opps_vec.push(format!("replicate-snapshot {}", db_name));
-            println!("Done the the db {}", db_name);
+            log::debug!("Done the the db {}", db_name);
         }
     }
 
@@ -679,7 +683,7 @@ fn get_pendding_opps_since_from_sync(since: u64, dbs: &Arc<Databases>) -> Vec<St
     let mut vec_ops_to_process: Vec<&OpLogRecord> = opps.values().collect();
     vec_ops_to_process.sort_by(|a, b| a.opp_position.cmp(&b.opp_position)); //sort by insert order
     for op_record in vec_ops_to_process {
-        println!("{}", op_record.to_string());
+        log::debug!("{}", op_record.to_string());
         //@todo sort by key to optmize speed
         let opp = match op_record.opp {
             ReplicateOpp::Update => {
@@ -741,7 +745,7 @@ pub fn add_as_secoundary(dbs: &Arc<Databases>, name: &String) {
         .try_send(format!("secoundary {}", name))
     {
         Ok(_n) => (),
-        Err(e) => println!("Request::Join sender.send Error: {}", e),
+        Err(e) => log::warn!("Request::Join sender.send Error: {}", e),
     }
 }
 
@@ -827,7 +831,7 @@ mod tests {
         let test_start =
             since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
         let commands = get_pendding_opps_since(test_start, &dbs);
-        println!("{:?}", commands);
+        log::warn!("{:?}", commands);
         assert!(commands.len() == 0, "Only one command expected");
         sender.try_send("exit".to_string()).unwrap();
         aw!(replication_thread.join().expect("thread died"));
@@ -870,7 +874,7 @@ mod tests {
         sender.try_send("exit".to_string()).unwrap();
         aw!(replication_thread.join().expect("thread died"));
         let commands = get_pendding_opps_since(0, &dbs);
-        println!("{:?}", commands);
+        log::debug!("{:?}", commands);
         assert!(commands.len() == 3, "Only 3 command expected");
         assert!(
             commands[0] == "create-db sample sample",
@@ -935,7 +939,7 @@ mod tests {
         sender.try_send("exit".to_string()).unwrap();
         aw!(replication_thread.join().expect("thread died"));
         let commands = get_pendding_opps_since(test_start, &dbs);
-        println!("{:?}", commands);
+        log::debug!("{:?}", commands);
         assert!(commands.len() == 3, "Only 3 command expected");
         assert!(
             commands[0] == "create-db sample sample",
@@ -995,7 +999,6 @@ mod tests {
         sender.try_send("exit".to_string()).unwrap();
         aw!(replication_thread.join().unwrap());
         let commands = get_pendding_opps_since(test_start, &dbs);
-        println!("{:?}", commands);
         assert!(commands.len() == 1, "Only one command expected");
         assert!(
             commands[0] == "replicate $admin key value8",

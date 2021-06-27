@@ -1,3 +1,4 @@
+use log;
 use std::collections::HashMap;
 use std::env;
 use std::fs::OpenOptions;
@@ -38,10 +39,10 @@ pub fn get_dir_name() -> String {
 pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
     let mut initial_db = HashMap::new();
     let db_file_name = get_keys_map_file_name();
-    println!("Will read the keys {} from disk", db_file_name);
+    log::debug!("Will read the keys {} from disk", db_file_name);
     if Path::new(&db_file_name).exists() {
         // May I should move this out of here
-        println!("Will read from disck");
+        log::debug!("Will read from disck");
         let mut file = File::open(db_file_name).unwrap();
         initial_db = bincode::deserialize_from(&mut file).unwrap();
     }
@@ -50,7 +51,7 @@ pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
 
 pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
     let db_file_name = get_keys_map_file_name();
-    println!("Will read the keys {} from disk", db_file_name);
+    log::debug!("Will read the keys {} from disk", db_file_name);
 
     let mut keys_file = OpenOptions::new()
         .create(true)
@@ -63,7 +64,7 @@ pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
 pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
     let mut initial_db = HashMap::new();
     let db_file_name = file_name_from_db_name(name.clone());
-    println!("Will read the database {} from disk", db_file_name);
+    log::debug!("Will read the database {} from disk", db_file_name);
     if Path::new(&db_file_name).exists() {
         // May I should move this out of here
         let mut file = File::open(db_file_name).unwrap();
@@ -74,7 +75,7 @@ pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
 
 pub fn load_db_metadata_from_disk_or_empty(name: String, dbs: &Arc<Databases>) -> DatabaseMataData {
     let db_file_name = meta_file_name_from_db_name(name.clone());
-    println!("Will read the metadata {} from disk", db_file_name);
+    log::debug!("Will read the metadata {} from disk", db_file_name);
     if Path::new(&db_file_name).exists() {
         // May I should move this out of here
         let mut file = File::open(db_file_name).unwrap();
@@ -159,12 +160,12 @@ fn storage_data_disk(db: &Database, db_name: String) {
 
 // calls storage_data_disk each $SNAPSHOT_TIME seconds
 pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
-    println!("Will start_snap_shot_timer");
+    log::info!("Will start_snap_shot_timer");
     load_all_dbs_from_disk(&dbs);
     match create_dir_all(get_dir_name()) {
         Ok(_) => {}
         Err(e) => {
-            println!("Error creating the data dirs {}", e);
+            log::error!("Error creating the data dirs {}", e);
             panic!("Error creating the data dirs");
         }
     };
@@ -181,7 +182,7 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
             };
             dbs_to_snapshot.dedup();
             while let Some(database_name) = dbs_to_snapshot.pop() {
-                println!("Will snapshot the database {}", database_name);
+                log::debug!("Will snapshot the database {}", database_name);
                 let dbs = dbs.clone();
                 let dbs_map = dbs.map.read().unwrap();
                 let db_opt = dbs_map.get(&database_name);
@@ -194,11 +195,11 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
                                 let keys_map = dbs.keys_map.read().unwrap();
                                 keys_map.clone()
                             };
-                            println!("Will snapshot the keys {}", keys_map.len());
+                            log::debug!("Will snapshot the keys {}", keys_map.len());
                             write_keys_map_to_disk(keys_map);
                         }
                     }
-                    _ => println!("Database not found {}", database_name),
+                    _ => log::warn!("Database not found {}", database_name),
                 }
             }
         })
@@ -220,7 +221,7 @@ pub fn get_log_file_append_mode() -> BufWriter<File> {
 pub fn get_log_file_read_mode() -> File {
     match OpenOptions::new().read(true).open(get_op_log_file_name()) {
         Err(e) => {
-            eprint!("{:?}", e);
+            log::error!("{:?}", e);
             OpenOptions::new()
                 .read(true)
                 .create(true)
@@ -246,7 +247,7 @@ pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: Rep
     stream.write(&db_id.to_le_bytes()).unwrap(); // 8
     stream.write(&[opp_to_write]).unwrap(); // 1
     stream.flush().unwrap();
-    println!("will write :  db: {db}", db = db_id);
+    log::debug!("will write :  db: {db}", db = db_id);
 }
 
 pub fn last_op_time() -> u64 {
@@ -288,9 +289,12 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
         let read_all = possible_records == 1 && seek_point == size_as_u64;
         let no_more_smaller = possible_records <= 1 && (opp_time > since);
         if opp_time == since || no_more_smaller || read_all {
-            println!(
+            log::debug!(
                 "found! {} {} {} {}",
-                possible_records, seek_point, total_size, no_more_smaller
+                possible_records,
+                seek_point,
+                total_size,
+                no_more_smaller
             );
             while let Ok(byte_read) = f.read(&mut key_buffer) {
                 if byte_read == 0 {
@@ -311,12 +315,6 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
                     break;
                 }
                 opp_time = u64::from_le_bytes(time_buffer);
-                /*
-                println!(
-                    "Here key:{} db:{} n:{} opp:{:?}",
-                    key_id, db_id, opp_time, oop_buffer
-                );
-                */
             }
             break;
         }
@@ -327,7 +325,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
                 ((std::cmp::max(max, seek_point) - seek_point) / 2) / size_as_u64,
                 1,
             );
-            println!(
+            log::debug!(
                 "search bigger {} in {:?} {} {} {}",
                 opp_time,
                 now.elapsed(),
@@ -340,7 +338,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
 
         if opp_time > since {
             max = seek_point;
-            println!(
+            log::debug!(
                 "seach smaller op: {} since: {} in {:?} {} possible_records: {}, no_more_smaller: {}",
                 opp_time,
                 since,
@@ -354,7 +352,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
         }
 
         if possible_records <= 1 {
-            println!(
+            log::debug!(
                 " Did not found {:?} {}, {} any record!",
                 now.elapsed(),
                 max,
@@ -364,7 +362,7 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
         }
 
         if i != OP_TIME_SIZE as usize {
-            println!(" End of the file{:?} ms", now.elapsed());
+            log::debug!(" End of the file{:?} ms", now.elapsed());
             break;
         }
 

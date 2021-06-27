@@ -4,14 +4,25 @@ use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
 use futures::join;
 use lib::*;
+use log;
 use std::thread;
 
 use std::sync::Arc;
 
 use clap::ArgMatches;
+use env_logger::{Builder, Env, Target};
+
+fn init_logger() {
+    let env = Env::default().filter_or("NUN_LOG_LEVEL", "info");
+    Builder::from_env(env)
+        .format_level(false)
+        .target(Target::Stdout)
+        .format_timestamp_nanos()
+        .init();
+}
 
 fn main() -> Result<(), String> {
-    env_logger::init();
+    init_logger();
     let matches: ArgMatches<'_> = lib::commad_line::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
         return start_db(
@@ -47,7 +58,7 @@ fn start_db(
         Receiver<String>,
     ) = channel(100);
     let keys_map = disk_ops::load_keys_map_from_disk();
-    println!("Keys {}", keys_map.len());
+    log::debug!("Keys {}", keys_map.len());
 
     let dbs = lib::db_ops::create_init_dbs(
         user.to_string(),
@@ -61,7 +72,7 @@ fn start_db(
     let db_replication_start = dbs.clone();
     let tcp_address_to_relication = Arc::new(tcp_address.to_string());
     let replication_thread_creator = async {
-        println!("lib::replication_ops::start_replication_supervisor");
+        log::debug!("lib::replication_ops::start_replication_supervisor");
         lib::replication_ops::start_replication_supervisor(
             replication_supervisor_receiver,
             db_replication_start,

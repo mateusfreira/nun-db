@@ -11,7 +11,7 @@ use crate::process_request::*;
 use crate::security::*;
 
 pub fn start_tcp_client(dbs: Arc<Databases>, tcp_addressed: &str) {
-    println!("starting tcp client in the addr: {}", tcp_addressed);
+    log::debug!("starting tcp client in the addr: {}", tcp_addressed);
     match TcpListener::bind(tcp_addressed) {
         Ok(listener) => {
             for stream in listener.incoming() {
@@ -25,7 +25,8 @@ pub fn start_tcp_client(dbs: Arc<Databases>, tcp_addressed: &str) {
             }
         }
         _ => {
-            println!("Bind error");
+            log::error!("Bind error");
+            panic!("TCP Bind error");
         }
     };
 }
@@ -40,10 +41,10 @@ fn process_leave_request(leave_message: &String, dbs: &Arc<Databases>) {
     fake_client.auth.store(true, Ordering::Relaxed);
     match process_request(&leave_message, dbs, &mut fake_client) {
         Response::Error { msg } => {
-            println!("Error: {} trying to process {}", msg, leave_message);
+            log::debug!("Error: {} trying to process {}", msg, leave_message);
         }
         _ => {
-            println!("{} Success processed", leave_message);
+            log::debug!("{} Success processed", leave_message);
         }
     }
 }
@@ -58,34 +59,34 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
         stream.set_nonblocking(true).unwrap();
         match read_line {
             Ok(_) => {
-                println!("Command print: {}", clean_string_to_log(&buf, &dbs));
+                log::debug!("Command print: {}", clean_string_to_log(&buf, &dbs));
                 match buf.as_ref() {
                     "" => {
-                        println!("killing socket client, because of disconnected!!");
+                        log::debug!("killing socket client, because of disconnected!!");
                         process_request("unwatch-all", &dbs, &mut client);
                         let member = &*client.cluster_member.lock().unwrap();
                         if let Some(m) = member {
                             match m.role {
                                 ClusterRole::Primary => {
-                                    println!(
-                                        "Primary Cluster member disconnected: {}",
-                                        m.name
-                                    );
+                                    println!("Primary Cluster member disconnected: {}", m.name);
                                     process_leave_request(&format!("leave {}", m.name), &dbs);
                                 }
                                 ClusterRole::Secoundary => {
-                                    println!(
-                                        "Secoundary Cluster member disconnected: {}",
-                                        m.name
-                                    );
-                                    process_leave_request(&format!("replicate-leave {}", m.name), &dbs);// replicate-leave does not efornce election
+                                    println!("Secoundary Cluster member disconnected: {}", m.name);
+                                    process_leave_request(
+                                        &format!("replicate-leave {}", m.name),
+                                        &dbs,
+                                    ); // replicate-leave does not efornce election
                                 }
                                 ClusterRole::StartingUp => {
                                     println!(
                                         "ClusterMember {} died while still in StartingUp mode",
                                         m.name
                                     );
-                                    process_leave_request(&format!("replicate-leave {}", m.name), &dbs);// replicate-leave does not efornce election
+                                    process_leave_request(
+                                        &format!("replicate-leave {}", m.name),
+                                        &dbs,
+                                    ); // replicate-leave does not efornce election
                                 }
                             }
                         }
