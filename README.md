@@ -23,9 +23,9 @@ Checkout our examples of integration and see what we can do for your app
 Running Nun-db from docker is probably the faster way to do it, the simples steps to run nun-db with
 docker is bu running and container using all the default ports like the next example shows.
 
-```
-docker run --env NUN_USER=user-name --env NUN_PWD=user-pwd -it --rm -p 3013:3013 -p 3012:3012 -p 3014:3014 --name nun-test mateusfreira/nun-db
-
+```bash
+#Change user-name to the admin you want, user-pwd to the admin pwd you want, change /tmp to the directory where you want to store your data in the host computer... for dev /tmp works ine
+docker run --env NUN_USER=user-name --env NUN_PWD=user-pwd --env NUN_DBS_DIR="/data" --mount type=bind,source="/tmp",target=/data -it --rm -p 3013:3013 -p 3012:3012 -p 3014:3014 --name nun-test mateusfreira/nun-db
 ```
 
 ## Docker-compose
