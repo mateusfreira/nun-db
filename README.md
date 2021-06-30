@@ -13,7 +13,7 @@ We believe we can keep Nun DB simple and at the same time it can power lots of d
 Checkout our examples of integration and see what we can do for your app
 
 * [Vue.js + Nun DB jsfiddle](https://jsfiddle.net/2op63ctk/)
-* React.js Realtime Todo app 
+* [React.js Realtime Todo app](https://github.com/mateusfreira/nun-db-js/tree/master/examples/react)
 
 
 # Instalations
@@ -213,7 +213,11 @@ Talk to me @mateusfreira I will help you get it to the scale you need.
 
 # How-tos
 
+[How-to Make Redux TodoMVC Example a real-time multiuser with Nun-db in 10 steps](https://mateusfreira.github.io/@mateusfreira-2021-06-30-how-to-making-redux-todomvc-example-a-real-time-multiuser-with-nun-db/)
+[How to create your simple version of google analytics real-time using Nun-db](https://mateusfreira.github.io/@mateusfreira-create-a-simple-verison-of-google-analytics-realtime-using-nun-db/)
 [NunDb How to backup one or all databases](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
+
+
 
 ## Technical documentations
 
