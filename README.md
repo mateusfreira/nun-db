@@ -213,9 +213,9 @@ Talk to me @mateusfreira I will help you get it to the scale you need.
 
 # How-tos
 
-[How-to Make Redux TodoMVC Example a real-time multiuser with Nun-db in 10 steps](https://mateusfreira.github.io/@mateusfreira-2021-06-30-how-to-making-redux-todomvc-example-a-real-time-multiuser-with-nun-db/)
-[How to create your simple version of google analytics real-time using Nun-db](https://mateusfreira.github.io/@mateusfreira-create-a-simple-verison-of-google-analytics-realtime-using-nun-db/)
-[NunDb How to backup one or all databases](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
+* [How-to Make Redux TodoMVC Example a real-time multiuser with Nun-db in 10 steps](https://mateusfreira.github.io/@mateusfreira-2021-06-30-how-to-making-redux-todomvc-example-a-real-time-multiuser-with-nun-db/)
+* [How to create your simple version of google analytics real-time using Nun-db](https://mateusfreira.github.io/@mateusfreira-create-a-simple-verison-of-google-analytics-realtime-using-nun-db/)
+* [NunDb How to backup one or all databases](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
 
 
 
