@@ -39,47 +39,26 @@
      - [ ] Some times election falling in ./tests/test-fail-primary-dbs.sh all
      - [ ] Implement ping command
      - [x] Add command to estimate op log size -> Create a issue to it
-- [ ] Read https://jepsen.io/analyses/redis-raft-1b3fbf6
+- [x] Read https://jepsen.io/analyses/redis-raft-1b3fbf6
 - [x] Add cli interface
 - [x] Remove the need to admin auth to use an database  
 - [x] Send and errro if the DB does not exits
 - [x] Add un-watch command 
-- [x] add secret token to create datbase 
-- [ ] Read https://www.microsoft.com/en-us/research/uploads/prod/2018/03/faster-sigmod18.pdf
+- [x] add secret token to create database 
+- [x] Read https://www.microsoft.com/en-us/research/uploads/prod/2018/03/faster-sigmod18.pdf
 - [x] Reduce the size of the docker image
-
-
-
+- [ ] Implement read only user.
+- [ ] Implement key value security
+- [ ] Clean unused dataset 
+- [ ] Add example https://mateusfreira.github.io/nun-db-js/examples/data-analysis/
 ```
-                                      .------------------------------------------.
-                                      |                     |                    |              .---------------.
-                                      |       http_ops      |                    |------------->|  Disck        |      
-                                      |                     |   disk_ops         |------------->|               |      
-                                      |_____________        |                    |              .---------------.
-                                      |            |        .____________________|                                     
-                                      |            |        |                    |                                     
-                                      |            |        |                    |                                     
-                                      |   tcp_ops   \_______|_______             |                                     
-                                      |             |       |       |            |                                     
-.----------------.                    |             |       |       |            |      .---------------. 
-|   Frontends/   | ---text----------> |_____________|parse <.> core | db_ops     |----->|   Memory      | 
-|  Clients       | <---text---------- |             |       |       |            |<-----| Repository    | 
-.----------------.                    |             |       |       |            |      |               | 
-                                      |             \_______|_______|            |      ._______________.
-                                      |    ws_ops           |                    |                                    
-                                      |                     |                    |                                    
-                                      |_____________________.____________________|                                    
-                                      |                                          |                                    
-                                      |                                          |                                    
-                                      |                 monitoring               |                                    
-                                      |                                          |                                    
-                                      |                                          |                                    
-                                      .------------------------------------------.                                    
+nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-db data-analysis-demo $key; keys" |  tr "," "\n" | grep -v -E "1624735236495_ds|1624735710952_ds"
 ```
+
 
 # Main goal 
 
-* Delivery content change in the front ent at the time it changes (fast)
+* Delivery content change in the frontend at the time it changes (fast)
 
 # What may change over time
 
