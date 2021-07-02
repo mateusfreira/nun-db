@@ -31,6 +31,16 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         input_to_log
     );
     let result = match request.clone() {
+        Request::Increment { key, inc } => apply_to_database(&dbs, &client, &|_db| {
+            if dbs.is_primary() {
+                _db.inc_value(key.to_string(), inc);
+                Response::Ok {}
+            } else {
+                Response::Error {
+                    msg: String::from("Todo... increment from Secoundary"),
+                }
+            }
+        }),
         Request::Auth { user, password } => {
             let valid_user = dbs.user.clone();
             let valid_pwd = dbs.pwd.clone();

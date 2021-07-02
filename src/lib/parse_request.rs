@@ -135,6 +135,26 @@ impl Request {
                     value: value.to_string(),
                 })
             }
+            Some("increment") => {
+                let key = match command.next() {
+                    Some(key) => key,
+                    None => {
+                        println!("increment must be followed by a key");
+                        ""
+                    }
+                };
+                let inc = match command.next() {
+                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+                        Ok(n) => n,
+                        e => 1,
+                    },
+                    None => 1,
+                };
+                Ok(Request::Increment {
+                    key: key.to_string(),
+                    inc: inc,
+                })
+            }
 
             Some("remove") => {
                 let key = match command.next() {
@@ -476,6 +496,48 @@ mod tests {
     fn should_parse_cluster_state() -> Result<(), String> {
         match Request::parse("cluster-state") {
             Ok(Request::ClusterState {}) => Ok(()),
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_increment() -> Result<(), String> {
+        match Request::parse("increment key") {
+            Ok(Request::Increment { key, inc }) => {
+                if key == "key" && inc == 1 {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong command parsed"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_increment_with_value() -> Result<(), String> {
+        match Request::parse("increment key 10") {
+            Ok(Request::Increment { key, inc }) => {
+                if key == "key" && inc == 10 {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong command parsed"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_increment_negative_value() -> Result<(), String> {
+        match Request::parse("increment key -10") {
+            Ok(Request::Increment { key, inc }) => {
+                if key == "key" && inc == -10 {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong command parsed"))
+                }
+            }
             _ => Err(String::from("wrong command parsed")),
         }
     }
