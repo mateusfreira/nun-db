@@ -51,12 +51,14 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         Request::Increment { key, inc } => apply_to_database(&dbs, &client, &|_db| {
             if dbs.is_primary() {
                 _db.inc_value(key.to_string(), inc);
-                Response::Ok {}
             } else {
-                Response::Error {
-                    msg: String::from("Todo... increment from Secoundary"),
-                }
+                let db_name_state = _db.name.clone();
+                send_message_to_primary(
+                    get_replicate_increment_message(db_name_state.to_string(), key.clone(), inc.to_string()),
+                    dbs,
+                );
             }
+            Response::Ok {}
         }),
         Request::Auth { user, password } => {
             let valid_user = dbs.user.clone();
