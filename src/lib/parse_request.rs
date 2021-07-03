@@ -1,4 +1,5 @@
 use crate::bo::*;
+use log;
 
 impl Request {
     pub fn parse(input: &str) -> Result<Request, String> {
@@ -119,14 +120,14 @@ impl Request {
                 let key = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("SET must be followed by a key");
+                        log::debug!("SET must be followed by a key");
                         ""
                     }
                 };
                 let value = match command.next() {
                     Some(value) => value.replace("\n", ""),
                     None => {
-                        println!("SET needs a value");
+                        log::debug!("SET needs a value");
                         "".to_string()
                     }
                 };
@@ -139,7 +140,7 @@ impl Request {
                 let key = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("increment must be followed by a key");
+                        log::debug!("increment must be followed by a key");
                         ""
                     }
                 };
@@ -164,7 +165,7 @@ impl Request {
                 let mut rest = match command.next() {
                     Some(rest) => rest.splitn(2, " "),
                     None => {
-                        println!("increment must be followed by a key");
+                        log::debug!("increment must be followed by a key");
                         return Err(String::from(
                             "replicate-increment must be followed by a key",
                         ));
@@ -198,7 +199,7 @@ impl Request {
                 let key = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("REMOVE must be followed by a key");
+                        log::debug!("REMOVE must be followed by a key");
                         ""
                     }
                 };
@@ -210,14 +211,14 @@ impl Request {
                 let user = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("Auth needs to provide an user");
+                        log::debug!("Auth needs to provide an user");
                         ""
                     }
                 };
                 let pwd = match command.next() {
                     Some(pwd) => pwd.to_string(),
                     None => {
-                        println!("Auth needs and password");
+                        log::debug!("Auth needs and password");
                         "".to_string()
                     }
                 };
@@ -230,14 +231,14 @@ impl Request {
                 let name = match command.next() {
                     Some(name) => name,
                     None => {
-                        println!("UseDb needs to provide an db name");
+                        log::debug!("UseDb needs to provide an db name");
                         ""
                     }
                 };
                 let token = match command.next() {
                     Some(key) => String::from(key).replace("\n", ""),
                     None => {
-                        println!("UseDb needs and token");
+                        log::debug!("UseDb needs and token");
                         "".to_string()
                     }
                 };
@@ -250,14 +251,14 @@ impl Request {
                 let name = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("CreateDb needs to provide an db name");
+                        log::debug!("CreateDb needs to provide an db name");
                         ""
                     }
                 };
                 let token = match command.next() {
                     Some(key) => String::from(key).replace("\n", ""),
                     None => {
-                        println!("CreateDb needs and token");
+                        log::debug!("CreateDb needs and token");
                         "".to_string()
                     }
                 };
@@ -272,7 +273,7 @@ impl Request {
                 let db = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("replicate-remove needs to provide an db name");
+                        log::debug!("replicate-remove needs to provide an db name");
                         ""
                     }
                 };
@@ -280,7 +281,7 @@ impl Request {
                 let key = match command.next() {
                     Some(key) => String::from(key).replace("\n", ""),
                     None => {
-                        println!("replicate remove needs key");
+                        log::debug!("replicate remove needs key");
                         "".to_string()
                     }
                 };
@@ -293,7 +294,7 @@ impl Request {
                 let db = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("replicate needs to provide an db name");
+                        log::debug!("replicate needs to provide an db name");
                         ""
                     }
                 };
@@ -303,7 +304,7 @@ impl Request {
                         let name = match command.next() {
                             Some(key) => String::from(key).replace("\n", ""),
                             None => {
-                                println!("ReplicateSet needs name");
+                                log::debug!("ReplicateSet needs name");
                                 "".to_string()
                             }
                         };
@@ -311,7 +312,7 @@ impl Request {
                         let value = match command.next() {
                             Some(key) => String::from(key).replace("\n", ""),
                             None => {
-                                println!("ReplicateSet needs value");
+                                log::debug!("ReplicateSet needs value");
                                 "".to_string()
                             }
                         };
@@ -598,7 +599,7 @@ mod tests {
     fn should_parse_replicate_increment_negative_value() -> Result<(), String> {
         match Request::parse("replicate-increment db-name key -10") {
             Ok(Request::ReplicateIncrement { db, key, inc }) => {
-                print!("{},{},{}", db, key, inc);
+                log::debug!("{},{},{}", db, key, inc);
                 if key == "key" && inc == -10 && db == "db-name" {
                     Ok(())
                 } else {

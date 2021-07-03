@@ -315,7 +315,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 _ => (),
             }
 
-            println!("ClusterState {}", cluster_state_str);
+            log::debug!("ClusterState {}", cluster_state_str);
             Response::Value {
                 key: String::from("cluster-state"),
                 value: String::from(cluster_state_str),
