@@ -196,9 +196,7 @@ impl Database {
         return connections.load(Ordering::Relaxed);
     }
 
-    pub fn set_value(&self, key: String, value: String) {
-        let mut db = self.map.write().unwrap();
-        db.insert(key.clone(), value.clone());
+    pub fn notify_watchers(&self, key: String, value: String) {
         let watchers = self.watchers.map.read().unwrap();
         match watchers.get(&key) {
             Some(senders) => {
@@ -215,6 +213,37 @@ impl Database {
             }
             _ => {}
         }
+    }
+
+    pub fn set_value(&self, key: String, value: String) {
+        {
+            let mut db = self.map.write().unwrap();
+            db.insert(key.clone(), value.clone());
+        }// release the db
+        self.notify_watchers(key.clone(), value.clone());
+    }
+
+    pub fn inc_value(&self, key: String, inc: i32) -> Response {
+        // This will reduce the lock time of map. It won't wait the notifyt time, we don't need to 
+        // wait for the update_watchers to release the key
+        let value = {
+            let mut db = self.map.write().unwrap();
+            match i32::from_str_radix(db.get(&key.to_string()).unwrap_or(&String::from("0")), 10) {
+                Ok(current) => {
+                    let next = (current + inc).to_string();
+                    db.insert(key.clone(), next.clone());
+                    next
+                }
+                _ => {
+                    return Response::Error {
+                        msg: "Key is not numeric".to_string(),
+                    }
+                }
+            }
+        };
+
+        self.notify_watchers(key.clone(), value.clone());
+        Response::Ok {}
     }
 
     pub fn remove_value(&self, key: String) -> Response {
@@ -444,6 +473,15 @@ pub enum Request {
         key: String,
         value: String,
     },
+    Increment {
+        key: String,
+        inc: i32,
+    },
+    ReplicateIncrement {
+        db: String,
+        key: String,
+        inc: i32,
+    },
     ReplicateSet {
         db: String,
         key: String,
@@ -543,6 +581,34 @@ mod tests {
         db.dec_connections();
 
         assert_eq!(db.connections_count(), 1);
+    }
+
+    #[test]
+    fn inc_should_increment_empty_key() {
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let key = String::from("new");
+        db.inc_value(key.clone(), 1);
+        {
+            let values = db.map.read().unwrap();
+            assert_eq!(
+                values
+                    .get(&key.to_string())
+                    .unwrap_or(&String::from("0"))
+                    .clone(),
+                "1"
+            );
+        }
+        db.inc_value(key.clone(), 1);
+        {
+            let values = db.map.read().unwrap();
+            assert_eq!(
+                values
+                    .get(&key.to_string())
+                    .unwrap_or(&String::from("0"))
+                    .clone(),
+                "2"
+            );
+        }
     }
 
     #[test]

@@ -28,6 +28,10 @@ pub fn get_replicate_message(db_name: String, key: String, value: String) -> Str
     return format!("replicate {} {} {}", db_name, key, value);
 }
 
+pub fn get_replicate_increment_message(db_name: String, key: String, inc: String) -> String {
+    return format!("replicate-increment {} {} {}", db_name, key, inc);
+}
+
 pub fn replicate_request(
     input: Request,
     db_name: &String,
@@ -52,12 +56,24 @@ pub fn replicate_request(
                     );
                     Response::Ok {}
                 }
+
                 Request::Set { value, key } => {
                     log::debug!("Will replicate the set of the key {} to {} ", key, value);
                     replicate_web(
                         replication_sender,
                         get_replicate_message(db_name.to_string(), key, value),
                     );
+                    Response::Ok {}
+                }
+
+                Request::ReplicateSet { db, value, key } => {
+                    if is_primary {
+                        log::debug!("Will replicate the set of the key {} to {} ", key, value);
+                        replicate_web(
+                            replication_sender,
+                            get_replicate_message(db.to_string(), key, value),
+                        );
+                    }
                     Response::Ok {}
                 }
 
@@ -85,14 +101,21 @@ pub fn replicate_request(
                     Response::Ok {}
                 }
 
-                Request::ReplicateSet { db, value, key } => {
+                Request::ReplicateIncrement { db, inc, key } => {
                     if is_primary {
-                        log::debug!("Will replicate the set of the key {} to {} ", key, value);
+                        log::debug!("Will replicate the inc of the key {} to {} ", key, inc);
                         replicate_web(
                             replication_sender,
-                            get_replicate_message(db.to_string(), key, value),
+                            get_replicate_increment_message(db.to_string(), key, inc.to_string()),
                         );
                     }
+                    Response::Ok {}
+                }
+                Request::Increment { key, inc } => {
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_increment_message(db_name.to_string(), key, inc.to_string()),
+                    );
                     Response::Ok {}
                 }
                 _ => response,
@@ -199,6 +222,12 @@ pub async fn start_replication_thread(
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot);
                     }
                     Request::ReplicateSet { db, key, value: _ } => {
+                        let db_id = get_db_id(db, &dbs);
+                        let key_id = get_key_id(key, &dbs);
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
+                    }
+
+                    Request::ReplicateIncrement { db, key, inc: _ } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = get_key_id(key, &dbs);
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);

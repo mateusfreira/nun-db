@@ -1,4 +1,5 @@
 use crate::bo::*;
+use log;
 
 impl Request {
     pub fn parse(input: &str) -> Result<Request, String> {
@@ -119,14 +120,14 @@ impl Request {
                 let key = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("SET must be followed by a key");
+                        log::debug!("SET must be followed by a key");
                         ""
                     }
                 };
                 let value = match command.next() {
                     Some(value) => value.replace("\n", ""),
                     None => {
-                        println!("SET needs a value");
+                        log::debug!("SET needs a value");
                         "".to_string()
                     }
                 };
@@ -135,12 +136,70 @@ impl Request {
                     value: value.to_string(),
                 })
             }
+            Some("increment") => {
+                let key = match command.next() {
+                    Some(key) => key,
+                    None => {
+                        log::debug!("increment must be followed by a key");
+                        ""
+                    }
+                };
+                let inc = match command.next() {
+                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+                        Ok(n) => n,
+                        _ => 1,
+                    },
+                    None => 1,
+                };
+                Ok(Request::Increment {
+                    key: key.to_string(),
+                    inc: inc,
+                })
+            }
+            Some("replicate-increment") => {
+                let db_name = match command.next() {
+                    Some(db_name) => db_name.replace("\n", ""),
+                    None => return Err(format!("replicate-snapshot must contain a db name")),
+                };
+
+                let mut rest = match command.next() {
+                    Some(rest) => rest.splitn(2, " "),
+                    None => {
+                        log::debug!("increment must be followed by a key");
+                        return Err(String::from(
+                            "replicate-increment must be followed by a key",
+                        ));
+                    }
+                };
+
+                let key = match rest.next() {
+                    Some(key) => key,
+                    None => {
+                        return Err(String::from(
+                            "replicate-increment must be followed by a key",
+                        ))
+                    }
+                };
+
+                let inc = match rest.next() {
+                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+                        Ok(n) => n,
+                        _ => 1,
+                    },
+                    None => 1,
+                };
+                Ok(Request::ReplicateIncrement {
+                    db: db_name.to_string(),
+                    key: key.to_string(),
+                    inc: inc,
+                })
+            }
 
             Some("remove") => {
                 let key = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("REMOVE must be followed by a key");
+                        log::debug!("REMOVE must be followed by a key");
                         ""
                     }
                 };
@@ -152,14 +211,14 @@ impl Request {
                 let user = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("Auth needs to provide an user");
+                        log::debug!("Auth needs to provide an user");
                         ""
                     }
                 };
                 let pwd = match command.next() {
                     Some(pwd) => pwd.to_string(),
                     None => {
-                        println!("Auth needs and password");
+                        log::debug!("Auth needs and password");
                         "".to_string()
                     }
                 };
@@ -172,14 +231,14 @@ impl Request {
                 let name = match command.next() {
                     Some(name) => name,
                     None => {
-                        println!("UseDb needs to provide an db name");
+                        log::debug!("UseDb needs to provide an db name");
                         ""
                     }
                 };
                 let token = match command.next() {
                     Some(key) => String::from(key).replace("\n", ""),
                     None => {
-                        println!("UseDb needs and token");
+                        log::debug!("UseDb needs and token");
                         "".to_string()
                     }
                 };
@@ -192,14 +251,14 @@ impl Request {
                 let name = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("CreateDb needs to provide an db name");
+                        log::debug!("CreateDb needs to provide an db name");
                         ""
                     }
                 };
                 let token = match command.next() {
                     Some(key) => String::from(key).replace("\n", ""),
                     None => {
-                        println!("CreateDb needs and token");
+                        log::debug!("CreateDb needs and token");
                         "".to_string()
                     }
                 };
@@ -214,7 +273,7 @@ impl Request {
                 let db = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("replicate-remove needs to provide an db name");
+                        log::debug!("replicate-remove needs to provide an db name");
                         ""
                     }
                 };
@@ -222,7 +281,7 @@ impl Request {
                 let key = match command.next() {
                     Some(key) => String::from(key).replace("\n", ""),
                     None => {
-                        println!("replicate remove needs key");
+                        log::debug!("replicate remove needs key");
                         "".to_string()
                     }
                 };
@@ -235,7 +294,7 @@ impl Request {
                 let db = match command.next() {
                     Some(key) => key,
                     None => {
-                        println!("replicate needs to provide an db name");
+                        log::debug!("replicate needs to provide an db name");
                         ""
                     }
                 };
@@ -245,7 +304,7 @@ impl Request {
                         let name = match command.next() {
                             Some(key) => String::from(key).replace("\n", ""),
                             None => {
-                                println!("ReplicateSet needs name");
+                                log::debug!("ReplicateSet needs name");
                                 "".to_string()
                             }
                         };
@@ -253,7 +312,7 @@ impl Request {
                         let value = match command.next() {
                             Some(key) => String::from(key).replace("\n", ""),
                             None => {
-                                println!("ReplicateSet needs value");
+                                log::debug!("ReplicateSet needs value");
                                 "".to_string()
                             }
                         };
@@ -476,6 +535,77 @@ mod tests {
     fn should_parse_cluster_state() -> Result<(), String> {
         match Request::parse("cluster-state") {
             Ok(Request::ClusterState {}) => Ok(()),
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_increment() -> Result<(), String> {
+        match Request::parse("increment key") {
+            Ok(Request::Increment { key, inc }) => {
+                if key == "key" && inc == 1 {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong command parsed"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_increment_with_value() -> Result<(), String> {
+        match Request::parse("increment key 10") {
+            Ok(Request::Increment { key, inc }) => {
+                if key == "key" && inc == 10 {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong command parsed"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_increment_negative_value() -> Result<(), String> {
+        match Request::parse("increment key -10") {
+            Ok(Request::Increment { key, inc }) => {
+                if key == "key" && inc == -10 {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong command parsed"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_replicate_increment_with_value() -> Result<(), String> {
+        match Request::parse("increment key 10") {
+            Ok(Request::Increment { key, inc }) => {
+                if key == "key" && inc == 10 {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong command parsed"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_replicate_increment_negative_value() -> Result<(), String> {
+        match Request::parse("replicate-increment db-name key -10") {
+            Ok(Request::ReplicateIncrement { db, key, inc }) => {
+                log::debug!("{},{},{}", db, key, inc);
+                if key == "key" && inc == -10 && db == "db-name" {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong command parsed"))
+                }
+            }
             _ => Err(String::from("wrong command parsed")),
         }
     }

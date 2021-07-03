@@ -5,6 +5,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 use std::time;
+use log;
 
 use crate::bo::*;
 use crate::process_request::*;
@@ -68,18 +69,18 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                         if let Some(m) = member {
                             match m.role {
                                 ClusterRole::Primary => {
-                                    println!("Primary Cluster member disconnected: {}", m.name);
+                                    log::debug!("Primary Cluster member disconnected: {}", m.name);
                                     process_leave_request(&format!("leave {}", m.name), &dbs);
                                 }
                                 ClusterRole::Secoundary => {
-                                    println!("Secoundary Cluster member disconnected: {}", m.name);
+                                    log::debug!("Secoundary Cluster member disconnected: {}", m.name);
                                     process_leave_request(
                                         &format!("replicate-leave {}", m.name),
                                         &dbs,
                                     ); // replicate-leave does not efornce election
                                 }
                                 ClusterRole::StartingUp => {
-                                    println!(
+                                    log::debug!(
                                         "ClusterMember {} died while still in StartingUp mode",
                                         m.name
                                     );
@@ -95,15 +96,15 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                     }
                     _ => match process_request(&buf, &dbs, &mut client) {
                         Response::Error { msg } => {
-                            println!("Error: {}", msg);
+                            log::debug!("Error: {}", msg);
                             match client.sender.try_send(format!("error {} \n", msg)) {
                                 Ok(_) => (),
-                                _ => println!("Error on sending and error request"),
+                                _ => log::debug!("Error on sending and error request"),
                             }
                         }
                         _ => match client.sender.try_send(format!("ok \n")) {
-                            Ok(_) => println!("Success processed"),
-                            _ => println!("Success processed! error on sender"),
+                            Ok(_) => log::debug!("Success processed"),
+                            _ => log::debug!("Success processed! error on sender"),
                         },
                     },
                 }
@@ -113,17 +114,16 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
     }
 }
 fn process_message(receiver: &mut Receiver<String>, writer: &mut BufWriter<&TcpStream>) {
-    // println!("tcp_ops::process_message");
     match receiver.try_next() {
         Ok(message_opt) => match message_opt {
             Some(message) => {
                 writer.write_fmt(format_args!("{}", message)).unwrap();
                 match writer.flush() {
                     Ok(_n) => (),
-                    Err(e) => println!("process_message Error: {}", e),
+                    Err(e) => log::warn!("process_message Error: {}", e),
                 }
             }
-            None => println!("tcp_ops::process_message::Empty message"),
+            None => log::debug!("tcp_ops::process_message::Empty message"),
         },
         _ => thread::sleep(time::Duration::from_millis(2)),
     }

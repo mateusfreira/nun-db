@@ -149,6 +149,27 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 - [ ] Require db auth
 - [ ] Replicate? How? 
 
+### Increment
+#### Context
+- [ ] Require admin auth
+- [ ] Require db auth
+- [x] Replicate? How? (replicate-increment)
+- [x] Register Oplog? How? (Update)
+
+Increments a integer key value, if the does not exists start the value with 0, if the key is integer returns an error
+e.gs: 
+Increments in 1
+```
+increment visits
+```
+
+Increments by 10
+
+```
+increment visits 10
+```
+
+
 ## Connectors 
 * Http
     Port: 3013
