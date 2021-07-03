@@ -196,9 +196,7 @@ impl Database {
         return connections.load(Ordering::Relaxed);
     }
 
-    pub fn set_value(&self, key: String, value: String) {
-        let mut db = self.map.write().unwrap();
-        db.insert(key.clone(), value.clone());
+    pub fn notify_watchers(&self, key: String, value: String) {
         let watchers = self.watchers.map.read().unwrap();
         match watchers.get(&key) {
             Some(senders) => {
@@ -217,36 +215,35 @@ impl Database {
         }
     }
 
+    pub fn set_value(&self, key: String, value: String) {
+        {
+            let mut db = self.map.write().unwrap();
+            db.insert(key.clone(), value.clone());
+        }// release the db
+        self.notify_watchers(key.clone(), value.clone());
+    }
+
     pub fn inc_value(&self, key: String, inc: i32) -> Response {
-        let mut db = self.map.write().unwrap();
-        match i32::from_str_radix(db.get(&key.to_string()).unwrap_or(&String::from("0")), 10) {
-            Ok(current) => {
-                let next = (current + inc).to_string();
-                db.insert(key.clone(), next.clone());
-                let watchers = self.watchers.map.read().unwrap();
-                match watchers.get(&key) {
-                    Some(senders) => {
-                        for sender in senders {
-                            log::debug!("Sending to another client");
-                            match sender.clone().try_send(
-                                format_args!("changed {} {}\n", key.to_string(), next.to_string())
-                                    .to_string(),
-                            ) {
-                                Ok(_n) => (),
-                                Err(e) => log::warn!("Request::Increment sender.send Error: {}", e),
-                            }
-                        }
+        // This will reduce the lock time of map. It won't wait the notifyt time, we don't need to 
+        // wait for the update_watchers to release the key
+        let value = {
+            let mut db = self.map.write().unwrap();
+            match i32::from_str_radix(db.get(&key.to_string()).unwrap_or(&String::from("0")), 10) {
+                Ok(current) => {
+                    let next = (current + inc).to_string();
+                    db.insert(key.clone(), next.clone());
+                    next
+                }
+                _ => {
+                    return Response::Error {
+                        msg: "Key is not numeric".to_string(),
                     }
-                    _ => {}
-                }
-                return Response::Ok {};
-            }
-            _ => {
-                return Response::Error {
-                    msg: "Key is not numeric".to_string(),
                 }
             }
-        }
+        };
+
+        self.notify_watchers(key.clone(), value.clone());
+        Response::Ok {}
     }
 
     pub fn remove_value(&self, key: String) -> Response {

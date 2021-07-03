@@ -165,13 +165,19 @@ impl Request {
                     Some(rest) => rest.splitn(2, " "),
                     None => {
                         println!("increment must be followed by a key");
-                        return Err(String::from("replicate-increment must be followed by a key"))
+                        return Err(String::from(
+                            "replicate-increment must be followed by a key",
+                        ));
                     }
                 };
 
                 let key = match rest.next() {
                     Some(key) => key,
-                    None => return Err(String::from("replicate-increment must be followed by a key"))
+                    None => {
+                        return Err(String::from(
+                            "replicate-increment must be followed by a key",
+                        ))
+                    }
                 };
 
                 let inc = match rest.next() {
@@ -593,7 +599,7 @@ mod tests {
         match Request::parse("replicate-increment db-name key -10") {
             Ok(Request::ReplicateIncrement { db, key, inc }) => {
                 print!("{},{},{}", db, key, inc);
-                if key == "key" && inc == -10 && db == "db-name"   {
+                if key == "key" && inc == -10 && db == "db-name" {
                     Ok(())
                 } else {
                     Err(String::from("wrong command parsed"))
