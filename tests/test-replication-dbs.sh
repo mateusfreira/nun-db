@@ -120,15 +120,24 @@ fi
 for i in {1..20}
 do
     echo "Set in the primary"
-    r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1;")
+    r=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; set state jose-$i-1; increment visits;")
     echo "Read from the secoundary"
-	get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
+    get_result2=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get state")
+    get_inc_result=$(curl -s -X "POST" "$secoundary2HttpAddress" -d "use-db test-db test-db-key; get visits")
     if [ "$get_result2" != "empty;value jose-$i-1" ]; then
-        echo "Invalid value value in the secoundary 2: $get_result $i"
+        echo "Invalid value value in the secoundary 2:  $get_result2 $i"
         exit 3
     else
         echo "Request $i Ok"
     fi
+
+    if [ "$get_inc_result" != "empty;value $i" ]; then
+        echo "Invalid value value in the secoundary 2:  $get_inc_result $i"
+        exit 3
+    else
+        echo "Request $i Ok"
+    fi
+
 done
 
 clusterStatePrimary=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; cluster-state;")

@@ -217,7 +217,6 @@ impl Database {
         }
     }
 
-
     pub fn inc_value(&self, key: String, inc: i32) -> Response {
         let mut db = self.map.write().unwrap();
         match i32::from_str_radix(db.get(&key.to_string()).unwrap_or(&String::from("0")), 10) {
@@ -481,6 +480,11 @@ pub enum Request {
         key: String,
         inc: i32,
     },
+    ReplicateIncrement {
+        db: String,
+        key: String,
+        inc: i32,
+    },
     ReplicateSet {
         db: String,
         key: String,
@@ -589,12 +593,24 @@ mod tests {
         db.inc_value(key.clone(), 1);
         {
             let values = db.map.read().unwrap();
-            assert_eq!(values.get(&key.to_string()).unwrap_or(&String::from("0")).clone(), "1");
+            assert_eq!(
+                values
+                    .get(&key.to_string())
+                    .unwrap_or(&String::from("0"))
+                    .clone(),
+                "1"
+            );
         }
         db.inc_value(key.clone(), 1);
         {
             let values = db.map.read().unwrap();
-            assert_eq!(values.get(&key.to_string()).unwrap_or(&String::from("0")).clone(), "2");
+            assert_eq!(
+                values
+                    .get(&key.to_string())
+                    .unwrap_or(&String::from("0"))
+                    .clone(),
+                "2"
+            );
         }
     }
 

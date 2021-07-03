@@ -31,6 +31,23 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         input_to_log
     );
     let result = match request.clone() {
+        Request::ReplicateIncrement { db: name, key, inc } => apply_if_auth(&client.auth, &|| {
+            let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
+            let respose: Response = match dbs.get(&name.to_string()) {
+                Some(db) => {
+                    db.inc_value(key.to_string(), inc);
+                    Response::Ok {}
+                }
+                _ => {
+                    log::debug!("Not a valid database name");
+                    Response::Error {
+                        msg: "Not a valid database name".to_string(),
+                    }
+                }
+            };
+            respose
+        }),
+
         Request::Increment { key, inc } => apply_to_database(&dbs, &client, &|_db| {
             if dbs.is_primary() {
                 _db.inc_value(key.to_string(), inc);

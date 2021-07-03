@@ -146,11 +146,43 @@ impl Request {
                 let inc = match command.next() {
                     Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
                         Ok(n) => n,
-                        e => 1,
+                        _ => 1,
                     },
                     None => 1,
                 };
                 Ok(Request::Increment {
+                    key: key.to_string(),
+                    inc: inc,
+                })
+            }
+            Some("replicate-increment") => {
+                let db_name = match command.next() {
+                    Some(db_name) => db_name.replace("\n", ""),
+                    None => return Err(format!("replicate-snapshot must contain a db name")),
+                };
+
+                let mut rest = match command.next() {
+                    Some(rest) => rest.splitn(2, " "),
+                    None => {
+                        println!("increment must be followed by a key");
+                        return Err(String::from("replicate-increment must be followed by a key"))
+                    }
+                };
+
+                let key = match rest.next() {
+                    Some(key) => key,
+                    None => return Err(String::from("replicate-increment must be followed by a key"))
+                };
+
+                let inc = match rest.next() {
+                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+                        Ok(n) => n,
+                        _ => 1,
+                    },
+                    None => 1,
+                };
+                Ok(Request::ReplicateIncrement {
+                    db: db_name.to_string(),
                     key: key.to_string(),
                     inc: inc,
                 })
@@ -533,6 +565,35 @@ mod tests {
         match Request::parse("increment key -10") {
             Ok(Request::Increment { key, inc }) => {
                 if key == "key" && inc == -10 {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong command parsed"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_replicate_increment_with_value() -> Result<(), String> {
+        match Request::parse("increment key 10") {
+            Ok(Request::Increment { key, inc }) => {
+                if key == "key" && inc == 10 {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong command parsed"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_replicate_increment_negative_value() -> Result<(), String> {
+        match Request::parse("replicate-increment db-name key -10") {
+            Ok(Request::ReplicateIncrement { db, key, inc }) => {
+                print!("{},{},{}", db, key, inc);
+                if key == "key" && inc == -10 && db == "db-name"   {
                     Ok(())
                 } else {
                     Err(String::from("wrong command parsed"))

@@ -39,6 +39,13 @@ pub fn replicate_request(
         match response {
             Response::Error { msg: _ } => response,
             _ => match input {
+                Request::Increment { key, inc } => {
+                    replicate_web(
+                        replication_sender,
+                        format!("replicate-increment {} {} {}", db_name, key, inc),
+                    );
+                    Response::Ok {}
+                }
                 Request::CreateDb { name, token } => {
                     log::debug!("Will replicate command a created database name {}", name);
                     replicate_web(replication_sender, format!("create-db {} {}", name, token));
@@ -199,6 +206,12 @@ pub async fn start_replication_thread(
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot);
                     }
                     Request::ReplicateSet { db, key, value: _ } => {
+                        let db_id = get_db_id(db, &dbs);
+                        let key_id = get_key_id(key, &dbs);
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
+                    }
+
+                    Request::ReplicateIncrement { db, key, inc: _ } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = get_key_id(key, &dbs);
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
