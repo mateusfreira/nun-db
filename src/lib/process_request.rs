@@ -234,7 +234,11 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         }),
 
         Request::Join { name } => apply_if_auth(&client.auth, &|| {
-            add_as_secoundary(&dbs, &name);
+            if dbs.is_primary() {
+                add_as_secoundary(&dbs, &name);
+            } else {
+                log::debug!("Ignoring join on secoundary!")
+            }
             Response::Ok {}
         }),
 
