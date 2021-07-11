@@ -54,7 +54,11 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
             } else {
                 let db_name_state = _db.name.clone();
                 send_message_to_primary(
-                    get_replicate_increment_message(db_name_state.to_string(), key.clone(), inc.to_string()),
+                    get_replicate_increment_message(
+                        db_name_state.to_string(),
+                        key.clone(),
+                        inc.to_string(),
+                    ),
                     dbs,
                 );
             }

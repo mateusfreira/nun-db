@@ -51,7 +51,7 @@ pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
 
 pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
     let db_file_name = get_keys_map_file_name();
-    log::debug!("Will read the keys {} from disk", db_file_name);
+    log::debug!("Will write the keys {} from disk", db_file_name);
 
     let mut keys_file = OpenOptions::new()
         .create(true)
@@ -175,36 +175,42 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     ) = std::sync::mpsc::channel(); // Visit this again
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
-            let mut dbs_to_snapshot = {
-                let dbs = dbs.to_snapshot.write().unwrap();
-                dbs
-                //.clone()
-            };
-            dbs_to_snapshot.dedup();
-            while let Some(database_name) = dbs_to_snapshot.pop() {
-                log::debug!("Will snapshot the database {}", database_name);
-                let dbs = dbs.clone();
-                let dbs_map = dbs.map.read().unwrap();
-                let db_opt = dbs_map.get(&database_name);
-                match db_opt {
-                    Some(db) => {
-                        storage_data_disk(db, database_name.clone());
-                        if database_name == ADMIN_DB {
-                            // if saving the admin db save the keys
-                            let keys_map = {
-                                let keys_map = dbs.keys_map.read().unwrap();
-                                keys_map.clone()
-                            };
-                            log::debug!("Will snapshot the keys {}", keys_map.len());
-                            write_keys_map_to_disk(keys_map);
+            let queue_len = { dbs.to_snapshot.read().unwrap().len() };
+            if queue_len > 0 {
+                snap_shot_keys(&dbs);
+                let mut dbs_to_snapshot = {
+                    let dbs = dbs.to_snapshot.write().unwrap();
+                    dbs
+                };
+                dbs_to_snapshot.dedup();
+                while let Some(database_name) = dbs_to_snapshot.pop() {
+                    log::debug!("Will snapshot the database {}", database_name);
+                    let dbs = dbs.clone();
+                    let dbs_map = dbs.map.read().unwrap();
+                    let db_opt = dbs_map.get(&database_name);
+                    match db_opt {
+                        Some(db) => {
+                            storage_data_disk(db, database_name.clone());
+                            if database_name == ADMIN_DB {
+                                // if saving the admin db save the keys
+                            }
                         }
+                        _ => log::warn!("Database not found {}", database_name),
                     }
-                    _ => log::warn!("Database not found {}", database_name),
                 }
             }
         })
     };
     rx.recv().unwrap(); // Thread will run for ever
+}
+
+fn snap_shot_keys(dbs: &Arc<Databases>) {
+    let keys_map = {
+        let keys_map = dbs.keys_map.read().unwrap();
+        keys_map.clone()
+    };
+    log::debug!("Will snapshot the keys {}", keys_map.len());
+    write_keys_map_to_disk(keys_map);
 }
 
 pub fn get_log_file_append_mode() -> BufWriter<File> {
