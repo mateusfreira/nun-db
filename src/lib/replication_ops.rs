@@ -308,7 +308,7 @@ fn add_primary_to_secoundary(
     });
     let tcp_addr = tcp_addr.clone();
     let guard = thread::spawn(move || {
-        start_replication(name, receiver, user, pwd, tcp_addr.to_string(), false, true);
+        start_replication(name, receiver, user, pwd, tcp_addr.to_string(), false);
     });
     guard
 }
@@ -339,7 +339,6 @@ fn add_sencoundary_to_primary(
             pwd,
             tcp_addr.to_string(),
             true,
-            false,
         );
 
         log::info!(
@@ -376,7 +375,6 @@ fn add_sencoundary_to_secoundary(
             user,
             pwd,
             tcp_addr.to_string(),
-            false,
             false,
         );
 
@@ -596,7 +594,6 @@ fn start_replication(
     pwd: String,
     tcp_addr: String,
     is_primary: bool,
-    start_sync: bool,
 ) {
     log::info!(
         "replicating to tcp client in the addr: {}",
@@ -605,7 +602,7 @@ fn start_replication(
     match TcpStream::connect(replicate_address.clone()) {
         Ok(socket) => {
             let writer = &mut BufWriter::new(&socket);
-            auth_on_replication(user, pwd, tcp_addr, is_primary, start_sync, writer);
+            auth_on_replication(user, pwd, tcp_addr, is_primary, writer);
             let fut = async {
                 loop {
                     let message_opt = command_receiver.next().await;
@@ -645,7 +642,6 @@ pub fn auth_on_replication(
     pwd: String,
     tcp_addr: String,
     is_primary: bool,
-    start_sync: bool,
     writer: &mut std::io::BufWriter<&std::net::TcpStream>,
 ) {
     writer

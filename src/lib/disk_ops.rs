@@ -103,7 +103,15 @@ fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::D
         }
     }
 }
-fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
+pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
+    log::debug!("Will load dbs from disck");
+    match create_dir_all(get_dir_name()) {
+        Ok(_) => {}
+        Err(e) => {
+            log::error!("Error creating the data dirs {}", e);
+            panic!("Error creating the data dirs");
+        }
+    };
     if let Ok(entries) = read_dir(get_dir_name()) {
         for entry in entries {
             load_one_db_from_disk(dbs, entry);
@@ -161,14 +169,6 @@ fn storage_data_disk(db: &Database, db_name: String) {
 // calls storage_data_disk each $SNAPSHOT_TIME seconds
 pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     log::info!("Will start_snap_shot_timer");
-    load_all_dbs_from_disk(&dbs);
-    match create_dir_all(get_dir_name()) {
-        Ok(_) => {}
-        Err(e) => {
-            log::error!("Error creating the data dirs {}", e);
-            panic!("Error creating the data dirs");
-        }
-    };
     let (_tx, rx): (
         std::sync::mpsc::Sender<String>,
         std::sync::mpsc::Receiver<String>,
