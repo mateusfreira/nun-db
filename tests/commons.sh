@@ -96,8 +96,6 @@ fi
 if [ $command = "save-admin" ] || [ $command = "all" ]
 then
         RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$primaryHttpAddress" exec "auth mateus mateus; use-db \$admin mateus; snapshot;"
-        RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$secoundary1HttpAddress" exec "auth mateus mateus; use-db \$admin mateus; snapshot;"
-        RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$secoundary2HttpAddress" exec "auth mateus mateus; use-db \$admin mateus; snapshot;"
 fi
 
 if [ $command = "print-election-primary" ] || [ $command = "all" ]

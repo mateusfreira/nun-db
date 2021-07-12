@@ -1,6 +1,6 @@
 auth mateus mateus
-create-db sample sample
-use-db sample sample
+create-db sample sample-pwd
+use-db sample sample-pwd
 set jose 1
 set maria 2
 set jose 4

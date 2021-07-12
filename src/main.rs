@@ -69,6 +69,8 @@ fn start_db(
         keys_map,
     );
 
+    disk_ops::load_all_dbs_from_disk(&dbs);
+
     let db_replication_start = dbs.clone();
     let tcp_address_to_relication = Arc::new(tcp_address.to_string());
     let replication_thread_creator = async {

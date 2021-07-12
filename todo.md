@@ -28,7 +28,7 @@
      - [x] Op log file reading as database
      - [x] Implement full sync (if op log fail)
      - [x] Fix primary disconnections election problem
-     - [ ] Stop using timestamp
+     - [ ] Stop using timestamp register the last used oplog on the secoundary
      - [ ] Document db creation and deletion lock while restoring a replica set...
      - [ ] Document how to backup the admin datatabase
      - [ ] Document how the all election process works

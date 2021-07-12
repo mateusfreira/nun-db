@@ -416,8 +416,9 @@ pub async fn start_replication_supervisor(
         match message_opt {
             Some(start_replicate_message) => {
                 log::debug!(
-                    "[start_replication_creator_thread] got {}",
-                    start_replicate_message
+                    "[start_replication_creator_thread] got {} at {}",
+                    start_replicate_message,
+                    tcp_addr
                 );
                 let mut command = start_replicate_message.splitn(2, " ");
 
@@ -566,6 +567,7 @@ pub fn ask_to_join_all_replicas(
 }
 
 pub fn ask_to_join(replica_addr: &String, tcp_addr: &String, user: &String, pwd: &String) {
+    log::debug!("Will ask to join {}, from {}", replica_addr, tcp_addr);
     match TcpStream::connect(replica_addr.clone()) {
         Ok(socket) => {
             let writer = &mut BufWriter::new(&socket);
@@ -654,9 +656,9 @@ pub fn auth_on_replication(
         writer
             .write_fmt(format_args!("set-secoundary {}\n", tcp_addr))
             .unwrap();
-
         start_sync_process(writer, &tcp_addr);
     }
+
     match writer.flush() {
         Err(e) => log::warn!("auth replication error: {}", e),
         _ => (),
@@ -717,6 +719,7 @@ fn get_pendding_opps_since_from_sync(since: u64, dbs: &Arc<Databases>) -> Vec<St
         let opp = match op_record.opp {
             ReplicateOpp::Update => {
                 let db_name = id_name_db_map.get(&op_record.db).unwrap();
+                log::debug!("db_name: {} and key: {}", db_name, op_record.key);
                 let key_str = id_keys_map.get(&op_record.key).unwrap();
                 if last_db != db_name {
                     db = dbs_map.get(db_name).unwrap();
@@ -758,6 +761,7 @@ pub fn get_pendding_opps_since(since: u64, dbs: &Arc<Databases>) -> Vec<String> 
 }
 
 fn start_sync_process(writer: &mut std::io::BufWriter<&std::net::TcpStream>, tcp_addr: &String) {
+    log::debug!("start_sync_process to {}", tcp_addr);
     writer
         .write_fmt(format_args!(
             "replicate-since {} {}\n",

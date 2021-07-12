@@ -51,7 +51,7 @@ pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
 
 pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
     let db_file_name = get_keys_map_file_name();
-    log::debug!("Will read the keys {} from disk", db_file_name);
+    log::debug!("Will write the keys {} from disk", db_file_name);
 
     let mut keys_file = OpenOptions::new()
         .create(true)
@@ -103,7 +103,15 @@ fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::D
         }
     }
 }
-fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
+pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
+    log::debug!("Will load dbs from disck");
+    match create_dir_all(get_dir_name()) {
+        Ok(_) => {}
+        Err(e) => {
+            log::error!("Error creating the data dirs {}", e);
+            panic!("Error creating the data dirs");
+        }
+    };
     if let Ok(entries) = read_dir(get_dir_name()) {
         for entry in entries {
             load_one_db_from_disk(dbs, entry);
@@ -161,50 +169,45 @@ fn storage_data_disk(db: &Database, db_name: String) {
 // calls storage_data_disk each $SNAPSHOT_TIME seconds
 pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     log::info!("Will start_snap_shot_timer");
-    load_all_dbs_from_disk(&dbs);
-    match create_dir_all(get_dir_name()) {
-        Ok(_) => {}
-        Err(e) => {
-            log::error!("Error creating the data dirs {}", e);
-            panic!("Error creating the data dirs");
-        }
-    };
     let (_tx, rx): (
         std::sync::mpsc::Sender<String>,
         std::sync::mpsc::Receiver<String>,
     ) = std::sync::mpsc::channel(); // Visit this again
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
-            let mut dbs_to_snapshot = {
-                let dbs = dbs.to_snapshot.write().unwrap();
-                dbs
-                //.clone()
-            };
-            dbs_to_snapshot.dedup();
-            while let Some(database_name) = dbs_to_snapshot.pop() {
-                log::debug!("Will snapshot the database {}", database_name);
-                let dbs = dbs.clone();
-                let dbs_map = dbs.map.read().unwrap();
-                let db_opt = dbs_map.get(&database_name);
-                match db_opt {
-                    Some(db) => {
-                        storage_data_disk(db, database_name.clone());
-                        if database_name == ADMIN_DB {
-                            // if saving the admin db save the keys
-                            let keys_map = {
-                                let keys_map = dbs.keys_map.read().unwrap();
-                                keys_map.clone()
-                            };
-                            log::debug!("Will snapshot the keys {}", keys_map.len());
-                            write_keys_map_to_disk(keys_map);
+            let queue_len = { dbs.to_snapshot.read().unwrap().len() };
+            if queue_len > 0 {
+                snap_shot_keys(&dbs);
+                let mut dbs_to_snapshot = {
+                    let dbs = dbs.to_snapshot.write().unwrap();
+                    dbs
+                };
+                dbs_to_snapshot.dedup();
+                while let Some(database_name) = dbs_to_snapshot.pop() {
+                    log::debug!("Will snapshot the database {}", database_name);
+                    let dbs = dbs.clone();
+                    let dbs_map = dbs.map.read().unwrap();
+                    let db_opt = dbs_map.get(&database_name);
+                    match db_opt {
+                        Some(db) => {
+                            storage_data_disk(db, database_name.clone());
                         }
+                        _ => log::warn!("Database not found {}", database_name),
                     }
-                    _ => log::warn!("Database not found {}", database_name),
                 }
             }
         })
     };
     rx.recv().unwrap(); // Thread will run for ever
+}
+
+fn snap_shot_keys(dbs: &Arc<Databases>) {
+    let keys_map = {
+        let keys_map = dbs.keys_map.read().unwrap();
+        keys_map.clone()
+    };
+    log::debug!("Will snapshot the keys {}", keys_map.len());
+    write_keys_map_to_disk(keys_map);
 }
 
 pub fn get_log_file_append_mode() -> BufWriter<File> {

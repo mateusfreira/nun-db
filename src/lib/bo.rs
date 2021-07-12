@@ -31,7 +31,7 @@ impl Client {
             selected_db: Arc::new(SelectedDatabase {
                 name: RwLock::new("init".to_string()),
             }),
-            sender: sender,
+            sender,
         }
     }
 
@@ -115,7 +115,7 @@ pub struct DatabaseMataData {
 
 impl DatabaseMataData {
     pub fn new(id: usize) -> DatabaseMataData {
-        return DatabaseMataData { id: id };
+        return DatabaseMataData { id };
     }
 }
 
@@ -146,10 +146,10 @@ pub struct Databases {
 impl Database {
     pub fn new(name: String, metadata: DatabaseMataData) -> Database {
         return Database {
-            metadata: metadata,
+            metadata,
             map: std::sync::RwLock::new(HashMap::new()),
             connections: RwLock::new(AtomicUsize::new(0)),
-            name: name,
+            name,
             watchers: Watchers {
                 map: RwLock::new(HashMap::new()),
             },
@@ -162,13 +162,13 @@ impl Database {
         metadata: DatabaseMataData,
     ) -> Database {
         return Database {
-            metadata: metadata,
             map: RwLock::new(data),
-            name: name,
-            connections: RwLock::new(AtomicUsize::new(0)),
+            name,
             watchers: Watchers {
                 map: RwLock::new(HashMap::new()),
             },
+            connections: RwLock::new(AtomicUsize::new(0)),
+            metadata,
         };
     }
 
@@ -219,12 +219,12 @@ impl Database {
         {
             let mut db = self.map.write().unwrap();
             db.insert(key.clone(), value.clone());
-        }// release the db
+        } // release the db
         self.notify_watchers(key.clone(), value.clone());
     }
 
     pub fn inc_value(&self, key: String, inc: i32) -> Response {
-        // This will reduce the lock time of map. It won't wait the notifyt time, we don't need to 
+        // This will reduce the lock time of map. It won't wait the notifyt time, we don't need to
         // wait for the update_watchers to release the key
         let value = {
             let mut db = self.map.write().unwrap();
@@ -292,11 +292,11 @@ impl Databases {
             cluster_state: Mutex::new(ClusterState {
                 members: Mutex::new(HashMap::new()),
             }),
-            replication_supervisor_sender: replication_supervisor_sender,
-            replication_sender: replication_sender,
-            user: user,
+            replication_supervisor_sender,
+            replication_sender,
+            user,
             pwd: pwd.to_string(),
-            tcp_address: tcp_address,
+            tcp_address,
             node_state: Arc::new(AtomicUsize::new(ClusterRole::StartingUp as usize)),
             process_id: process_id,
         };
