@@ -191,9 +191,6 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
                     match db_opt {
                         Some(db) => {
                             storage_data_disk(db, database_name.clone());
-                            if database_name == ADMIN_DB {
-                                // if saving the admin db save the keys
-                            }
                         }
                         _ => log::warn!("Database not found {}", database_name),
                     }
