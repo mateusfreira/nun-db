@@ -39,90 +39,97 @@ pub fn replicate_request(
     replication_sender: &Sender<String>,
     is_primary: bool,
 ) -> Response {
-    if is_primary {
-        match response {
-            Response::Error { msg: _ } => response,
-            _ => match input {
-                Request::CreateDb { name, token } => {
-                    log::debug!("Will replicate command a created database name {}", name);
-                    replicate_web(replication_sender, format!("create-db {} {}", name, token));
-                    Response::Ok {}
-                }
-                Request::Snapshot {} => {
-                    log::debug!("Will replicate a snapshot to the database {}", db_name);
-                    replicate_web(
-                        replication_sender,
-                        format!("replicate-snapshot {}", db_name),
-                    );
-                    Response::Ok {}
-                }
+    match response {
+        Response::Error { msg: _ } => response,
+        _ => match input {
+            Request::CreateDb { name, token } => {
+                log::debug!("Will replicate command a created database name {}", name);
+                replicate_web(replication_sender, format!("create-db {} {}", name, token));
+                Response::Ok {}
+            }
+            Request::Snapshot {} => {
+                log::debug!("Will replicate a snapshot to the database {}", db_name);
+                replicate_web(
+                    replication_sender,
+                    format!("replicate-snapshot {}", db_name),
+                );
+                Response::Ok {}
+            }
 
-                Request::Set { value, key } => {
-                    log::debug!("Will replicate the set of the key {} to {} ", key, value);
-                    replicate_web(
-                        replication_sender,
-                        get_replicate_message(db_name.to_string(), key, value),
-                    );
-                    Response::Ok {}
-                }
+            Request::ReplicateSnapshot { db } => {
+                log::debug!("Will replicate a snapshot to the database {}", db);
+                replicate_web(replication_sender, format!("replicate-snapshot {}", db));
+                Response::Ok {}
+            }
 
-                Request::ReplicateSet { db, value, key } => {
-                    if is_primary {
-                        log::debug!("Will replicate the set of the key {} to {} ", key, value);
-                        replicate_web(
-                            replication_sender,
-                            get_replicate_message(db.to_string(), key, value),
-                        );
-                    }
-                    Response::Ok {}
-                }
+            Request::Set { value, key } => {
+                log::debug!("Will replicate the set of the key {} to {} ", key, value);
+                replicate_web(
+                    replication_sender,
+                    get_replicate_message(db_name.to_string(), key, value),
+                );
+                Response::Ok {}
+            }
 
-                Request::Remove { key } => {
-                    log::debug!("Will replicate the remove of the key {} ", key);
-                    replicate_web(
-                        replication_sender,
-                        get_replicate_remove_message(db_name.to_string(), key),
-                    );
-                    Response::Ok {}
-                }
+            Request::ReplicateSet { db, value, key } => {
+                log::debug!("Will replicate the set of the key {} to {} ", key, value);
+                replicate_web(
+                    replication_sender,
+                    get_replicate_message(db.to_string(), key, value),
+                );
+                Response::Ok {}
+            }
 
-                Request::Election { id } => {
-                    replicate_web(replication_sender, format!("election cadidate {}", id));
-                    Response::Ok {}
-                }
+            Request::Remove { key } => {
+                log::debug!("Will replicate the remove of the key {} ", key);
+                replicate_web(
+                    replication_sender,
+                    get_replicate_remove_message(db_name.to_string(), key),
+                );
+                Response::Ok {}
+            }
 
-                Request::ElectionActive {} => {
-                    replicate_web(replication_sender, format!("election active"));
-                    Response::Ok {}
-                }
+            Request::ReplicateRemove { db, key } => {
+                log::debug!("Will replicate the remove of the key {} ", key);
+                replicate_web(
+                    replication_sender,
+                    get_replicate_remove_message(db.to_string(), key),
+                );
+                Response::Ok {}
+            }
 
-                Request::Leave { name } => {
-                    replicate_web(replication_sender, format!("replicate-leave {}", name));
-                    Response::Ok {}
-                }
+            Request::Election { id } => {
+                replicate_web(replication_sender, format!("election cadidate {}", id));
+                Response::Ok {}
+            }
 
-                Request::ReplicateIncrement { db, inc, key } => {
-                    if is_primary {
-                        log::debug!("Will replicate the inc of the key {} to {} ", key, inc);
-                        replicate_web(
-                            replication_sender,
-                            get_replicate_increment_message(db.to_string(), key, inc.to_string()),
-                        );
-                    }
-                    Response::Ok {}
-                }
-                Request::Increment { key, inc } => {
-                    replicate_web(
-                        replication_sender,
-                        get_replicate_increment_message(db_name.to_string(), key, inc.to_string()),
-                    );
-                    Response::Ok {}
-                }
-                _ => response,
-            },
-        }
-    } else {
-        response
+            Request::ElectionActive {} => {
+                replicate_web(replication_sender, format!("election active"));
+                Response::Ok {}
+            }
+
+            Request::Leave { name } => {
+                replicate_web(replication_sender, format!("replicate-leave {}", name));
+                Response::Ok {}
+            }
+
+            Request::ReplicateIncrement { db, inc, key } => {
+                log::debug!("Will replicate the inc of the key {} to {} ", key, inc);
+                replicate_web(
+                    replication_sender,
+                    get_replicate_increment_message(db.to_string(), key, inc.to_string()),
+                );
+                Response::Ok {}
+            }
+            Request::Increment { key, inc } => {
+                replicate_web(
+                    replication_sender,
+                    get_replicate_increment_message(db_name.to_string(), key, inc.to_string()),
+                );
+                Response::Ok {}
+            }
+            _ => response,
+        },
     }
 }
 
@@ -206,7 +213,11 @@ pub async fn start_replication_thread(
                     log::info!("replication_ops::start_replication_thread will exist!");
                     break;
                 }
-                replicate_message_to_secoundary(message.to_string(), &dbs);
+                if dbs.is_primary() {
+                    replicate_message_to_secoundary(message.to_string(), &dbs);
+                } else {
+                    log::debug!("Won't replicate message from secoundary");
+                }
                 let request = Request::parse(&message.to_string()).unwrap();
                 match request {
                     Request::CreateDb { name, token: _ } => {
