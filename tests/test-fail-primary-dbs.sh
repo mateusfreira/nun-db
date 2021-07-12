@@ -198,7 +198,7 @@ then
      echo "Read from the secoundary"
      get_result2=$(curl -s -X "POST" "$primaryHttpAddress" -d "use-db test-db test-db-key; get state")
      if [ "$get_result2" != "empty;value jose-20-1" ]; then
-        echo "Invalid value value in the secoundary 2: $get_result $i"
+        echo "Invalid value value in the secoundary 2: $get_result"
         exit 3
      else
         echo "Request restored from op log Ok"

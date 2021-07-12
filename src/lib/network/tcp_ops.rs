@@ -1,11 +1,11 @@
 use futures::channel::mpsc::Receiver;
+use log;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 use std::time;
-use log;
 
 use crate::bo::*;
 use crate::process_request::*;
@@ -73,7 +73,10 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
                                     process_leave_request(&format!("leave {}", m.name), &dbs);
                                 }
                                 ClusterRole::Secoundary => {
-                                    log::debug!("Secoundary Cluster member disconnected: {}", m.name);
+                                    log::debug!(
+                                        "Secoundary Cluster member disconnected: {}",
+                                        m.name
+                                    );
                                     process_leave_request(
                                         &format!("replicate-leave {}", m.name),
                                         &dbs,
