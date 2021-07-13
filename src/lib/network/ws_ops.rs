@@ -30,8 +30,8 @@ impl Handler for Server {
             let read_promise = async {
                 loop {
                     let message = receiver.next().await;
-                    match message {
-                        Some(message) => match message.as_ref() {
+                    if let Some(message) = message {
+                        match message.as_ref() {
                             TO_CLOSE => {
                                 log::debug!("Closing server connection");
                                 break;
@@ -39,16 +39,16 @@ impl Handler for Server {
                             message => {
                                 log::debug!("ws_ops::_read_thread::message {}", message);
                                 match ws_sender.send(message) {
-                                    Ok(_) => {}
                                     Err(e) => {
                                         log::warn!("ws_ops::_read_thread::send::Error {}", e)
                                     }
+                                    Ok(_) => (),
                                 };
                             }
-                        },
-                        None => {
-                            log::warn!("ws_ops::_read_thread::error::None");
                         }
+                    } else {
+                        log::warn!("ws_ops::_read_thread::error::None Will close the connection");
+                        break;
                     }
                 }
             };
