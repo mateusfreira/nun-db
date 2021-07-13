@@ -18,7 +18,6 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         input_to_log
     );
     let db_name_state = client.selected_db_name();
-    let is_primary = dbs.is_primary();
     let start = Instant::now();
     let request = match Request::parse(String::from(input).trim_matches('\n')) {
         Ok(req) => req,
@@ -370,7 +369,6 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         &db_name_state,
         result,
         &dbs.replication_sender.clone(),
-        is_primary,
     );
     replication_result
 }

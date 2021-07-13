@@ -37,7 +37,6 @@ pub fn replicate_request(
     db_name: &String,
     response: Response,
     replication_sender: &Sender<String>,
-    is_primary: bool,
 ) -> Response {
     match response {
         Response::Error { msg: _ } => response,
@@ -213,7 +212,7 @@ pub async fn start_replication_thread(
                     log::info!("replication_ops::start_replication_thread will exist!");
                     break;
                 }
-                if dbs.is_primary() {
+                if dbs.is_primary() || dbs .is_eligible() {// starting nodes neeeds to replicate election messages
                     replicate_message_to_secoundary(message.to_string(), &dbs);
                 } else {
                     log::debug!("Won't replicate message from secoundary");
@@ -1068,7 +1067,6 @@ mod tests {
             &db_name,
             resp_error,
             &sender,
-            false,
         ) {
             Response::Error { msg: _ } => true,
             _ => false,
@@ -1089,7 +1087,7 @@ mod tests {
             value: "any_value".to_string(),
         };
         let db_name = "some".to_string();
-        let result = match replicate_request(req_set, &db_name, resp_set, &sender, true) {
+        let result = match replicate_request(req_set, &db_name, resp_set, &sender) {
             Response::Ok {} => true,
             _ => false,
         };
@@ -1111,7 +1109,7 @@ mod tests {
             value: "any_value".to_string(),
         };
         let db_name = "some".to_string();
-        let _ = match replicate_request(req_set, &db_name, resp_set, &sender, false) {
+        let _ = match replicate_request(req_set, &db_name, resp_set, &sender) {
             Response::Set {
                 key: _key,
                 value: _value,
@@ -1136,7 +1134,6 @@ mod tests {
             &db_name,
             resp_get,
             &sender,
-            false,
         ) {
             Response::Value { key: _, value: _ } => true,
             _ => false,
@@ -1154,7 +1151,7 @@ mod tests {
         let resp_get = Response::Ok {};
 
         let db_name = "some_db_name".to_string();
-        let result = match replicate_request(request, &db_name, resp_get, &sender, true) {
+        let result = match replicate_request(request, &db_name, resp_get, &sender) {
             Response::Ok {} => true,
             _ => false,
         };
@@ -1173,7 +1170,7 @@ mod tests {
         let resp_get = Response::Ok {};
 
         let db_name = "some".to_string();
-        let result = match replicate_request(request, &db_name, resp_get, &sender, true) {
+        let result = match replicate_request(request, &db_name, resp_get, &sender) {
             Response::Ok {} => true,
             _ => false,
         };
