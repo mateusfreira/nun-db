@@ -188,11 +188,10 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
                     let dbs = dbs.clone();
                     let dbs_map = dbs.map.read().unwrap();
                     let db_opt = dbs_map.get(&database_name);
-                    match db_opt {
-                        Some(db) => {
-                            storage_data_disk(db, database_name.clone());
-                        }
-                        _ => log::warn!("Database not found {}", database_name),
+                    if let Some(db) = db_opt {
+                        storage_data_disk(db, database_name.clone());
+                    } else {
+                        log::warn!("Database not found {}", database_name)
                     }
                 }
             }

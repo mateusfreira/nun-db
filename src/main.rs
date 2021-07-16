@@ -23,6 +23,7 @@ fn init_logger() {
 
 fn main() -> Result<(), String> {
     init_logger();
+    log::info!("nundb starting!");
     let matches: ArgMatches<'_> = lib::commad_line::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
         return start_db(
@@ -58,7 +59,6 @@ fn start_db(
         Receiver<String>,
     ) = channel(100);
     let keys_map = disk_ops::load_keys_map_from_disk();
-    log::debug!("Keys {}", keys_map.len());
 
     let dbs = lib::db_ops::create_init_dbs(
         user.to_string(),
@@ -92,17 +92,16 @@ fn start_db(
 
     let dbs_self_election = dbs.clone();
     let tcp_address_to_election = Arc::new(tcp_address.to_string());
-    let joi_thread = thread::spawn(move || {
+    let join_thread = thread::spawn(move || {
         lib::replication_ops::ask_to_join_all_replicas(
             &replicate_address_to_thread,
             &tcp_address_to_election.to_string(),
             &dbs_self_election.user.to_string(),
             &dbs_self_election.pwd.to_string(),
-        )
+        );
+        lib::election_ops::start_inital_election(dbs_self_election)
     });
 
-    let db_election = dbs.clone();
-    let election_thread = thread::spawn(|| lib::election_ops::start_inital_election(db_election));
 
     let timer = timer::Timer::new();
     let db_snap = dbs.clone();
@@ -123,8 +122,9 @@ fn start_db(
         thread::spawn(|| lib::network::http_ops::start_http_client(db_http, http_address));
 
     let tcp_address = String::from(tcp_address.clone());
+    let dbs_tcp = dbs.clone();
     let tcp_thread =
-        thread::spawn(move || lib::network::tcp_ops::start_tcp_client(dbs.clone(), &tcp_address));
+        thread::spawn(move || lib::network::tcp_ops::start_tcp_client(dbs_tcp, &tcp_address));
     let join_all_promises = async {
         join!(replication_thread_creator, replication_thread);
     };
@@ -132,7 +132,6 @@ fn start_db(
     tcp_thread.join().expect("Tcp thread died");
     ws_thread.join().expect("WS thread died");
 
-    election_thread.join().expect("election_thread thread died");
-    joi_thread.join().expect("joi_thread thread died");
+    join_thread.join().expect("join_thread thread died");
     Ok(())
 }
