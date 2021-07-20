@@ -1,5 +1,6 @@
 use std::net::TcpStream;
 use std::thread;
+use std::fs::{File};
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
@@ -179,7 +180,7 @@ fn get_db_id(db_name: String, dbs: &Arc<Databases>) -> u64 {
     dbs.map.read().unwrap().get(&db_name).unwrap().metadata.id as u64
 }
 
-fn get_key_id(key: String, dbs: &Arc<Databases>) -> u64 {
+fn generate_key_id(key: String, dbs: &Arc<Databases>, invalidate_stream: &mut BufWriter<File>) -> u64 {
     let keys_map = { dbs.keys_map.read().unwrap().clone() };
     if keys_map.contains_key(&key) {
         *keys_map.get(&key).unwrap()
@@ -190,6 +191,7 @@ fn get_key_id(key: String, dbs: &Arc<Databases>) -> u64 {
         keys_map.insert(key.clone(), id);
         id_keys_map.insert(id, key.to_string());
         log::debug!("Key {}, id {}", key, id);
+        invalidate_oplog(invalidate_stream).unwrap();
         id
     }
 }
@@ -204,6 +206,7 @@ pub async fn start_replication_thread(
     dbs: Arc<Databases>,
 ) {
     let mut op_log_stream = get_log_file_append_mode();
+    let mut invalidate_stream = get_invalidate_file_write_mode();
     loop {
         let message_opt = replication_receiver.next().await;
         match message_opt {
@@ -233,19 +236,19 @@ pub async fn start_replication_thread(
                     }
                     Request::ReplicateSet { db, key, value: _ } => {
                         let db_id = get_db_id(db, &dbs);
-                        let key_id = get_key_id(key, &dbs);
+                        let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
                     }
 
                     Request::ReplicateIncrement { db, key, inc: _ } => {
                         let db_id = get_db_id(db, &dbs);
-                        let key_id = get_key_id(key, &dbs);
+                        let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
                     }
 
                     Request::ReplicateRemove { db, key } => {
                         let db_id = get_db_id(db, &dbs);
-                        let key_id = get_key_id(key, &dbs);
+                        let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove);
                     }
 

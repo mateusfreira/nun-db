@@ -1,3 +1,4 @@
+use std::io::Error;
 use log;
 use std::collections::HashMap;
 use std::env;
@@ -22,6 +23,7 @@ const DIR_NAME: &'static str = "dbs";
 const KEYS_FILE: &'static str = "keys-nun.keys";
 
 const OP_LOG_FILE: &'static str = "oplog-nun.op";
+const INVALIDATE_OP_LOG_FILE: &'static str = "is-oplog.valid";
 
 const OP_KEY_SIZE: usize = 8;
 const OP_DB_ID_SIZE: usize = 8;
@@ -132,6 +134,11 @@ pub fn get_op_log_file_name() -> String {
     format!("{dir}/{sufix}", dir = get_dir_name(), sufix = OP_LOG_FILE)
 }
 
+fn get_invalidate_file_name() -> String {
+    format!("{dir}/{sufix}", dir = get_dir_name(), sufix = INVALIDATE_OP_LOG_FILE)
+}
+
+
 pub fn get_keys_map_file_name() -> String {
     format!("{dir}/{sufix}", dir = get_dir_name(), sufix = KEYS_FILE)
 }
@@ -207,6 +214,7 @@ fn snap_shot_keys(dbs: &Arc<Databases>) {
     };
     log::debug!("Will snapshot the keys {}", keys_map.len());
     write_keys_map_to_disk(keys_map);
+    mark_op_log_as_valid().unwrap();
 }
 
 pub fn get_log_file_append_mode() -> BufWriter<File> {
@@ -219,6 +227,7 @@ pub fn get_log_file_append_mode() -> BufWriter<File> {
             .unwrap(),
     )
 }
+
 
 pub fn get_log_file_read_mode() -> File {
     match OpenOptions::new().read(true).open(get_op_log_file_name()) {
@@ -269,6 +278,7 @@ pub fn last_op_time() -> u64 {
         0
     }
 }
+
 pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     let mut opps_since = HashMap::new();
     let mut f = get_log_file_read_mode();
@@ -373,10 +383,76 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     opps_since
 }
 
+pub fn get_invalidate_file_write_mode() -> BufWriter<File> {
+    println!("{}", get_invalidate_file_name());
+    BufWriter::with_capacity(
+        1,
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(get_invalidate_file_name())
+            .unwrap(),
+    )
+}
+pub fn get_invalidate_file_read_mode() -> File {
+    match OpenOptions::new().read(true).open(get_invalidate_file_name()) {
+        Err(e) => {
+            log::error!("{:?}", e);
+            OpenOptions::new()
+                .read(true)
+                .create(true)
+                .open(get_op_log_file_name())
+                .unwrap()
+        }
+        Ok(f) => f,
+    }
+}
+pub fn is_oplog_valid() -> bool {
+    let mut f = get_invalidate_file_read_mode();
+    let mut buffer = [1; 1];
+    f.seek(SeekFrom::Start(0)).unwrap();
+    f.read(& mut buffer).unwrap();
+    buffer[0] == 1
+}
+
+pub fn invalidate_oplog(stream: &mut BufWriter<File>) -> Result<usize, Error> {
+    //todo do it on memory for speed
+    log::debug!("invalidating oplog as valid");
+    stream.seek(SeekFrom::Start(0)).unwrap();
+    stream.write(&[0])
+}
+
+fn mark_op_log_as_valid() -> Result<usize, Error> {
+    log::debug!("marking op log as valid");
+    let mut file_writer =  get_invalidate_file_write_mode();
+    file_writer.seek(SeekFrom::Start(0)).unwrap();
+    file_writer.write(&[1])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn should_mark_the_keys_and_oplog_as_invalid() {
+        let mut file_writer =  get_invalidate_file_write_mode();
+        assert_eq!(
+            is_oplog_valid(),
+            true,
+        );
+        invalidate_oplog(&mut file_writer).unwrap();
+        assert_eq!(
+            is_oplog_valid(),
+            false,
+        );
+
+        mark_op_log_as_valid().unwrap();
+        assert_eq!(
+            is_oplog_valid(),
+            true,
+        );
+    }
 
     #[test]
     fn should_return_the_db_name() {

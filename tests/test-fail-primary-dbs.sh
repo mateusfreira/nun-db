@@ -27,10 +27,8 @@ fi
 if [ $command = "start-1" ] || [ $command = "all" ]
 then
 echo "Starting the primary"
-NUN_DBS_DIR=/tmp/dbs RUST_BACKTRACE=1 ./target/debug/nun-db --user $user -p $user start --http-address "$primaryHttpAddress" --tcp-address "$primaryTcpAddress" --ws-address "127.0.0.1:3058" --replicate-address "$replicaSetAddrs" >primary.log&
-PRIMARY_PID=$!
-echo $PRIMARY_PID >> .primary.pid
-sleep $timeoutSpeep
+     ./tests/commons.sh start-1
+    sleep $timeoutSpeep
 fi
 
 if [ $command = "start-2" ] || [ $command = "all" ]
@@ -143,7 +141,7 @@ then
 
     echo "Will start the tests of failure"
 
-    kill -9 $PRIMARY_PID
+    cat .primary.pid | xargs -I '{}' kill -9 {}
     echo 'Rebuilding the cluster'
     sleep 10
     sleep $timeoutSpeep
