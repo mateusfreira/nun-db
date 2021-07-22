@@ -1,4 +1,3 @@
-use std::io::Error;
 use log;
 use std::collections::HashMap;
 use std::env;
@@ -6,12 +5,14 @@ use std::fs::OpenOptions;
 use std::fs::{create_dir_all, read_dir, File};
 use std::io::prelude::*;
 use std::io::BufWriter;
+use std::io::Error;
 use std::io::Read;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::sync::atomic::Ordering;
 
 use crate::bo::*;
 
@@ -135,9 +136,12 @@ pub fn get_op_log_file_name() -> String {
 }
 
 fn get_invalidate_file_name() -> String {
-    format!("{dir}/{sufix}", dir = get_dir_name(), sufix = INVALIDATE_OP_LOG_FILE)
+    format!(
+        "{dir}/{sufix}",
+        dir = get_dir_name(),
+        sufix = INVALIDATE_OP_LOG_FILE
+    )
 }
-
 
 pub fn get_keys_map_file_name() -> String {
     format!("{dir}/{sufix}", dir = get_dir_name(), sufix = KEYS_FILE)
@@ -214,7 +218,7 @@ fn snap_shot_keys(dbs: &Arc<Databases>) {
     };
     log::debug!("Will snapshot the keys {}", keys_map.len());
     write_keys_map_to_disk(keys_map);
-    mark_op_log_as_valid().unwrap();
+    mark_op_log_as_valid(dbs).unwrap();
 }
 
 pub fn get_log_file_append_mode() -> BufWriter<File> {
@@ -227,7 +231,6 @@ pub fn get_log_file_append_mode() -> BufWriter<File> {
             .unwrap(),
     )
 }
-
 
 pub fn get_log_file_read_mode() -> File {
     match OpenOptions::new().read(true).open(get_op_log_file_name()) {
@@ -395,7 +398,10 @@ pub fn get_invalidate_file_write_mode() -> BufWriter<File> {
     )
 }
 pub fn get_invalidate_file_read_mode() -> File {
-    match OpenOptions::new().read(true).open(get_invalidate_file_name()) {
+    match OpenOptions::new()
+        .read(true)
+        .open(get_invalidate_file_name())
+    {
         Err(e) => {
             log::error!("{:?}", e);
             OpenOptions::new()
@@ -411,20 +417,27 @@ pub fn is_oplog_valid() -> bool {
     let mut f = get_invalidate_file_read_mode();
     let mut buffer = [1; 1];
     f.seek(SeekFrom::Start(0)).unwrap();
-    f.read(& mut buffer).unwrap();
+    f.read(&mut buffer).unwrap();
     buffer[0] == 1
 }
 
-pub fn invalidate_oplog(stream: &mut BufWriter<File>) -> Result<usize, Error> {
-    //todo do it on memory for speed
-    log::debug!("invalidating oplog as valid");
-    stream.seek(SeekFrom::Start(0)).unwrap();
-    stream.write(&[0])
+pub fn invalidate_oplog(stream: &mut BufWriter<File>, dbs: &Arc<Databases>) -> Result<usize, Error> {
+    let is_oplog_valid = { dbs.is_oplog_valid.load(Ordering::SeqCst) };
+    if is_oplog_valid {
+        dbs.is_oplog_valid.swap(false, Ordering::Relaxed);
+        log::debug!("invalidating oplog");
+        stream.seek(SeekFrom::Start(0)).unwrap();
+        return stream.write(&[0])
+    } else {
+        log::debug!("No need to invalidating oplog as it is already valid");
+        Result::Ok(0)
+    }
 }
 
-fn mark_op_log_as_valid() -> Result<usize, Error> {
+fn mark_op_log_as_valid(dbs: &Arc<Databases>) -> Result<usize, Error> {
+    dbs.is_oplog_valid.swap(true, Ordering::Relaxed);
     log::debug!("marking op log as valid");
-    let mut file_writer =  get_invalidate_file_write_mode();
+    let mut file_writer = get_invalidate_file_write_mode();
     file_writer.seek(SeekFrom::Start(0)).unwrap();
     file_writer.write(&[1])
 }
@@ -433,25 +446,32 @@ fn mark_op_log_as_valid() -> Result<usize, Error> {
 mod tests {
     use super::*;
     use std::fs;
+    use futures::channel::mpsc::{Sender, Receiver, channel};
 
+    fn create_dbs()  -> std::sync::Arc<Databases> {
+        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
+         Arc::new(Databases::new(
+            String::from(""),
+            String::from(""),
+            String::from(""),
+            sender.clone(),
+            sender.clone(),
+            keys_map,
+            1 as u128,
+            true,
+        ))
+    }
     #[test]
     fn should_mark_the_keys_and_oplog_as_invalid() {
-        let mut file_writer =  get_invalidate_file_write_mode();
-        assert_eq!(
-            is_oplog_valid(),
-            true,
-        );
-        invalidate_oplog(&mut file_writer).unwrap();
-        assert_eq!(
-            is_oplog_valid(),
-            false,
-        );
+        let dbs = create_dbs();
+        let mut file_writer = get_invalidate_file_write_mode();
+        assert_eq!(is_oplog_valid(), true,);
+        invalidate_oplog(&mut file_writer, &dbs).unwrap();
+        assert_eq!(is_oplog_valid(), false,);
 
-        mark_op_log_as_valid().unwrap();
-        assert_eq!(
-            is_oplog_valid(),
-            true,
-        );
+        mark_op_log_as_valid(&dbs).unwrap();
+        assert_eq!(is_oplog_valid(), true,);
     }
 
     #[test]

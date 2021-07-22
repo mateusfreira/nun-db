@@ -391,6 +391,7 @@ mod tests {
             sender2,
             keys_map,
             1 as u128,
+            true,
         ));
 
         dbs.node_state

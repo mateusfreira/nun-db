@@ -59,6 +59,7 @@ fn start_db(
         Receiver<String>,
     ) = channel(100);
     let keys_map = disk_ops::load_keys_map_from_disk();
+    let is_oplog_valid = disk_ops::is_oplog_valid();
 
     let dbs = lib::db_ops::create_init_dbs(
         user.to_string(),
@@ -67,6 +68,7 @@ fn start_db(
         replication_supervisor_sender,
         replication_sender.clone(),
         keys_map,
+        is_oplog_valid,
     );
 
     disk_ops::load_all_dbs_from_disk(&dbs);
@@ -101,7 +103,6 @@ fn start_db(
         );
         lib::election_ops::start_inital_election(dbs_self_election)
     });
-
 
     let timer = timer::Timer::new();
     let db_snap = dbs.clone();

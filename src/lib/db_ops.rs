@@ -211,6 +211,7 @@ pub fn create_init_dbs(
     replication_supervisor_sender: Sender<String>,
     replication_sender: Sender<String>,
     keys_map: HashMap<String, u64>,
+    is_oplog_valid: bool,
 ) -> Arc<Databases> {
     let start = SystemTime::now();
     let since_the_epoch = start
@@ -225,6 +226,7 @@ pub fn create_init_dbs(
         replication_sender,
         keys_map,
         since_the_epoch.as_millis(),
+        is_oplog_valid,
     ));
 }
 

@@ -30,6 +30,7 @@ mod tests {
             replication_supervisor_sender,
             replication_sender,
             keys_map,
+            true,
         );
 
         let clean_input = clean_string_to_log("auth mateus mateus-123;", &dbs);

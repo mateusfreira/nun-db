@@ -141,6 +141,7 @@ pub struct Databases {
     pub process_id: u128,
     pub user: String,
     pub pwd: String,
+    pub is_oplog_valid: Arc<AtomicBool>,
 }
 
 impl Database {
@@ -276,6 +277,7 @@ impl Databases {
         replication_sender: Sender<String>,
         keys_map: HashMap<String, u64>,
         process_id: u128,
+        is_oplog_valid: bool,
     ) -> Databases {
         let mut id_keys_map: HashMap<u64, String> = HashMap::new();
         let initial_dbs = HashMap::new();
@@ -294,11 +296,12 @@ impl Databases {
             }),
             replication_supervisor_sender,
             replication_sender,
+            node_state: Arc::new(AtomicUsize::new(ClusterRole::StartingUp as usize)),
+            tcp_address,
+            process_id,
             user,
             pwd: pwd.to_string(),
-            tcp_address,
-            node_state: Arc::new(AtomicUsize::new(ClusterRole::StartingUp as usize)),
-            process_id: process_id,
+            is_oplog_valid: Arc::new(AtomicBool::new(is_oplog_valid)),
         };
 
         let admin_db_name = String::from(ADMIN_DB);
@@ -624,6 +627,7 @@ mod tests {
             sender1,
             keys_map,
             1 as u128,
+            true,
         );
         assert_eq!(dbs.map.read().expect("error to lock").keys().len(), 1); //Admin db
 
