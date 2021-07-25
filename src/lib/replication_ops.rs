@@ -209,6 +209,12 @@ pub async fn start_replication_thread(
     mut replication_receiver: Receiver<String>,
     dbs: Arc<Databases>,
 ) {
+    if dbs
+        .is_oplog_valid
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
+        clean_op_log_metadata_files();
+    }
     let mut op_log_stream = get_log_file_append_mode();
     let mut invalidate_stream = get_invalidate_file_write_mode();
     loop {

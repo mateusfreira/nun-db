@@ -5,6 +5,7 @@ use futures::executor::block_on;
 use futures::join;
 use lib::*;
 use log;
+use signal_hook::{consts::SIGINT, iterator::Signals};
 use std::thread;
 
 use std::sync::Arc;
@@ -61,6 +62,11 @@ fn start_db(
     let keys_map = disk_ops::load_keys_map_from_disk();
     let is_oplog_valid = disk_ops::is_oplog_valid();
 
+    if is_oplog_valid {
+        log::warn!("Nun-db has restarted with op-log in a invalid state, oplog and keys metadafile will be deleted!");
+        disk_ops::clean_op_log_metadata_files();
+    }
+
     let dbs = lib::db_ops::create_init_dbs(
         user.to_string(),
         pwd.to_string(),
@@ -72,6 +78,15 @@ fn start_db(
     );
 
     disk_ops::load_all_dbs_from_disk(&dbs);
+    let mut signals = Signals::new(&[SIGINT]).unwrap();
+    let dbs_to_signal = dbs.clone();
+    thread::spawn(move || {
+        for sig in signals.forever() {
+            println!("Received signal {:?}", sig);
+            db_ops::safe_shutdown(&dbs_to_signal);
+            std::process::exit(0);
+        }
+    });
 
     let db_replication_start = dbs.clone();
     let tcp_address_to_relication = Arc::new(tcp_address.to_string());

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::bo::*;
+use crate::disk_ops::*;
 
 pub const CONNECTIONS_KEY: &'static str = "$connections";
 
@@ -240,6 +241,11 @@ pub fn get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {
         Some(watchers_vec) => watchers_vec.clone(),
         _ => Vec::new(),
     };
+}
+
+pub fn safe_shutdown(dbs: &Arc<Databases>) {
+    snapshot_keys(&dbs); // This is more important than the not snapshot_dbs
+    snapshot_all_pendding_dbs(&dbs);
 }
 
 #[cfg(test)]
