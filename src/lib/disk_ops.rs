@@ -407,7 +407,7 @@ pub fn get_invalidate_file_read_mode() -> File {
             OpenOptions::new()
                 .read(true)
                 .create(true)
-                .open(get_op_log_file_name())
+                .open(get_invalidate_file_name())
                 .unwrap()
         }
         Ok(f) => f,
