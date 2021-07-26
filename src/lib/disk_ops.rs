@@ -61,6 +61,14 @@ fn remove_keys_file() {
     }
 }
 
+fn remove_invalidate_oplog_file() {
+    let file_name = get_invalidate_file_name();
+    log::debug!("Will delete {}", file_name);
+    if Path::new(&file_name).exists() {
+        fs::remove_file(file_name).unwrap();
+    }
+}
+
 pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
     let db_file_name = get_keys_map_file_name();
     log::debug!("Will write the keys {} from disk", db_file_name);
@@ -257,6 +265,7 @@ fn remove_op_log_file() {
 }
 
 pub fn clean_op_log_metadata_files() {
+    remove_invalidate_oplog_file();
     remove_keys_file();
     remove_op_log_file();
 }
@@ -447,8 +456,9 @@ pub fn is_oplog_valid() -> bool {
     let mut buffer = [1; 1];
     f.seek(SeekFrom::Start(0)).unwrap();
     f.read(&mut buffer).unwrap();
-    buffer[0] == 1 
+    buffer[0] == 1
 }
+
 
 pub fn invalidate_oplog(
     stream: &mut BufWriter<File>,
@@ -480,7 +490,7 @@ mod tests {
     use futures::channel::mpsc::{channel, Receiver, Sender};
 
     fn create_dbs() -> std::sync::Arc<Databases> {
-        clean_op_log_metadata_files(); 
+        clean_op_log_metadata_files();
         let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
         let keys_map = HashMap::new();
         Arc::new(Databases::new(
@@ -495,14 +505,20 @@ mod tests {
         ))
     }
 
-
     #[test]
-    fn should_remove_the_keys_file() {
-        remove_keys_file();
-        let file_name = get_keys_map_file_name();
-        assert_eq!(Path::new(&file_name).exists(), false);
+    fn should_clean_all_metadata_files() {
+        clean_op_log_metadata_files();
 
+        let keys_file = get_keys_map_file_name();
+        assert_eq!(Path::new(&keys_file).exists(), false);
+
+        let op_log_file = get_op_log_file_name();
+        assert_eq!(Path::new(&op_log_file).exists(), false);
+
+        let invalidate_oplog_file = get_invalidate_file_name();
+        assert_eq!(Path::new(&invalidate_oplog_file).exists(), false);
     }
+
     #[test]
     fn should_mark_the_keys_and_oplog_as_invalid() {
         let dbs = create_dbs();
