@@ -63,6 +63,8 @@ fn start_db(
     let is_oplog_valid = disk_ops::is_oplog_valid();
 
     if is_oplog_valid {
+        log::debug!("All fine with op-log metadafiles");
+    } else {
         log::warn!("Nun-db has restarted with op-log in a invalid state, oplog and keys metadafile will be deleted!");
         disk_ops::clean_op_log_metadata_files();
     }

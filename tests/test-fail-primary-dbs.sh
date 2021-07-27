@@ -203,5 +203,7 @@ then
       fi
 fi
 
+echo "All good \o/"
+
 exit 0
 

@@ -425,7 +425,6 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
 }
 
 pub fn get_invalidate_file_write_mode() -> BufWriter<File> {
-    println!("{}", get_invalidate_file_name());
     BufWriter::with_capacity(
         1,
         OpenOptions::new()
@@ -442,9 +441,9 @@ pub fn get_invalidate_file_read_mode() -> File {
     {
         Err(e) => {
             log::debug!("{:?} will create the file", e);
+            get_invalidate_file_write_mode();// called here to create the file
             OpenOptions::new()
                 .read(true)
-                .create(true)
                 .open(get_invalidate_file_name())
                 .unwrap()
         }
