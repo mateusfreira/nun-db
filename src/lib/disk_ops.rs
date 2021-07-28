@@ -441,7 +441,7 @@ pub fn get_invalidate_file_read_mode() -> File {
     {
         Err(e) => {
             log::debug!("{:?} will create the file", e);
-            get_invalidate_file_write_mode();// called here to create the file
+            get_invalidate_file_write_mode(); // called here to create the file
             OpenOptions::new()
                 .read(true)
                 .open(get_invalidate_file_name())
@@ -457,7 +457,6 @@ pub fn is_oplog_valid() -> bool {
     f.read(&mut buffer).unwrap();
     buffer[0] == 1
 }
-
 
 pub fn invalidate_oplog(
     stream: &mut BufWriter<File>,
