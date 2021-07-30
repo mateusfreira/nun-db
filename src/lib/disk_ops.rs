@@ -450,6 +450,9 @@ pub fn get_invalidate_file_read_mode() -> File {
         Ok(f) => f,
     }
 }
+
+/// checks if the oplog files are valid
+/// this is controlled by a file with a single byte, 0 means invalid, 1 valid
 pub fn is_oplog_valid() -> bool {
     let mut f = get_invalidate_file_read_mode();
     let mut buffer = [1; 1];
