@@ -1,0 +1,11 @@
+auth mateus mateus
+create-db sample sample-pwd
+use-db sample sample-pwd
+set jose 1
+set maria 2
+set jose 4
+set jose3 4
+set jose4 4
+set jose5 4
+set jose56 4
+
