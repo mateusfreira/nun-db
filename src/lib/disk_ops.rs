@@ -53,14 +53,6 @@ pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
     return initial_db;
 }
 
-fn remove_keys_file() {
-    let file_name = get_keys_map_file_name();
-    log::debug!("Will delete {}", file_name);
-    if Path::new(&file_name).exists() {
-        fs::remove_file(file_name).unwrap();
-    }
-}
-
 fn remove_invalidate_oplog_file() {
     let file_name = get_invalidate_file_name();
     log::debug!("Will delete {}", file_name);
@@ -69,6 +61,7 @@ fn remove_invalidate_oplog_file() {
     }
 }
 
+// @todo speed up saving
 pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
     let db_file_name = get_keys_map_file_name();
     log::debug!("Will write the keys {} from disk", db_file_name);
@@ -266,7 +259,6 @@ fn remove_op_log_file() {
 
 pub fn clean_op_log_metadata_files() {
     remove_invalidate_oplog_file();
-    remove_keys_file();
     remove_op_log_file();
 }
 
