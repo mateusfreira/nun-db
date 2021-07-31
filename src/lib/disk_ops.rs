@@ -1,14 +1,17 @@
 use log;
 use std::collections::HashMap;
 use std::env;
+use std::fs;
 use std::fs::OpenOptions;
 use std::fs::{create_dir_all, read_dir, File};
 use std::io::prelude::*;
 use std::io::BufWriter;
+use std::io::Error;
 use std::io::Read;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -22,6 +25,7 @@ const DIR_NAME: &'static str = "dbs";
 const KEYS_FILE: &'static str = "keys-nun.keys";
 
 const OP_LOG_FILE: &'static str = "oplog-nun.op";
+const INVALIDATE_OP_LOG_FILE: &'static str = "is-oplog.valid";
 
 const OP_KEY_SIZE: usize = 8;
 const OP_DB_ID_SIZE: usize = 8;
@@ -49,6 +53,15 @@ pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
     return initial_db;
 }
 
+fn remove_invalidate_oplog_file() {
+    let file_name = get_invalidate_file_name();
+    log::debug!("Will delete {}", file_name);
+    if Path::new(&file_name).exists() {
+        fs::remove_file(file_name).unwrap();
+    }
+}
+
+// @todo speed up saving
 pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
     let db_file_name = get_keys_map_file_name();
     log::debug!("Will write the keys {} from disk", db_file_name);
@@ -132,6 +145,14 @@ pub fn get_op_log_file_name() -> String {
     format!("{dir}/{sufix}", dir = get_dir_name(), sufix = OP_LOG_FILE)
 }
 
+fn get_invalidate_file_name() -> String {
+    format!(
+        "{dir}/{sufix}",
+        dir = get_dir_name(),
+        sufix = INVALIDATE_OP_LOG_FILE
+    )
+}
+
 pub fn get_keys_map_file_name() -> String {
     format!("{dir}/{sufix}", dir = get_dir_name(), sufix = KEYS_FILE)
 }
@@ -175,38 +196,47 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     ) = std::sync::mpsc::channel(); // Visit this again
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
-            let queue_len = { dbs.to_snapshot.read().unwrap().len() };
-            if queue_len > 0 {
-                snap_shot_keys(&dbs);
-                let mut dbs_to_snapshot = {
-                    let dbs = dbs.to_snapshot.write().unwrap();
-                    dbs
-                };
-                dbs_to_snapshot.dedup();
-                while let Some(database_name) = dbs_to_snapshot.pop() {
-                    log::debug!("Will snapshot the database {}", database_name);
-                    let dbs = dbs.clone();
-                    let dbs_map = dbs.map.read().unwrap();
-                    let db_opt = dbs_map.get(&database_name);
-                    if let Some(db) = db_opt {
-                        storage_data_disk(db, database_name.clone());
-                    } else {
-                        log::warn!("Database not found {}", database_name)
-                    }
-                }
-            }
+            snapshot_all_pendding_dbs(&dbs);
         })
     };
     rx.recv().unwrap(); // Thread will run for ever
 }
 
-fn snap_shot_keys(dbs: &Arc<Databases>) {
-    let keys_map = {
-        let keys_map = dbs.keys_map.read().unwrap();
-        keys_map.clone()
-    };
-    log::debug!("Will snapshot the keys {}", keys_map.len());
-    write_keys_map_to_disk(keys_map);
+pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
+    let queue_len = { dbs.to_snapshot.read().unwrap().len() };
+    if queue_len > 0 {
+        snapshot_keys(&dbs);
+        let mut dbs_to_snapshot = {
+            let dbs = dbs.to_snapshot.write().unwrap();
+            dbs
+        };
+        dbs_to_snapshot.dedup();
+        while let Some(database_name) = dbs_to_snapshot.pop() {
+            log::debug!("Will snapshot the database {}", database_name);
+            let dbs = dbs.clone();
+            let dbs_map = dbs.map.read().unwrap();
+            let db_opt = dbs_map.get(&database_name);
+            if let Some(db) = db_opt {
+                storage_data_disk(db, database_name.clone());
+            } else {
+                log::warn!("Database not found {}", database_name)
+            }
+        }
+    }
+}
+
+pub fn snapshot_keys(dbs: &Arc<Databases>) {
+    if !dbs.is_oplog_valid.load(Ordering::Relaxed) {
+        let keys_map = {
+            let keys_map = dbs.keys_map.read().unwrap();
+            keys_map.clone()
+        };
+        log::debug!("Will snapshot the keys {}", keys_map.len());
+        write_keys_map_to_disk(keys_map);
+        mark_op_log_as_valid(dbs).unwrap();
+    } else {
+        log::debug!("keys already save, not saving keys file! Metadata already saved!")
+    }
 }
 
 pub fn get_log_file_append_mode() -> BufWriter<File> {
@@ -218,6 +248,18 @@ pub fn get_log_file_append_mode() -> BufWriter<File> {
             .open(get_op_log_file_name())
             .unwrap(),
     )
+}
+
+fn remove_op_log_file() {
+    let file_name = get_op_log_file_name();
+    if Path::new(&file_name).exists() {
+        fs::remove_file(file_name).unwrap(); //clean file
+    }
+}
+
+pub fn clean_op_log_metadata_files() {
+    remove_invalidate_oplog_file();
+    remove_op_log_file();
 }
 
 pub fn get_log_file_read_mode() -> File {
@@ -269,6 +311,7 @@ pub fn last_op_time() -> u64 {
         0
     }
 }
+
 pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     let mut opps_since = HashMap::new();
     let mut f = get_log_file_read_mode();
@@ -373,10 +416,113 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     opps_since
 }
 
+pub fn get_invalidate_file_write_mode() -> BufWriter<File> {
+    BufWriter::with_capacity(
+        1,
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(get_invalidate_file_name())
+            .unwrap(),
+    )
+}
+pub fn get_invalidate_file_read_mode() -> File {
+    match OpenOptions::new()
+        .read(true)
+        .open(get_invalidate_file_name())
+    {
+        Err(e) => {
+            log::debug!("{:?} will create the file", e);
+            get_invalidate_file_write_mode(); // called here to create the file
+            OpenOptions::new()
+                .read(true)
+                .open(get_invalidate_file_name())
+                .unwrap()
+        }
+        Ok(f) => f,
+    }
+}
+
+/// checks if the oplog files are valid
+/// this is controlled by a file with a single byte, 0 means invalid, 1 valid
+pub fn is_oplog_valid() -> bool {
+    let mut f = get_invalidate_file_read_mode();
+    let mut buffer = [1; 1];
+    f.seek(SeekFrom::Start(0)).unwrap();
+    f.read(&mut buffer).unwrap();
+    buffer[0] == 1
+}
+
+pub fn invalidate_oplog(
+    stream: &mut BufWriter<File>,
+    dbs: &Arc<Databases>,
+) -> Result<usize, Error> {
+    let is_oplog_valid = { dbs.is_oplog_valid.load(Ordering::SeqCst) };
+    if is_oplog_valid {
+        dbs.is_oplog_valid.swap(false, Ordering::Relaxed);
+        log::debug!("invalidating oplog");
+        stream.seek(SeekFrom::Start(0)).unwrap();
+        return stream.write(&[0]);
+    } else {
+        log::debug!("No need to invalidating oplog as it is already valid");
+        Result::Ok(0)
+    }
+}
+
+fn mark_op_log_as_valid(dbs: &Arc<Databases>) -> Result<usize, Error> {
+    dbs.is_oplog_valid.swap(true, Ordering::Relaxed);
+    log::debug!("marking op log as valid");
+    let mut file_writer = get_invalidate_file_write_mode();
+    file_writer.seek(SeekFrom::Start(0)).unwrap();
+    file_writer.write(&[1])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use futures::channel::mpsc::{channel, Receiver, Sender};
+
+    fn create_dbs() -> std::sync::Arc<Databases> {
+        clean_op_log_metadata_files();
+        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
+        Arc::new(Databases::new(
+            String::from(""),
+            String::from(""),
+            String::from(""),
+            sender.clone(),
+            sender.clone(),
+            keys_map,
+            1 as u128,
+            true,
+        ))
+    }
+
+    #[test]
+    fn should_clean_all_metadata_files() {
+        clean_op_log_metadata_files();
+
+        let keys_file = get_keys_map_file_name();
+        assert_eq!(Path::new(&keys_file).exists(), false);
+
+        let op_log_file = get_op_log_file_name();
+        assert_eq!(Path::new(&op_log_file).exists(), false);
+
+        let invalidate_oplog_file = get_invalidate_file_name();
+        assert_eq!(Path::new(&invalidate_oplog_file).exists(), false);
+    }
+
+    #[test]
+    fn should_mark_the_keys_and_oplog_as_invalid() {
+        let dbs = create_dbs();
+        let mut file_writer = get_invalidate_file_write_mode();
+        assert_eq!(is_oplog_valid(), true,);
+        invalidate_oplog(&mut file_writer, &dbs).unwrap();
+        assert_eq!(is_oplog_valid(), false,);
+
+        mark_op_log_as_valid(&dbs).unwrap();
+        assert_eq!(is_oplog_valid(), true,);
+    }
 
     #[test]
     fn should_return_the_db_name() {
@@ -394,7 +540,7 @@ mod tests {
     #[test]
     fn should_return_0_if_the_op_log_is_empty() {
         let _f = get_log_file_append_mode(); //Get here to ensure the file exists
-        fs::remove_file(get_op_log_file_name()).unwrap(); //clean file
+        clean_op_log_metadata_files();
         let _f = get_log_file_append_mode(); //Get here to ensure the file exists
         let last_op = last_op_time();
         assert_eq!(last_op, 0);
