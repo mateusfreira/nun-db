@@ -197,7 +197,7 @@ impl Database {
         return connections.load(Ordering::Relaxed);
     }
 
-    pub fn notify_watchers(&self, key: String, value: String) {
+    fn notify_watchers(&self, key: String, value: String) {
         let watchers = self.watchers.map.read().unwrap();
         match watchers.get(&key) {
             Some(senders) => {
@@ -616,8 +616,8 @@ mod tests {
 
     #[test]
     fn add_database_should_add_a_database() {
-        let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
-        let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender1, _): (Sender<String>, Receiver<String>) = channel(100);
         let keys_map = HashMap::new();
         let dbs = Databases::new(
             String::from(""),
