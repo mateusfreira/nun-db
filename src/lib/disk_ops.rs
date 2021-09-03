@@ -253,7 +253,10 @@ pub fn get_log_file_append_mode() -> BufWriter<File> {
 fn remove_op_log_file() {
     let file_name = get_op_log_file_name();
     if Path::new(&file_name).exists() {
-        fs::remove_file(file_name).unwrap(); //clean file
+        match fs::remove_file(file_name.clone()){
+            Err(e)=> log::error!("Could not delete the {}, {}", file_name, e), 
+            _ => ()
+        }; //clean file
     }
 }
 
@@ -276,22 +279,22 @@ pub fn get_log_file_read_mode() -> File {
     }
 }
 
-pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: ReplicateOpp) {
+pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: ReplicateOpp) -> u64 {
     let start = SystemTime::now();
     let since_the_epoch = start
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
-    let in_ms: u64 =
-        since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
-
+    let opp_id: u64 = since_the_epoch.as_nanos() as u64;
+        //.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64;
     let opp_to_write = opp as u8;
 
-    stream.write(&in_ms.to_le_bytes()).unwrap(); //8
+    stream.write(&opp_id.to_le_bytes()).unwrap(); //8
     stream.write(&key.to_le_bytes()).unwrap(); // 8
     stream.write(&db_id.to_le_bytes()).unwrap(); // 8
     stream.write(&[opp_to_write]).unwrap(); // 1
     stream.flush().unwrap();
     log::debug!("will write :  db: {db}", db = db_id);
+    opp_id
 }
 
 pub fn last_op_time() -> u64 {
@@ -545,4 +548,13 @@ mod tests {
         let last_op = last_op_time();
         assert_eq!(last_op, 0);
     }
+
+    #[test]
+    fn should_write_op_log_and_return_opp_id() {
+        let mut f = get_log_file_append_mode();
+        let opp_id = write_op_log(&mut f, 1, 1, ReplicateOpp::Update);
+        let opp_id1 = write_op_log(&mut f, 1, 1, ReplicateOpp::Update);
+        assert_ne!(opp_id, opp_id1);
+    }
+
 }

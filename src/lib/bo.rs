@@ -553,6 +553,13 @@ pub enum Response {
     Error { msg: String },
 }
 
+pub struct ReplicationMessage {
+    pub opp_id: usize,
+    pub message: String,
+    pub aka_count: AtomicUsize,
+    pub replicate_count: AtomicUsize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
