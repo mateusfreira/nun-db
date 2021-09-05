@@ -1,3 +1,5 @@
+use std::time::UNIX_EPOCH;
+use std::time::SystemTime;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use log;
 use std::collections::HashMap;
@@ -20,10 +22,26 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new_empty_and_receiver() -> (Client, Receiver<String>) {
-        let (sender, receiver): (Sender<String>, Receiver<String>) = channel(100);
-        (Client::new_empty(sender), receiver)
+    pub fn is_primary(&self) -> bool {
+        let member = &*self.cluster_member.lock().unwrap();
+        if let Some(m) = member {
+            m.role == ClusterRole::Primary
+        } else {
+            false
+        }
     }
+    pub fn left(&self, dbs: &Arc<Databases>) {
+        let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
+        let db_box = dbs.get(&self.selected_db_name());
+        match db_box {
+            Some(db) => {
+                db.dec_connections();
+                set_connection_counter(db);
+            }
+            _ => (),
+        }
+    }
+
     pub fn new_empty(sender: Sender<String>) -> Client {
         Client {
             auth: Arc::new(AtomicBool::new(false)),
@@ -35,13 +53,9 @@ impl Client {
         }
     }
 
-    pub fn is_primary(&self) -> bool {
-        let member = &*self.cluster_member.lock().unwrap();
-        if let Some(m) = member {
-            m.role == ClusterRole::Primary
-        } else {
-            false
-        }
+    pub fn new_empty_and_receiver() -> (Client, Receiver<String>) {
+        let (sender, receiver): (Sender<String>, Receiver<String>) = channel(100);
+        (Client::new_empty(sender), receiver)
     }
 
     pub fn selected_db_name(&self) -> String {
@@ -50,18 +64,6 @@ impl Client {
             name.clone()
         };
         db_name
-    }
-
-    pub fn left(&self, dbs: &Arc<Databases>) {
-        let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
-        let db_box = dbs.get(&self.selected_db_name());
-        match db_box {
-            Some(db) => {
-                db.dec_connections();
-                set_connection_counter(db);
-            }
-            _ => (),
-        }
     }
 }
 
@@ -145,18 +147,13 @@ pub struct Databases {
 }
 
 impl Database {
-    pub fn new(name: String, metadata: DatabaseMataData) -> Database {
-        return Database {
-            metadata,
-            map: std::sync::RwLock::new(HashMap::new()),
-            connections: RwLock::new(AtomicUsize::new(0)),
-            name,
-            watchers: Watchers {
-                map: RwLock::new(HashMap::new()),
-            },
-        };
+    pub fn connections_count(&self) -> usize {
+        let connections = self
+            .connections
+            .read()
+            .expect("Error getting the db.connections.lock to decrement");
+        return connections.load(Ordering::Relaxed);
     }
-
     pub fn create_db_from_hash(
         name: String,
         data: HashMap<String, String>,
@@ -173,14 +170,6 @@ impl Database {
         };
     }
 
-    pub fn inc_connections(&self) {
-        let mut connections = self
-            .connections
-            .write()
-            .expect("Error getting the db.connections.lock to increment");
-        *connections.get_mut() = *connections.get_mut() + 1;
-    }
-
     pub fn dec_connections(&self) {
         let mut connections = self
             .connections
@@ -189,39 +178,12 @@ impl Database {
         *connections.get_mut() = *connections.get_mut() - 1;
     }
 
-    pub fn connections_count(&self) -> usize {
-        let connections = self
+    pub fn inc_connections(&self) {
+        let mut connections = self
             .connections
-            .read()
-            .expect("Error getting the db.connections.lock to decrement");
-        return connections.load(Ordering::Relaxed);
-    }
-
-    fn notify_watchers(&self, key: String, value: String) {
-        let watchers = self.watchers.map.read().unwrap();
-        match watchers.get(&key) {
-            Some(senders) => {
-                for sender in senders {
-                    log::debug!("Sending to another client");
-                    match sender.clone().try_send(
-                        format_args!("changed {} {}\n", key.to_string(), value.to_string())
-                            .to_string(),
-                    ) {
-                        Ok(_n) => (),
-                        Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    pub fn set_value(&self, key: String, value: String) {
-        {
-            let mut db = self.map.write().unwrap();
-            db.insert(key.clone(), value.clone());
-        } // release the db
-        self.notify_watchers(key.clone(), value.clone());
+            .write()
+            .expect("Error getting the db.connections.lock to increment");
+        *connections.get_mut() = *connections.get_mut() + 1;
     }
 
     pub fn inc_value(&self, key: String, inc: i32) -> Response {
@@ -247,6 +209,38 @@ impl Database {
         Response::Ok {}
     }
 
+    pub fn new(name: String, metadata: DatabaseMataData) -> Database {
+        return Database {
+            metadata,
+            map: std::sync::RwLock::new(HashMap::new()),
+            connections: RwLock::new(AtomicUsize::new(0)),
+            name,
+            watchers: Watchers {
+                map: RwLock::new(HashMap::new()),
+            },
+        };
+    }
+
+
+    fn notify_watchers(&self, key: String, value: String) {
+        let watchers = self.watchers.map.read().unwrap();
+        match watchers.get(&key) {
+            Some(senders) => {
+                for sender in senders {
+                    log::debug!("Sending to another client");
+                    match sender.clone().try_send(
+                        format_args!("changed {} {}\n", key.to_string(), value.to_string())
+                            .to_string(),
+                    ) {
+                        Ok(_n) => (),
+                        Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub fn remove_value(&self, key: String) -> Response {
         let mut watchers = self.watchers.map.write().unwrap();
         let mut db = self.map.write().unwrap();
@@ -267,8 +261,81 @@ impl Database {
         }
         Response::Ok {}
     }
+
+    pub fn set_value(&self, key: String, value: String) {
+        {
+            let mut db = self.map.write().unwrap();
+            db.insert(key.clone(), value.clone());
+        } // release the db
+        self.notify_watchers(key.clone(), value.clone());
+    }
 }
 impl Databases {
+    pub fn add_cluster_member(&self, member: ClusterMember) {
+        //todo receive the data separated!!!
+        let cluster_state = (*self).cluster_state.lock().unwrap();
+        let mut members = cluster_state.members.lock().unwrap();
+        if member.role == ClusterRole::Primary {
+            log::debug!("New primary added channging all old to secundary");
+            for (name, old_member) in members.clone().iter() {
+                members.insert(
+                    name.to_string(),
+                    ClusterMember {
+                        name: name.clone(),
+                        role: ClusterRole::Secoundary,
+                        sender: old_member.sender.clone(),
+                    },
+                );
+            }
+        }
+        members.insert(
+            member.name.to_string(),
+            ClusterMember {
+                name: member.name.clone(),
+                role: member.role,
+                sender: member.sender.clone(),
+            },
+        );
+    }
+
+    pub fn add_database(&self, name: &String, database: Database) -> Response {
+        log::debug!("add_database {}", name.to_string());
+        let mut dbs = self.map.write().unwrap();
+        match dbs.get(name) {
+            None => {
+                let mut id_name_db_map = self.id_name_db_map.write().unwrap();
+                id_name_db_map.insert(database.metadata.id as u64, name.to_string());
+                dbs.insert(name.to_string(), database);
+                dbs.get(&String::from(ADMIN_DB))
+                    .unwrap()
+                    .set_value(name.to_string(), String::from("{}"));
+                Response::Ok {}
+            }
+            _ => Response::Error {
+                msg: "database already exists".to_string(),
+            },
+        }
+    }
+
+    pub fn get_role(&self) -> ClusterRole {
+        let role_int = (*self.node_state).load(Ordering::SeqCst);
+        return ClusterRole::from(role_int);
+    }
+
+    pub fn has_cluster_memeber(&self, name: &String) -> bool {
+        let cluster_state = (*self).cluster_state.lock().unwrap();
+        let members = cluster_state.members.lock().unwrap();
+        return members.contains_key(name);
+    }
+
+    pub fn is_eligible(&self) -> bool {
+        return self.get_role() == ClusterRole::StartingUp;
+    }
+
+    pub fn is_primary(&self) -> bool {
+        return self.get_role() == ClusterRole::Primary;
+    }
+
     pub fn new(
         user: String,
         pwd: String,
@@ -312,75 +379,12 @@ impl Databases {
         dbs
     }
 
-    pub fn add_database(&self, name: &String, database: Database) -> Response {
-        log::debug!("add_database {}", name.to_string());
-        let mut dbs = self.map.write().unwrap();
-        match dbs.get(name) {
-            None => {
-                let mut id_name_db_map = self.id_name_db_map.write().unwrap();
-                id_name_db_map.insert(database.metadata.id as u64, name.to_string());
-                dbs.insert(name.to_string(), database);
-                dbs.get(&String::from(ADMIN_DB))
-                    .unwrap()
-                    .set_value(name.to_string(), String::from("{}"));
-                Response::Ok {}
-            }
-            _ => Response::Error {
-                msg: "database already exists".to_string(),
-            },
-        }
-    }
-
-    pub fn get_role(&self) -> ClusterRole {
-        let role_int = (*self.node_state).load(Ordering::SeqCst);
-        return ClusterRole::from(role_int);
-    }
-
-    pub fn is_primary(&self) -> bool {
-        return self.get_role() == ClusterRole::Primary;
-    }
-
-    pub fn is_eligible(&self) -> bool {
-        return self.get_role() == ClusterRole::StartingUp;
-    }
-
-    pub fn add_cluster_member(&self, member: ClusterMember) {
-        //todo receive the data separated!!!
-        let cluster_state = (*self).cluster_state.lock().unwrap();
-        let mut members = cluster_state.members.lock().unwrap();
-        if member.role == ClusterRole::Primary {
-            log::debug!("New primary added channging all old to secundary");
-            for (name, old_member) in members.clone().iter() {
-                members.insert(
-                    name.to_string(),
-                    ClusterMember {
-                        name: name.clone(),
-                        role: ClusterRole::Secoundary,
-                        sender: old_member.sender.clone(),
-                    },
-                );
-            }
-        }
-        members.insert(
-            member.name.to_string(),
-            ClusterMember {
-                name: member.name.clone(),
-                role: member.role,
-                sender: member.sender.clone(),
-            },
-        );
-    }
-
-    pub fn remove_cluster_member(&self, name: &String) {
-        let cluster_state = (*self).cluster_state.lock().unwrap();
-        let mut members = cluster_state.members.lock().unwrap();
-        members.remove(&name.to_string());
-    }
-
-    pub fn has_cluster_memeber(&self, name: &String) -> bool {
-        let cluster_state = (*self).cluster_state.lock().unwrap();
-        let members = cluster_state.members.lock().unwrap();
-        return members.contains_key(name);
+    pub fn next_op_log_id() -> u64 {
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        since_the_epoch.as_nanos() as u64
     }
 
     pub fn promote_member(&self, name: &String) {
@@ -396,6 +400,12 @@ impl Databases {
             role: ClusterRole::Primary,
             sender: sender,
         });
+    }
+
+    pub fn remove_cluster_member(&self, name: &String) {
+        let cluster_state = (*self).cluster_state.lock().unwrap();
+        let mut members = cluster_state.members.lock().unwrap();
+        members.remove(&name.to_string());
     }
 }
 

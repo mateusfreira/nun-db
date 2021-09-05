@@ -13,7 +13,7 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use crate::bo::*;
 
@@ -280,12 +280,7 @@ pub fn get_log_file_read_mode() -> File {
 }
 
 pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: ReplicateOpp) -> u64 {
-    let start = SystemTime::now();
-    let since_the_epoch = start
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
-    let opp_id: u64 = since_the_epoch.as_nanos() as u64;
-        //.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64;
+    let opp_id: u64 = Databases::next_op_log_id();
     let opp_to_write = opp as u8;
 
     stream.write(&opp_id.to_le_bytes()).unwrap(); //8

@@ -876,12 +876,7 @@ mod tests {
             .unwrap();
         thread::sleep(time::Duration::from_millis(20));
 
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let test_start =
-            since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+        let test_start = Databases::next_op_log_id();
         let commands = get_pendding_opps_since(test_start, &dbs);
         log::warn!("{:?}", commands);
         assert!(commands.len() == 0, "Only one command expected");
@@ -950,11 +945,7 @@ mod tests {
     fn should_return_the_pedding_ops() {
         let (dbs, _sender, _replication_receiver) = prep_env();
         let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let test_start =
-            since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+        let test_start = Databases::next_op_log_id();
         let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
         let dbs_to_thread = dbs.clone();
         let replication_thread = thread::spawn(|| async {
@@ -1013,12 +1004,7 @@ mod tests {
 
     #[test]
     fn should_not_fail_with_a_prime_number_of_records() {
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let test_start =
-            since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+        let test_start = Databases::next_op_log_id();
         let (dbs, mut sender, replication_receiver) = prep_env();
         let dbs_to_thread = dbs.clone();
 
