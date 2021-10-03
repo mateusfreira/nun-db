@@ -1,5 +1,3 @@
-use std::time::UNIX_EPOCH;
-use std::time::SystemTime;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use log;
 use std::collections::HashMap;
@@ -8,6 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use crate::db_ops::*;
 
@@ -220,7 +220,6 @@ impl Database {
             },
         };
     }
-
 
     fn notify_watchers(&self, key: String, value: String) {
         let watchers = self.watchers.map.read().unwrap();
@@ -564,10 +563,20 @@ pub enum Response {
 }
 
 pub struct ReplicationMessage {
-    pub opp_id: usize,
+    pub opp_id: u64,
     pub message: String,
     pub aka_count: AtomicUsize,
     pub replicate_count: AtomicUsize,
+}
+impl ReplicationMessage {
+    pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
+        ReplicationMessage {
+            opp_id,
+            message,
+            aka_count: AtomicUsize::new(0),
+            replicate_count: AtomicUsize::new(0),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -253,9 +253,9 @@ pub fn get_log_file_append_mode() -> BufWriter<File> {
 fn remove_op_log_file() {
     let file_name = get_op_log_file_name();
     if Path::new(&file_name).exists() {
-        match fs::remove_file(file_name.clone()){
-            Err(e)=> log::error!("Could not delete the {}, {}", file_name, e), 
-            _ => ()
+        match fs::remove_file(file_name.clone()) {
+            Err(e) => log::error!("Could not delete the {}, {}", file_name, e),
+            _ => (),
         }; //clean file
     }
 }
@@ -551,5 +551,4 @@ mod tests {
         let opp_id1 = write_op_log(&mut f, 1, 1, ReplicateOpp::Update);
         assert_ne!(opp_id, opp_id1);
     }
-
 }

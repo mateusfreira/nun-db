@@ -152,12 +152,18 @@ fn replicate_if_some(opt_sender: &Option<Sender<String>>, message: &String, name
         ),
     }
 }
-fn replicate_message_to_secoundary(op_log_id:u64, message: String, dbs: &Arc<Databases>) {
+fn replicate_message_to_secoundary(op_log_id: u64, message: String, dbs: &Arc<Databases>) {
+    //Store this to dbs... control pedding and processed there
+    let replicate_message = ReplicationMessage::new(op_log_id, message.clone());
     log::debug!("Got the message {} to replicate ", message);
     let state = dbs.cluster_state.lock().unwrap();
     for (_name, member) in state.members.lock().unwrap().iter() {
         match member.role {
-            ClusterRole::Secoundary => replicate_if_some(&member.sender, &message, &member.name),
+            ClusterRole::Secoundary => replicate_if_some(
+                &member.sender,
+                &replicate_message.message.clone(),
+                &member.name,
+            ),
             ClusterRole::Primary => (),
             ClusterRole::StartingUp => (),
         }
@@ -254,16 +260,16 @@ pub async fn start_replication_thread(
                     Request::SetPrimary { name: _ } => 0, //Election events won't be registed in OpLog
                     _ => {
                         log::debug!(
-                        "Ignoring command {} in replication oplog register! not unimplemented!",
-                        message
-                    );
+                            "Ignoring command {} in replication oplog register! not unimplemented!",
+                            message
+                        );
                         0
-                    },
+                    }
                 };
 
                 if dbs.is_primary() || dbs.is_eligible() {
                     // starting nodes neeeds to replicate election messages
-                    replicate_message_to_secoundary(op_log_id,message.to_string(), &dbs);
+                    replicate_message_to_secoundary(op_log_id, message.to_string(), &dbs);
                 } else {
                     log::debug!("Won't replicate message from secoundary");
                 }
@@ -948,7 +954,6 @@ mod tests {
     #[test]
     fn should_return_the_pedding_ops() {
         let (dbs, _sender, _replication_receiver) = prep_env();
-        let start = SystemTime::now();
         let test_start = Databases::next_op_log_id();
         let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
         let dbs_to_thread = dbs.clone();
