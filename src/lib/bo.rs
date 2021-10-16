@@ -132,6 +132,7 @@ pub struct Database {
 pub struct Databases {
     pub map: std::sync::RwLock<HashMap<String, Database>>,
     pub id_name_db_map: std::sync::RwLock<HashMap<u64, String>>,
+    pub pending_opps: std::sync::RwLock<HashMap<u64, ReplicationMessage>>,
     pub keys_map: std::sync::RwLock<HashMap<String, u64>>,
     pub id_keys_map: std::sync::RwLock<HashMap<u64, String>>,
     pub to_snapshot: RwLock<Vec<String>>,
@@ -154,6 +155,7 @@ impl Database {
             .expect("Error getting the db.connections.lock to decrement");
         return connections.load(Ordering::Relaxed);
     }
+
     pub fn create_db_from_hash(
         name: String,
         data: HashMap<String, String>,
@@ -348,6 +350,8 @@ impl Databases {
         let mut id_keys_map: HashMap<u64, String> = HashMap::new();
         let initial_dbs = HashMap::new();
         let id_name_db_map = HashMap::new();
+        let pending_opps = HashMap::new();
+
         for (key, val) in keys_map.iter() {
             id_keys_map.insert(*val, (*key).to_string());
         }
@@ -368,6 +372,7 @@ impl Databases {
             user,
             pwd: pwd.to_string(),
             is_oplog_valid: Arc::new(AtomicBool::new(is_oplog_valid)),
+            pending_opps: std::sync::RwLock::new(pending_opps),
         };
 
         let admin_db_name = String::from(ADMIN_DB);
@@ -405,6 +410,27 @@ impl Databases {
         let cluster_state = (*self).cluster_state.lock().unwrap();
         let mut members = cluster_state.members.lock().unwrap();
         members.remove(&name.to_string());
+    }
+
+    pub fn add_pending_opp(&self, replication_message: ReplicationMessage) {
+        let mut pending_opps = self.pending_opps.write().unwrap();
+        pending_opps.insert(replication_message.opp_id, replication_message);
+    }
+
+    pub fn acknowledge_pending_opp(&self, request_id: u64) {
+        let mut pending_opps = self.pending_opps.write().unwrap();
+        match pending_opps.get_mut(&request_id) {
+            Some(replicated_opp) => {
+                replicated_opp.aka();
+                if replicated_opp.is_full_aka() {
+                    pending_opps.remove(&request_id);
+                    log::debug!("All replications Acknowledged removing opp {}, {} pending", request_id, pending_opps.keys().len());
+                }
+            }
+            None => {
+                log::warn!("Acknowledging invalid opp {}", request_id);
+            }
+        };
     }
 }
 
@@ -449,11 +475,11 @@ impl OpLogRecord {
         opp: ReplicateOpp,
     ) -> OpLogRecord {
         OpLogRecord {
-            db: db,
-            key: key,
-            opp: opp,
-            opp_position: opp_position,
-            timestamp: timestamp,
+            db,
+            key,
+            opp,
+            opp_position,
+            timestamp,
         }
     }
 
@@ -552,6 +578,13 @@ pub enum Request {
     },
     ElectionActive {},
     Keys {},
+    ReplicateRequest {
+        request_str: String,
+        request_id: u64,
+    },
+    Acknowledge {
+        request_id: u64,
+    },
 }
 
 #[derive(PartialEq, Debug)]
@@ -567,15 +600,41 @@ pub struct ReplicationMessage {
     pub message: String,
     pub aka_count: AtomicUsize,
     pub replicate_count: AtomicUsize,
+    pub start_time: u64,
 }
 impl ReplicationMessage {
     pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
         ReplicationMessage {
             opp_id,
             message,
             aka_count: AtomicUsize::new(0),
             replicate_count: AtomicUsize::new(0),
+            start_time: since_the_epoch.as_millis() as u64,
         }
+    }
+
+    pub fn aka(&self) {
+        self.aka_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn replicated(&self) {
+        self.replicate_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn is_full_aka(&self) -> bool {
+        self.replicate_count.load(Ordering::Relaxed) == self.aka_count.load(Ordering::Relaxed)
+    }
+
+    pub fn is_replicated(&self) -> bool {
+        self.replicate_count.load(Ordering::Relaxed) > 0
+    }
+
+    pub fn message_to_replicate(&self) -> String {
+        format!("rp {} {}", self.opp_id, self.message)
     }
 }
 

@@ -10,26 +10,8 @@ use crate::replication_ops::*;
 use crate::security::*;
 use log;
 
-pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -> Response {
-    let input_to_log = clean_string_to_log(input, &dbs);
-    log::debug!(
-        "[{}] process_request got message '{}'. ",
-        thread_id::get(),
-        input_to_log
-    );
-    let db_name_state = client.selected_db_name();
-    let start = Instant::now();
-    let request = match Request::parse(String::from(input).trim_matches('\n')) {
-        Ok(req) => req,
-        Err(e) => return Response::Error { msg: e },
-    };
-
-    log::debug!(
-        "[{}] process_request parsed message '{}'. ",
-        thread_id::get(),
-        input_to_log
-    );
-    let result = match request.clone() {
+fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Client) -> Response {
+    match request.clone() {
         Request::ReplicateIncrement { db: name, key, inc } => apply_if_auth(&client.auth, &|| {
             let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
@@ -355,7 +337,41 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 value: String::from(keys),
             }
         }),
+        Request::Acknowledge { request_id } => {
+            dbs.acknowledge_pending_opp(request_id);
+            Response::Ok {}
+        },
+        Request::ReplicateRequest {
+            request_str,
+            request_id,
+        } => {
+            send_message_to_primary(format!("aka {}", request_id), dbs);
+            process_request(&request_str, &dbs, client)
+        }
+    }
+}
+
+pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -> Response {
+    let input_to_log = clean_string_to_log(input, &dbs);
+    log::debug!(
+        "[{}] process_request got message '{}'. ",
+        thread_id::get(),
+        input_to_log
+    );
+    let db_name_state = client.selected_db_name();
+    let start = Instant::now();
+    let request = match Request::parse(String::from(input).trim_matches('\n')) {
+        Ok(req) => req,
+        Err(e) => return Response::Error { msg: e },
     };
+
+    log::debug!(
+        "[{}] process_request parsed message '{}'. ",
+        thread_id::get(),
+        input_to_log
+    );
+
+    let result = process_request_obj(&request, &dbs, client);
 
     let elapsed = start.elapsed();
     log::info!(

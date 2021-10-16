@@ -28,6 +28,7 @@
      - [x] Op log file reading as database
      - [x] Implement full sync (if op log fail)
      - [x] Fix primary disconnections election problem
+     - [x] Add command to estimate op log size -> Create a issue to it
      - [ ] Stop using timestamp register the last used oplog on the secoundary
      - [ ] Document db creation and deletion lock while restoring a replica set...
      - [ ] Document how to backup the admin datatabase
@@ -38,7 +39,6 @@
      - [ ] What if oplog file became too big? We need a command to clean oplog file
      - [ ] Some times election falling in ./tests/test-fail-primary-dbs.sh all
      - [ ] Implement ping command
-     - [x] Add command to estimate op log size -> Create a issue to it
 - [x] Read https://jepsen.io/analyses/redis-raft-1b3fbf6
 - [x] Add cli interface
 - [x] Remove the need to admin auth to use an database  
@@ -51,6 +51,8 @@
 - [ ] Implement key value security
 - [ ] Clean unused dataset 
 - [ ] Add example https://mateusfreira.github.io/nun-db-js/examples/data-analysis/
+- [ ] Implement leader less replication
+    - [ ] LeaderlessReplication.md
 ```
 nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-db data-analysis-demo $key; keys" |  tr "," "\n" | grep -v -E "1624735236495_ds|1624735710952_ds"
 ```

@@ -328,7 +328,48 @@ impl Request {
                     }
                 };
             }
+            Some("rp") => {
+                let request_id: u64 = match command.next() {
+                    Some(id_str) => match id_str.parse::<u64>() {
+                        Ok(id) => id,
+                        Err(_) => 0,
+                    },
+                    None => 0,
+                };
 
+                if request_id == 0 {
+                    return Err(format!("Invalid request Id"));
+                }
+
+                let request_str: String = String::from(match command.next() {
+                    Some(request_str) => request_str,
+                    None => "",
+                });
+
+                if request_str == "" {
+                    return Err(format!("Invalid replication request str"));
+                }
+
+                Ok(Request::ReplicateRequest {
+                    request_id,
+                    request_str,
+                })
+            }
+            Some("aka") => {
+                let request_id: u64 = match command.next() {
+                    Some(id_str) => match id_str.parse::<u64>() {
+                        Ok(id) => id,
+                        Err(_) => 0,
+                    },
+                    None => 0,
+                };
+
+                if request_id == 0 {
+                    return Err(format!("Invalid request Id"));
+                }
+
+                Ok(Request::Acknowledge { request_id })
+            }
             Some(cmd) => Err(format!("unknown command: {}", cmd)),
             _ => Err(format!("no command sent")),
         };
@@ -623,6 +664,51 @@ mod tests {
         match Request::parse("keys") {
             Ok(Request::Keys {}) => Ok(()),
             _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_repliation_request_valid() -> Result<(), String> {
+        match Request::parse("rp 1 replicate joao 1") {
+            Ok(Request::ReplicateRequest {
+                request_id,
+                request_str,
+            }) => {
+                if request_id == 1 && request_str == "replicate joao 1" {
+                    Ok(())
+                } else {
+                    Err(String::from("Invalid replication request"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_repliation_request_invalid_valid() -> Result<(), String> {
+        match Request::parse("rp 1") {
+            Err(message) => {
+                if message == "Invalid replication request str" {
+                    Ok(())
+                } else {
+                    Err(String::from("Invalid error message"))
+                }
+            }
+            _ => Err(String::from("Should not have parsed!!")),
+        }
+    }
+
+    #[test]
+    fn should_parse_aka_command() -> Result<(), String> {
+        match Request::parse("aka 1") {
+            Ok(Request::Acknowledge { request_id }) => {
+                if request_id == 1 {
+                    Ok(())
+                } else {
+                    Err(String::from("Invalid id"))
+                }
+            }
+            _ => Err(String::from("Invalid parsing")),
         }
     }
 }
