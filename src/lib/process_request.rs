@@ -355,17 +355,17 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             }
         }),
         Request::Acknowledge {
-            request_id,
+            opp_id,
             server_name,
         } => {
-            dbs.acknowledge_pending_opp(request_id, server_name);
+            dbs.acknowledge_pending_opp(opp_id, server_name);
             Response::Ok {}
         }
         Request::ReplicateRequest {
             request_str,
-            request_id,
+            opp_id,
         } => {
-            send_message_to_primary(format!("ack {} {}", request_id, dbs.tcp_address), dbs);
+            send_message_to_primary(format!("ack {} {}", opp_id, dbs.tcp_address), dbs);
             process_request(&request_str, &dbs, client)
         }
     }

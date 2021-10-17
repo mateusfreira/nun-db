@@ -330,7 +330,7 @@ impl Request {
                 };
             }
             Some("rp") => {
-                let request_id: u64 = match command.next() {
+                let opp_id: u64 = match command.next() {
                     Some(id_str) => match id_str.parse::<u64>() {
                         Ok(id) => id,
                         Err(_) => 0,
@@ -338,7 +338,7 @@ impl Request {
                     None => 0,
                 };
 
-                if request_id == 0 {
+                if opp_id == 0 {
                     return Err(format!("Invalid request Id"));
                 }
 
@@ -352,12 +352,12 @@ impl Request {
                 }
 
                 Ok(Request::ReplicateRequest {
-                    request_id,
+                    opp_id,
                     request_str,
                 })
             }
             Some("ack") => {
-                let request_id: u64 = match command.next() {
+                let opp_id: u64 = match command.next() {
                     Some(id_str) => match id_str.parse::<u64>() {
                         Ok(id) => id,
                         Err(_) => 0,
@@ -365,7 +365,7 @@ impl Request {
                     None => 0,
                 };
 
-                if request_id == 0 {
+                if opp_id == 0 {
                     return Err(format!("Invalid request Id"));
                 }
 
@@ -379,7 +379,7 @@ impl Request {
                 }
 
                 Ok(Request::Acknowledge {
-                    request_id,
+                    opp_id,
                     server_name,
                 })
             }
@@ -692,10 +692,10 @@ mod tests {
     fn should_parse_repliation_request_valid() -> Result<(), String> {
         match Request::parse("rp 1 replicate joao 1") {
             Ok(Request::ReplicateRequest {
-                request_id,
+                opp_id,
                 request_str,
             }) => {
-                if request_id == 1 && request_str == "replicate joao 1" {
+                if opp_id == 1 && request_str == "replicate joao 1" {
                     Ok(())
                 } else {
                     Err(String::from("Invalid replication request"))
@@ -723,10 +723,10 @@ mod tests {
     fn should_parse_ack_command() -> Result<(), String> {
         match Request::parse("ack 1 serv1") {
             Ok(Request::Acknowledge {
-                request_id,
+                opp_id,
                 server_name,
             }) => {
-                if request_id == 1 {
+                if opp_id == 1 {
                     if server_name == "serv1" {
                         Ok(())
                     } else {

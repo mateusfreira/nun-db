@@ -418,23 +418,23 @@ impl Databases {
         pending_opps.insert(replication_message.opp_id, replication_message);
     }
 
-    pub fn acknowledge_pending_opp(&self, request_id: u64, server_name: String) {
+    pub fn acknowledge_pending_opp(&self, opp_id: u64, server_name: String) {
         let mut pending_opps = self.pending_opps.write().unwrap();
-        match pending_opps.get_mut(&request_id) {
+        match pending_opps.get_mut(&opp_id) {
             Some(replicated_opp) => {
                 replicated_opp.ack();
                 let elapsed = replicated_opp.start_time.elapsed();
                 log::debug!(
                     "Acknowledged opp {} from {} in {:?}",
-                    request_id,
+                    opp_id,
                     server_name,
                     elapsed
                 );
                 if replicated_opp.is_full_acknowledged() {
-                    pending_opps.remove(&request_id);
+                    pending_opps.remove(&opp_id);
                     log::debug!(
                         "All replications Acknowledged removing opp {} from {} in {:?}, {} pending",
-                        request_id,
+                        opp_id,
                         server_name,
                         elapsed,
                         pending_opps.keys().len()
@@ -442,7 +442,7 @@ impl Databases {
                 }
             }
             None => {
-                log::warn!("Acknowledging invalid opp {}", request_id);
+                log::warn!("Acknowledging invalid opp {}", opp_id);
             }
         };
     }
@@ -600,10 +600,10 @@ pub enum Request {
     Keys {},
     ReplicateRequest {
         request_str: String,
-        request_id: u64,
+        opp_id: u64,
     },
     Acknowledge {
-        request_id: u64,
+        opp_id: u64,
         server_name: String,
     },
 }
