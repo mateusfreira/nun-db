@@ -7,6 +7,7 @@
 5. May be possible to deploy here
 4. Process ck op id
 6. ACK message from replication
+- [x] Done
 
 # Change 2 
 3. Add version to value on disk (To detect conflicts)
@@ -17,5 +18,5 @@
 Time line... 
 +--------+       +--------+        +---+        +------+                                                 
 |   C1   +-------|Deploy  +--------|-C2+--------|Deploy|                                                         
-|        |       |        |        |   |        |      |                                                 
+|   Done |       |  Done  |        |   |        |      |                                                 
 +--------+       +--------+        +---+        +------+                                                 

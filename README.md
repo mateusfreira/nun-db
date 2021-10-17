@@ -4,7 +4,7 @@
 
 Nun DB is an open source real time database, made to be fast, light and easy to use.
 
-Nun DB is written to be memory safe and horizotal(soon) scalable.
+Nun DB is written to be memory safe and horizontal(soon) scalable.
 
 We believe we can keep Nun DB simple and at the same time it can power lots of different apps and use cases.
 
