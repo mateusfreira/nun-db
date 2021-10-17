@@ -153,7 +153,6 @@ fn replicate_if_some(opt_sender: &Option<Sender<String>>, message: &String, name
     }
 }
 fn replicate_message_to_secoundary(op_log_id: u64, message: String, dbs: &Arc<Databases>) {
-    //Store this to dbs... control pending and processed there
     let replicate_message = ReplicationMessage::new(op_log_id, message.clone());
     log::debug!("Got the message {} to replicate ", message);
     let state = dbs.cluster_state.lock().unwrap();
