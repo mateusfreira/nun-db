@@ -311,6 +311,23 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             }
         }),
 
+        Request::OpLogState {} => apply_if_auth(&client.auth, &|| {
+            let oplog_state = dbs.get_oplog_state();
+            log::debug!("OpLogState {}", oplog_state);
+            match client
+                .sender
+                .clone()
+                .try_send(format_args!("oplog-state {}\n", oplog_state).to_string())
+            {
+                Err(e) => log::warn!("Request::ClusterState sender.send Error: {}", e),
+                _ => (),
+            }
+            Response::Value {
+                key: String::from("oplog-state"),
+                value: String::from(oplog_state),
+            }
+        }),
+
         Request::Keys {} => apply_to_database(&dbs, &client, &|db| {
             let keys: Vec<String> = db
                 .map
@@ -348,7 +365,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             request_str,
             request_id,
         } => {
-            send_message_to_primary(format!("aka {} {}", request_id, dbs.tcp_address), dbs);
+            send_message_to_primary(format!("ack {} {}", request_id, dbs.tcp_address), dbs);
             process_request(&request_str, &dbs, client)
         }
     }

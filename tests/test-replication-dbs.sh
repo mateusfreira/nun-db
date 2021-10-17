@@ -151,6 +151,21 @@ if [ "$clusterStatePrimary" !=  "$expectedCluster" ]; then
 else
     echo "Request Ok"
 fi
+
+oppState=$(curl -s -X "POST" "$primaryHttpAddress" -d "auth $user $user; oplog-state;")
+
+echo "OppLogState: $oppState" 
+
+expectedOpLog="valid auth
+;oplog-state pending_opps: 0"
+
+if [ "$oppState" != "$expectedOpLog" ]; then
+    echo "Invalid oplogstate"
+    exit 5
+else
+    echo "OppLogState OK"
+fi
+
 echo "========================================This is great success \o/!!!!!======================="
 
 echo "Will clean up the dbs"

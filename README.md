@@ -169,6 +169,37 @@ Increments by 10
 increment visits 10
 ```
 
+### Acknowledge
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [ ] Replicate? How? (replicate-increment)
+- [ ] Register Oplog? How? (Update)
+
+Internally used to acknowledged messages processed by the replicas
+
+e.g
+```
+  ack 1 replica1:181
+```
+
+### ClusterState
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [ ] Replicate? How? (replicate-increment)
+- [ ] Register Oplog? How? (Update)
+
+Returns the cluster state, usefull for debugging or admin proposes
+
+e.gs
+```
+# request
+cluster-state;
+response: 
+cluster-state  127.0.0.1:3017:Primary, 127.0.0.1:3018:Secoundary,
+```
+
 
 ## Connectors 
 * Http

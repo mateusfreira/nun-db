@@ -44,6 +44,7 @@ impl Request {
                 })
             }
             Some("cluster-state") => Ok(Request::ClusterState {}),
+            Some("oplog-state") => Ok(Request::OpLogState {}),
             Some("election") => match command.next() {
                 Some("win") => Ok(Request::ElectionWin {}),
                 Some("cadidate") => {
@@ -355,7 +356,7 @@ impl Request {
                     request_str,
                 })
             }
-            Some("aka") => {
+            Some("ack") => {
                 let request_id: u64 = match command.next() {
                     Some(id_str) => match id_str.parse::<u64>() {
                         Ok(id) => id,
@@ -593,6 +594,14 @@ mod tests {
     }
 
     #[test]
+    fn should_parse_oplogstate() -> Result<(), String> {
+        match Request::parse("oplog-state") {
+            Ok(Request::OpLogState {}) => Ok(()),
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
     fn should_parse_increment() -> Result<(), String> {
         match Request::parse("increment key") {
             Ok(Request::Increment { key, inc }) => {
@@ -711,8 +720,8 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_aka_command() -> Result<(), String> {
-        match Request::parse("aka 1 serv1") {
+    fn should_parse_ack_command() -> Result<(), String> {
+        match Request::parse("ack 1 serv1") {
             Ok(Request::Acknowledge {
                 request_id,
                 server_name,

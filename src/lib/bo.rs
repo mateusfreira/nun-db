@@ -422,7 +422,7 @@ impl Databases {
         let mut pending_opps = self.pending_opps.write().unwrap();
         match pending_opps.get_mut(&request_id) {
             Some(replicated_opp) => {
-                replicated_opp.aka();
+                replicated_opp.ack();
                 let elapsed = replicated_opp.start_time.elapsed();
                 log::debug!(
                     "Acknowledged opp {} from {} in {:?}",
@@ -445,6 +445,11 @@ impl Databases {
                 log::warn!("Acknowledging invalid opp {}", request_id);
             }
         };
+    }
+
+    pub fn get_oplog_state(&self) -> String{
+        let pending_opps = self.pending_opps.read().unwrap();
+        format!("pending_opps: {}", pending_opps.keys().len())
     }
 }
 
@@ -586,6 +591,7 @@ pub enum Request {
         start_at: u64,
     },
     ClusterState {},
+    OpLogState {},
     ElectionWin {},
     Election {
         id: u128,
@@ -613,7 +619,7 @@ pub enum Response {
 pub struct ReplicationMessage {
     pub opp_id: u64,
     pub message: String,
-    pub aka_count: AtomicUsize,
+    pub ack_count: AtomicUsize,
     pub replicate_count: AtomicUsize,
     pub start_time: Instant,
 }
@@ -622,14 +628,14 @@ impl ReplicationMessage {
         ReplicationMessage {
             opp_id,
             message,
-            aka_count: AtomicUsize::new(0),
+            ack_count: AtomicUsize::new(0),
             replicate_count: AtomicUsize::new(0),
             start_time: Instant::now(),
         }
     }
 
-    pub fn aka(&self) {
-        self.aka_count.fetch_add(1, Ordering::Relaxed);
+    pub fn ack(&self) {
+        self.ack_count.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn replicated(&self) {
@@ -637,7 +643,7 @@ impl ReplicationMessage {
     }
 
     pub fn is_full_acknowledged(&self) -> bool {
-        self.replicate_count.load(Ordering::Relaxed) == self.aka_count.load(Ordering::Relaxed)
+        self.replicate_count.load(Ordering::Relaxed) == self.ack_count.load(Ordering::Relaxed)
     }
 
     pub fn is_replicated(&self) -> bool {
