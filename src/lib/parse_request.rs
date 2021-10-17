@@ -44,6 +44,7 @@ impl Request {
                 })
             }
             Some("cluster-state") => Ok(Request::ClusterState {}),
+            Some("oplog-state") => Ok(Request::OpLogState {}),
             Some("election") => match command.next() {
                 Some("win") => Ok(Request::ElectionWin {}),
                 Some("cadidate") => {
@@ -328,7 +329,60 @@ impl Request {
                     }
                 };
             }
+            Some("rp") => {
+                let opp_id: u64 = match command.next() {
+                    Some(id_str) => match id_str.parse::<u64>() {
+                        Ok(id) => id,
+                        Err(_) => 0,
+                    },
+                    None => 0,
+                };
 
+                if opp_id == 0 {
+                    return Err(format!("Invalid request Id"));
+                }
+
+                let request_str: String = String::from(match command.next() {
+                    Some(request_str) => request_str,
+                    None => "",
+                });
+
+                if request_str == "" {
+                    return Err(format!("Invalid replication request str"));
+                }
+
+                Ok(Request::ReplicateRequest {
+                    opp_id,
+                    request_str,
+                })
+            }
+            Some("ack") => {
+                let opp_id: u64 = match command.next() {
+                    Some(id_str) => match id_str.parse::<u64>() {
+                        Ok(id) => id,
+                        Err(_) => 0,
+                    },
+                    None => 0,
+                };
+
+                if opp_id == 0 {
+                    return Err(format!("Invalid request Id"));
+                }
+
+                let server_name: String = String::from(match command.next() {
+                    Some(request_str) => request_str,
+                    None => "",
+                });
+
+                if server_name == "" {
+                    return Err(format!("Invalid server name"));
+                }
+
+                Ok(Request::Acknowledge {
+                    opp_id,
+                    server_name,
+                })
+            }
             Some(cmd) => Err(format!("unknown command: {}", cmd)),
             _ => Err(format!("no command sent")),
         };
@@ -540,6 +594,14 @@ mod tests {
     }
 
     #[test]
+    fn should_parse_oplogstate() -> Result<(), String> {
+        match Request::parse("oplog-state") {
+            Ok(Request::OpLogState {}) => Ok(()),
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
     fn should_parse_increment() -> Result<(), String> {
         match Request::parse("increment key") {
             Ok(Request::Increment { key, inc }) => {
@@ -623,6 +685,58 @@ mod tests {
         match Request::parse("keys") {
             Ok(Request::Keys {}) => Ok(()),
             _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_repliation_request_valid() -> Result<(), String> {
+        match Request::parse("rp 1 replicate joao 1") {
+            Ok(Request::ReplicateRequest {
+                opp_id,
+                request_str,
+            }) => {
+                if opp_id == 1 && request_str == "replicate joao 1" {
+                    Ok(())
+                } else {
+                    Err(String::from("Invalid replication request"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_repliation_request_invalid_valid() -> Result<(), String> {
+        match Request::parse("rp 1") {
+            Err(message) => {
+                if message == "Invalid replication request str" {
+                    Ok(())
+                } else {
+                    Err(String::from("Invalid error message"))
+                }
+            }
+            _ => Err(String::from("Should not have parsed!!")),
+        }
+    }
+
+    #[test]
+    fn should_parse_ack_command() -> Result<(), String> {
+        match Request::parse("ack 1 serv1") {
+            Ok(Request::Acknowledge {
+                opp_id,
+                server_name,
+            }) => {
+                if opp_id == 1 {
+                    if server_name == "serv1" {
+                        Ok(())
+                    } else {
+                        Err(String::from("Invalid server name"))
+                    }
+                } else {
+                    Err(String::from("Invalid id"))
+                }
+            }
+            _ => Err(String::from("Invalid parsing")),
         }
     }
 }

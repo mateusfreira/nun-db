@@ -10,26 +10,8 @@ use crate::replication_ops::*;
 use crate::security::*;
 use log;
 
-pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -> Response {
-    let input_to_log = clean_string_to_log(input, &dbs);
-    log::debug!(
-        "[{}] process_request got message '{}'. ",
-        thread_id::get(),
-        input_to_log
-    );
-    let db_name_state = client.selected_db_name();
-    let start = Instant::now();
-    let request = match Request::parse(String::from(input).trim_matches('\n')) {
-        Ok(req) => req,
-        Err(e) => return Response::Error { msg: e },
-    };
-
-    log::debug!(
-        "[{}] process_request parsed message '{}'. ",
-        thread_id::get(),
-        input_to_log
-    );
-    let result = match request.clone() {
+fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Client) -> Response {
+    match request.clone() {
         Request::ReplicateIncrement { db: name, key, inc } => apply_if_auth(&client.auth, &|| {
             let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
@@ -329,6 +311,23 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
             }
         }),
 
+        Request::OpLogState {} => apply_if_auth(&client.auth, &|| {
+            let oplog_state = dbs.get_oplog_state();
+            log::debug!("OpLogState {}", oplog_state);
+            match client
+                .sender
+                .clone()
+                .try_send(format_args!("oplog-state {}\n", oplog_state).to_string())
+            {
+                Err(e) => log::warn!("Request::ClusterState sender.send Error: {}", e),
+                _ => (),
+            }
+            Response::Value {
+                key: String::from("oplog-state"),
+                value: String::from(oplog_state),
+            }
+        }),
+
         Request::Keys {} => apply_to_database(&dbs, &client, &|db| {
             let keys: Vec<String> = db
                 .map
@@ -355,7 +354,44 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
                 value: String::from(keys),
             }
         }),
+        Request::Acknowledge {
+            opp_id,
+            server_name,
+        } => {
+            dbs.acknowledge_pending_opp(opp_id, server_name);
+            Response::Ok {}
+        }
+        Request::ReplicateRequest {
+            request_str,
+            opp_id,
+        } => {
+            send_message_to_primary(format!("ack {} {}", opp_id, dbs.tcp_address), dbs);
+            process_request(&request_str, &dbs, client)
+        }
+    }
+}
+
+pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -> Response {
+    let input_to_log = clean_string_to_log(input, &dbs);
+    log::debug!(
+        "[{}] process_request got message '{}'. ",
+        thread_id::get(),
+        input_to_log
+    );
+    let db_name_state = client.selected_db_name();
+    let start = Instant::now();
+    let request = match Request::parse(String::from(input).trim_matches('\n')) {
+        Ok(req) => req,
+        Err(e) => return Response::Error { msg: e },
     };
+
+    log::debug!(
+        "[{}] process_request parsed message '{}'. ",
+        thread_id::get(),
+        input_to_log
+    );
+
+    let result = process_request_obj(&request, &dbs, client);
 
     let elapsed = start.elapsed();
     log::info!(

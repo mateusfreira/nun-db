@@ -68,6 +68,72 @@ Response "valid auth\n;create-db success\n"
 
 Done you now have nun-db running in your docker and exposing all the ports to be use http (3013), web-socket(3012), socket(3014)  you are ready to use.
 
+
+
+# How-tos
+
+* [How-to Make Redux TodoMVC Example a real-time multiuser with Nun-db in 10 steps](https://mateusfreira.github.io/@mateusfreira-2021-06-30-how-to-making-redux-todomvc-example-a-real-time-multiuser-with-nun-db/)
+* [How to create your simple version of google analytics real-time using Nun-db](https://mateusfreira.github.io/@mateusfreira-create-a-simple-verison-of-google-analytics-realtime-using-nun-db/)
+* [NunDb How to backup one or all databases](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
+
+
+
+## Technical documentations
+
+[A fast-to-sync/search and space-optimized replication algorithm written in rust, The Nun-db data replication model](https://mateusfreira.github.io/@mateusfreira-a-fast-to-sync-search-and-space-optimized-replication-algorithm-written-in-rust-the-Nun-db-data-replication-model/)
+
+[Leader election in rust the journey towards implementing nun-db leader election](https://mateusfreira.github.io/@mateusfreira-leader-election-rust-the-journey-towards-nun-db-leader-election-implementation/)
+
+## Diagram
+
+```bash
+
+                                      .------------------------------------------.
+                                      |                     |                    |              .---------------.
+                                      |       http_ops      |                    |------------->|  Disck        |      
+                                      |                     |   disk_ops         |------------->|               |      
+                                      |_____________        |                    |              .---------------.
+                                      |            |        ._________________.__|                                     
+                                      |            |        |                 |  |                                     
+                                      |            |        | replication_ops |  |                                     
+                                      |   tcp_ops   \_______+--------+--------+  |                                     
+                                      |             |       |        |           |                                     
+.----------------.                    |             |       |        |           |      .---------------. 
+|   Frontends/   | ---text----------> |_____________|parse <.> core  | db_ops    |----->|   Memory      | 
+|  Clients       | <---text---------- |             |       |        |           |<-----| Repository    | 
+.----------------.                    |             |       |        |           |      |               | 
+                                      |             \_______|_______/________.   |      ._______________.
+                                      |    ws_ops           |                |   |                                    
+                                      |                     |   election_ops |   |                                    
+                                      |_____________________._______________/____|                                    
+                                      |                                          |                                    
+                                      |                                          |                                    
+                                      |                 monitoring               |                                    
+                                      |                                          |                                    
+                                      |                                          |                                    
+                                      .------------------------------------------.                                    
+
+```
+
+## Connectors 
+* Http
+    Port: 3013
+* Socket
+    Port: 3014
+    
+* Web Socket
+    Port: 3012
+
+
+
+## Having any issue or needs help?
+
+Open an issue I will follow as soon as possible.
+
+## Want to use it in production ?
+
+Talk to me @mateusfreira I will help you get it to the scale you need.
+
 ## Nun Query language (NQL)
 
 ### Auth
@@ -169,15 +235,54 @@ Increments by 10
 increment visits 10
 ```
 
+### Acknowledge
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [ ] Replicate? How? (replicate-increment)
+- [ ] Register Oplog? How? (Update)
 
-## Connectors 
-* Http
-    Port: 3013
-* Socket
-    Port: 3014
-    
-* Web Socket
-    Port: 3012
+Internally used to acknowledged messages processed by the replicas
+
+e.g
+```
+  ack 1 replica1:181
+```
+
+### ClusterState
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [ ] Replicate? How? (replicate-increment)
+- [ ] Register Oplog? How? (Update)
+
+Returns the cluster state, useful for debugging or admin proposes
+
+e.gs
+```
+# request
+cluster-state;
+response: 
+cluster-state  127.0.0.1:3017:Primary, 127.0.0.1:3018:Secoundary,
+```
+
+### OplogState
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [ ] Replicate? How? (replicate-increment)
+- [ ] Register Oplog? How? (Update)
+
+Returns the oplog state, useful for debugging or admin proposes
+
+e.gs
+```
+# request
+cluster-state;
+response: 
+oplog-state pending_opps: 0
+```
+
 
 ## Special keys
 
@@ -187,62 +292,7 @@ All special keys will have a `$` symbol in the first letter of the name.
 
 Count the number of connections to a databse.
 
+
 ```
 $connections
 ```
-
-## Diagram
-
-```bash
-
-                                      .------------------------------------------.
-                                      |                     |                    |              .---------------.
-                                      |       http_ops      |                    |------------->|  Disck        |      
-                                      |                     |   disk_ops         |------------->|               |      
-                                      |_____________        |                    |              .---------------.
-                                      |            |        ._________________.__|                                     
-                                      |            |        |                 |  |                                     
-                                      |            |        | replication_ops |  |                                     
-                                      |   tcp_ops   \_______+--------+--------+  |                                     
-                                      |             |       |        |           |                                     
-.----------------.                    |             |       |        |           |      .---------------. 
-|   Frontends/   | ---text----------> |_____________|parse <.> core  | db_ops    |----->|   Memory      | 
-|  Clients       | <---text---------- |             |       |        |           |<-----| Repository    | 
-.----------------.                    |             |       |        |           |      |               | 
-                                      |             \_______|_______/________.   |      ._______________.
-                                      |    ws_ops           |                |   |                                    
-                                      |                     |   election_ops |   |                                    
-                                      |_____________________._______________/____|                                    
-                                      |                                          |                                    
-                                      |                                          |                                    
-                                      |                 monitoring               |                                    
-                                      |                                          |                                    
-                                      |                                          |                                    
-                                      .------------------------------------------.                                    
-
-```
-
-
-
-## Having any issue or needs help?
-
-Open an issue I will follow as soon as possible.
-
-## Want to use it in production ?
-
-Talk to me @mateusfreira I will help you get it to the scale you need.
-
-# How-tos
-
-* [How-to Make Redux TodoMVC Example a real-time multiuser with Nun-db in 10 steps](https://mateusfreira.github.io/@mateusfreira-2021-06-30-how-to-making-redux-todomvc-example-a-real-time-multiuser-with-nun-db/)
-* [How to create your simple version of google analytics real-time using Nun-db](https://mateusfreira.github.io/@mateusfreira-create-a-simple-verison-of-google-analytics-realtime-using-nun-db/)
-* [NunDb How to backup one or all databases](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
-
-
-
-## Technical documentations
-
-[A fast-to-sync/search and space-optimized replication algorithm written in rust, The Nun-db data replication model](https://mateusfreira.github.io/@mateusfreira-a-fast-to-sync-search-and-space-optimized-replication-algorithm-written-in-rust-the-Nun-db-data-replication-model/)
-
-[Leader election in rust the journey towards implementing nun-db leader election](https://mateusfreira.github.io/@mateusfreira-leader-election-rust-the-journey-towards-nun-db-leader-election-implementation/)
-

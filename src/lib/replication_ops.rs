@@ -152,15 +152,27 @@ fn replicate_if_some(opt_sender: &Option<Sender<String>>, message: &String, name
         ),
     }
 }
-fn replicate_message_to_secoundary(message: String, dbs: &Arc<Databases>) {
+fn replicate_message_to_secoundary(op_log_id: u64, message: String, dbs: &Arc<Databases>) {
+    let replicate_message = ReplicationMessage::new(op_log_id, message.clone());
     log::debug!("Got the message {} to replicate ", message);
     let state = dbs.cluster_state.lock().unwrap();
     for (_name, member) in state.members.lock().unwrap().iter() {
         match member.role {
-            ClusterRole::Secoundary => replicate_if_some(&member.sender, &message, &member.name),
+            ClusterRole::Secoundary => {
+                replicate_message.replicated();
+                replicate_if_some(
+                    &member.sender,
+                    &replicate_message.message_to_replicate(),
+                    &member.name,
+                )
+            }
             ClusterRole::Primary => (),
             ClusterRole::StartingUp => (),
         }
+    }
+
+    if replicate_message.is_replicated() {
+        dbs.add_pending_opp(replicate_message);
     }
 }
 
@@ -219,49 +231,53 @@ pub async fn start_replication_thread(
                     log::info!("replication_ops::start_replication_thread will exist!");
                     break;
                 }
-                if dbs.is_primary() || dbs.is_eligible() {
-                    // starting nodes neeeds to replicate election messages
-                    replicate_message_to_secoundary(message.to_string(), &dbs);
-                } else {
-                    log::debug!("Won't replicate message from secoundary");
-                }
                 let request = Request::parse(&message.to_string()).unwrap();
-                match request {
+                let op_log_id: u64 = match request {
                     Request::CreateDb { name, token: _ } => {
                         let db_id = get_db_id(name, &dbs);
                         let key_id = 1;
                         log::debug!("Will write CreateDb");
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::CreateDb);
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::CreateDb)
                     }
                     Request::ReplicateSnapshot { db } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = 2; //has to be different
                         log::debug!("Will write ReplicateSnapshot");
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot);
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot)
                     }
                     Request::ReplicateSet { db, key, value: _ } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update)
                     }
 
                     Request::ReplicateIncrement { db, key, inc: _ } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update);
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update)
                     }
 
                     Request::ReplicateRemove { db, key } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove);
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove)
                     }
 
-                    Request::SetPrimary { name: _ } => (), //Election events won't be registed in OpLog
-                    _ => log::debug!(
-                        "Ignoring command {} in replication oplog register! not unimplemented!",
-                        message
-                    ),
+                    Request::SetPrimary { name: _ } => 0, //Election events won't be registed in OpLog
+                    _ => {
+                        log::debug!(
+                            "Ignoring command {} in replication oplog register! not unimplemented!",
+                            message
+                        );
+                        0
+                    }
+                };
+
+                if dbs.is_primary() || dbs.is_eligible() {
+                    // starting nodes needs to replicate election messages
+                    replicate_message_to_secoundary(op_log_id, message.to_string(), &dbs);
+                } else {
+                    log::debug!("Won't replicate message from secoundary");
                 }
             }
             _ => log::warn!("Non part in replication"),
@@ -808,7 +824,6 @@ mod tests {
     use std::fs;
     use std::sync::atomic::Ordering;
     use std::time;
-    use std::time::{SystemTime, UNIX_EPOCH};
     use tokio_test;
 
     pub const SAMPLE_NAME: &'static str = "sample";
@@ -876,12 +891,7 @@ mod tests {
             .unwrap();
         thread::sleep(time::Duration::from_millis(20));
 
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let test_start =
-            since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+        let test_start = Databases::next_op_log_id();
         let commands = get_pendding_opps_since(test_start, &dbs);
         log::warn!("{:?}", commands);
         assert!(commands.len() == 0, "Only one command expected");
@@ -947,14 +957,9 @@ mod tests {
     }
 
     #[test]
-    fn should_return_the_pedding_ops() {
+    fn should_return_the_pending_ops() {
         let (dbs, _sender, _replication_receiver) = prep_env();
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let test_start =
-            since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+        let test_start = Databases::next_op_log_id();
         let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
         let dbs_to_thread = dbs.clone();
         let replication_thread = thread::spawn(|| async {
@@ -1013,12 +1018,7 @@ mod tests {
 
     #[test]
     fn should_not_fail_with_a_prime_number_of_records() {
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-        let test_start =
-            since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000;
+        let test_start = Databases::next_op_log_id();
         let (dbs, mut sender, replication_receiver) = prep_env();
         let dbs_to_thread = dbs.clone();
 
