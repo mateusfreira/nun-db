@@ -8,6 +8,7 @@ use std::sync::Mutex;
 use std::sync::RwLock;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use std::time::Instant;
 
 use crate::db_ops::*;
 
@@ -417,14 +418,27 @@ impl Databases {
         pending_opps.insert(replication_message.opp_id, replication_message);
     }
 
-    pub fn acknowledge_pending_opp(&self, request_id: u64) {
+    pub fn acknowledge_pending_opp(&self, request_id: u64, server_name: String) {
         let mut pending_opps = self.pending_opps.write().unwrap();
         match pending_opps.get_mut(&request_id) {
             Some(replicated_opp) => {
                 replicated_opp.aka();
-                if replicated_opp.is_full_aka() {
+                let elapsed = replicated_opp.start_time.elapsed();
+                log::debug!(
+                    "Acknowledged opp {} from {} in {:?}",
+                    request_id,
+                    server_name,
+                    elapsed
+                );
+                if replicated_opp.is_full_acknowledged() {
                     pending_opps.remove(&request_id);
-                    log::debug!("All replications Acknowledged removing opp {}, {} pending", request_id, pending_opps.keys().len());
+                    log::debug!(
+                        "All replications Acknowledged removing opp {} from {} in {:?}, {} pending",
+                        request_id,
+                        server_name,
+                        elapsed,
+                        pending_opps.keys().len()
+                    );
                 }
             }
             None => {
@@ -584,6 +598,7 @@ pub enum Request {
     },
     Acknowledge {
         request_id: u64,
+        server_name: String,
     },
 }
 
@@ -600,20 +615,16 @@ pub struct ReplicationMessage {
     pub message: String,
     pub aka_count: AtomicUsize,
     pub replicate_count: AtomicUsize,
-    pub start_time: u64,
+    pub start_time: Instant,
 }
 impl ReplicationMessage {
     pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
         ReplicationMessage {
             opp_id,
             message,
             aka_count: AtomicUsize::new(0),
             replicate_count: AtomicUsize::new(0),
-            start_time: since_the_epoch.as_millis() as u64,
+            start_time: Instant::now(),
         }
     }
 
@@ -625,7 +636,7 @@ impl ReplicationMessage {
         self.replicate_count.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn is_full_aka(&self) -> bool {
+    pub fn is_full_acknowledged(&self) -> bool {
         self.replicate_count.load(Ordering::Relaxed) == self.aka_count.load(Ordering::Relaxed)
     }
 

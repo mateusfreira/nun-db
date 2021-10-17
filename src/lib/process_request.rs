@@ -337,15 +337,18 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 value: String::from(keys),
             }
         }),
-        Request::Acknowledge { request_id } => {
-            dbs.acknowledge_pending_opp(request_id);
+        Request::Acknowledge {
+            request_id,
+            server_name,
+        } => {
+            dbs.acknowledge_pending_opp(request_id, server_name);
             Response::Ok {}
-        },
+        }
         Request::ReplicateRequest {
             request_str,
             request_id,
         } => {
-            send_message_to_primary(format!("aka {}", request_id), dbs);
+            send_message_to_primary(format!("aka {} {}", request_id, dbs.tcp_address), dbs);
             process_request(&request_str, &dbs, client)
         }
     }

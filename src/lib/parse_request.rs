@@ -368,7 +368,19 @@ impl Request {
                     return Err(format!("Invalid request Id"));
                 }
 
-                Ok(Request::Acknowledge { request_id })
+                let server_name: String = String::from(match command.next() {
+                    Some(request_str) => request_str,
+                    None => "",
+                });
+
+                if server_name == "" {
+                    return Err(format!("Invalid server name"));
+                }
+
+                Ok(Request::Acknowledge {
+                    request_id,
+                    server_name,
+                })
             }
             Some(cmd) => Err(format!("unknown command: {}", cmd)),
             _ => Err(format!("no command sent")),
@@ -700,10 +712,17 @@ mod tests {
 
     #[test]
     fn should_parse_aka_command() -> Result<(), String> {
-        match Request::parse("aka 1") {
-            Ok(Request::Acknowledge { request_id }) => {
+        match Request::parse("aka 1 serv1") {
+            Ok(Request::Acknowledge {
+                request_id,
+                server_name,
+            }) => {
                 if request_id == 1 {
-                    Ok(())
+                    if server_name == "serv1" {
+                        Ok(())
+                    } else {
+                        Err(String::from("Invalid server name"))
+                    }
                 } else {
                     Err(String::from("Invalid id"))
                 }
