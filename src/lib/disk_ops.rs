@@ -174,7 +174,7 @@ pub fn db_name_from_file_name(full_name: String) -> String {
 }
 
 fn storage_data_disk(db: &Database, db_name: String) {
-    let data = db.map.read().unwrap();
+    let data = db.to_string_hash();
     // store data
     let mut file = File::create(file_name_from_db_name(db_name.to_string())).unwrap();
     bincode::serialize_into(&mut file, &data.clone()).unwrap();

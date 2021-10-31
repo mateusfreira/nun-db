@@ -122,8 +122,58 @@ impl DatabaseMataData {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Value {
+    pub value: String,
+    pub version: usize,
+}
+
+impl From<String> for Value { 
+    fn from(value: String) -> Value {
+        Value { value, version: 1  }
+    }
+}
+
+impl From<&str> for Value { 
+    fn from(value: &str) -> Value {
+        Value::from(String::from(value))
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value.to_string())
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Value) -> bool {
+        self.value == other.value
+    }
+}
+
+impl PartialEq<String> for Value {
+    fn eq(&self, other: &String) -> bool {
+        self.value.eq(other)
+    }
+}
+
+impl PartialEq<str> for Value {
+    fn eq(&self, other: &str) -> bool {
+        self.value.eq(other)
+    }
+}
+
+impl PartialEq<&str> for Value {
+    fn eq(&self, other: &&str) -> bool {
+        self.value.eq(other)
+    }
+}
+
+
+
 pub struct Database {
-    pub map: std::sync::RwLock<HashMap<String, String>>,
+    pub map: std::sync::RwLock<HashMap<String, Value>>,
     pub name: String,
     pub watchers: Watchers,
     pub connections: RwLock<AtomicUsize>,
@@ -149,6 +199,16 @@ pub struct Databases {
 }
 
 impl Database {
+
+    pub fn to_string_hash(&self) -> HashMap<String, String> {
+        let data = self.map.read()
+            .expect("Error getting the db.map.read");
+        let mut value_data:HashMap<String, String> = HashMap::new();
+        for (key, value) in &*data {
+           value_data.insert(key.to_string(), value.to_string());
+        }
+        value_data
+    }
     pub fn connections_count(&self) -> usize {
         let connections = self
             .connections
@@ -162,8 +222,13 @@ impl Database {
         data: HashMap<String, String>,
         metadata: DatabaseMataData,
     ) -> Database {
+        let mut value_data:HashMap<String, Value> = HashMap::new();
+
+        for (key, value) in &data {
+           value_data.insert(key.to_string(), Value::from(value.to_string()));
+        }
         return Database {
-            map: RwLock::new(data),
+            map: RwLock::new(value_data),
             name,
             watchers: Watchers {
                 map: RwLock::new(HashMap::new()),
@@ -194,10 +259,10 @@ impl Database {
         // wait for the update_watchers to release the key
         let value = {
             let mut db = self.map.write().unwrap();
-            match i32::from_str_radix(db.get(&key.to_string()).unwrap_or(&String::from("0")), 10) {
+            match i32::from_str_radix(&db.get(&key.to_string()).unwrap_or(&Value::from("0")).to_string(), 10) {
                 Ok(current) => {
                     let next = (current + inc).to_string();
-                    db.insert(key.clone(), next.clone());
+                    db.insert(key.clone(), Value::from(next.clone()));
                     next
                 }
                 _ => {
@@ -267,7 +332,7 @@ impl Database {
     pub fn set_value(&self, key: String, value: String) {
         {
             let mut db = self.map.write().unwrap();
-            db.insert(key.clone(), value.clone());
+            db.insert(key.clone(), Value::from(value.clone()));
         } // release the db
         self.notify_watchers(key.clone(), value.clone());
     }
@@ -698,7 +763,7 @@ mod tests {
             assert_eq!(
                 values
                     .get(&key.to_string())
-                    .unwrap_or(&String::from("0"))
+                    .unwrap_or(&Value::from(String::from("0")))
                     .clone(),
                 "1"
             );
@@ -709,7 +774,7 @@ mod tests {
             assert_eq!(
                 values
                     .get(&key.to_string())
-                    .unwrap_or(&String::from("0"))
+                    .unwrap_or(&Value::from("0"))
                     .clone(),
                 "2"
             );

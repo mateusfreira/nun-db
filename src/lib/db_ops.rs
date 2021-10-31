@@ -105,8 +105,8 @@ pub fn snapshot_db(db: &Database, dbs: &Databases) -> Response {
 pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Response {
     let db = db.map.read().unwrap();
     let value = match db.get(&key.to_string()) {
-        Some(value) => value,
-        None => "<Empty>",
+        Some(value) => value.to_string(),
+        None => String::from("<Empty>"),
     };
     match sender
         .clone()
@@ -124,8 +124,8 @@ pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Re
 pub fn get_key_value_new(key: &String, db: &Database) -> Response {
     let db = db.map.read().unwrap();
     let value = match db.get(&key.to_string()) {
-        Some(value) => value,
-        None => "<Empty>",
+        Some(value) => value.to_string(),
+        None => String::from("<Empty>"),
     };
     Response::Value {
         key: key.clone(),
