@@ -135,6 +135,44 @@ impl Request {
                 Ok(Request::Set {
                     key: key.to_string(),
                     value: value.to_string(),
+                    version: -1,
+                })
+            }
+            Some("set-safe") => {
+                let key = match command.next() {
+                    Some(key) => key,
+                    None => {
+                        log::debug!("SET must be followed by a key");
+                        ""
+                    }
+                };
+                let mut rest = match command.next() {
+                    Some(rest) => rest.splitn(2, " "),
+                    None => {
+                        log::debug!("set-safe must be followed by a version and a key");
+                        return Err(String::from(
+                            "set-safe must be followed by a version and key",
+                        ));
+                    }
+                };
+
+                let version = match rest.next() {
+                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+                        Ok(n) => n,
+                        _ => -1,
+                    },
+                    None => -1,
+                };
+
+                let value = match rest.next() {
+                    Some(value) => value.replace("\n", ""),
+                    None => return Err(String::from("set-safe must be followed by a key")),
+                };
+
+                Ok(Request::Set {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                    version,
                 })
             }
             Some("increment") => {
@@ -464,10 +502,48 @@ mod tests {
     }
 
     #[test]
+    fn should_parse_set_with_version() -> Result<(), String> {
+        match Request::parse("set-safe foo 2 1\n") {
+            Ok(Request::Set {
+                key,
+                value,
+                version,
+            }) => {
+                if key == "foo" && value == "1" && version == 2 {
+                    Ok(())
+                } else {
+                    Err(String::from(
+                        "the key should be foo and the value should be 1 and version 2",
+                    ))
+                }
+            }
+            _ => Err(String::from("get foo should be parsed to set command")),
+        }
+    }
+
+    #[test]
+    fn should_parse_set_safe_without_version() -> Result<(), String> {
+        match Request::parse("set-safe foo 1\n") {
+            Err(message) => {
+                if message == "set-safe must be followed by a key" {
+                    Ok(())
+                } else {
+                    Err(String::from("Wrong validation error"))
+                }
+            }
+            _ => Err(String::from("Should not have parsed")),
+        }
+    }
+
+    #[test]
     fn should_parse_set_ending_with_end_line() -> Result<(), String> {
         match Request::parse("set foo 1\n") {
-            Ok(Request::Set { key, value }) => {
-                if key == "foo" && value == "1" {
+            Ok(Request::Set {
+                key,
+                value,
+                version,
+            }) => {
+                if key == "foo" && value == "1" && version == -1 {
                     Ok(())
                 } else {
                     Err(String::from(
