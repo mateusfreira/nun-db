@@ -154,11 +154,7 @@ pub fn set_connection_counter(db: &Database) -> Response {
 }
 
 pub fn set_key_value(key: String, value: String, version: i32, db: &Database) -> Response {
-    db.set_value(key.to_string(), value.to_string(), version);
-    Response::Set {
-        key: key.clone(),
-        value: value.to_string(),
-    }
+    db.set_value(key.to_string(), value.to_string(), version)
 }
 
 pub fn unwatch_key(key: &String, sender: &Sender<String>, db: &Database) -> Response {
@@ -287,21 +283,15 @@ mod tests {
         let hash = HashMap::new();
         let db =
             Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
+        set_key_value(key.clone(), value.clone(), -1, &db);
         set_key_value(key.clone(), value.clone(), 1, &db);
-
         match set_key_value(key.clone(), value_new.clone(), 1, &db) {
             Response::Error { msg } => {
-                assert_eq!(
-                    msg,
-                    "Invalid version!"
-                );
-            },
+                assert_eq!(msg, "Invalid version!");
+            }
             _ => {
-                assert_eq!(
-                    1,
-                    2
-                );
-            },
+                assert_eq!(1, 2);
+            }
         }
     }
 

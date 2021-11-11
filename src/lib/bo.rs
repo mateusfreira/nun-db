@@ -125,7 +125,7 @@ impl DatabaseMataData {
 #[derive(Clone, Debug)]
 pub struct Value {
     pub value: String,
-    pub version: usize,
+    pub version: i32,
 }
 
 impl From<String> for Value {
@@ -330,12 +330,49 @@ impl Database {
         Response::Ok {}
     }
 
-    pub fn set_value(&self, key: String, value: String, version: i32) {
+    pub fn get_value(&self, key: String) -> Option<Value> {
+        let db = self.map.read().unwrap();
+        if let Some(value) = db.get(&key.to_string()) {
+            Some(Value {
+                value: value.value.to_string(),
+                version: value.version,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn set_value_version(&self, key: &String, value: &String, new_version: i32) {
         {
             let mut db = self.map.write().unwrap();
-            db.insert(key.clone(), Value::from(value.clone()));
+            db.insert(
+                key.clone(),
+                Value {
+                    value: value.clone(),
+                    version: new_version,
+                },
+            );
         } // release the db
+    }
+
+    pub fn set_value(&self, key: String, value: String, version: i32) -> Response {
+        if let Some(old_version) = self.get_value(key.clone()) {
+            if version != -1 && version < old_version.version {
+                return Response::Error {
+                    msg: String::from("Invalid version!"),
+                };
+            }
+            self.set_value_version(&key, &value, old_version.version + 1)
+        } else {
+            //new key
+            self.set_value_version(&key, &value, 1)
+        }
         self.notify_watchers(key.clone(), value.clone());
+
+        Response::Set {
+            key: key.clone(),
+            value: value.to_string(),
+        }
     }
 }
 impl Databases {
