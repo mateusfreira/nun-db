@@ -117,6 +117,13 @@ impl Request {
                 };
                 Ok(Request::Get { key })
             }
+            Some("get-safe") => {
+                let key = match command.next() {
+                    Some(key) => key.replace("\n", ""),
+                    None => return Err(format!("get-safe must contain a key")),
+                };
+                Ok(Request::GetSafe { key })
+            }
             Some("set") => {
                 let key = match command.next() {
                     Some(key) => key,
@@ -443,6 +450,20 @@ mod tests {
                 }
             }
             _ => Err(String::from("get foo sould be parsed to Get command")),
+        }
+    }
+
+    #[test]
+    fn should_parse_get_safe() -> Result<(), String> {
+        match Request::parse("get-safe name") {
+            Ok(Request::GetSafe { key }) => {
+                if key == "name" {
+                    Ok(())
+                } else {
+                    Err(String::from("Key must be name"))
+                }
+            }
+            _ => Err(String::from("get-safe was not parsed correctly!")),
         }
     }
 

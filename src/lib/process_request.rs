@@ -68,15 +68,19 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             get_key_value(&key, &client.sender, _db)
         }),
 
+        Request::GetSafe { key } => apply_to_database(&dbs, &client, &|_db| {
+            get_key_value_safe(&key, &client.sender, _db)
+        }),
+
         Request::Remove { key } => apply_to_database(&dbs, &client, &|_db| remove_key(&key, _db)),
 
         Request::Set {
             key,
             value,
-            version: _,
+            version,
         } => apply_to_database(&dbs, &client, &|_db| {
             if dbs.is_primary() {
-                set_key_value(key.clone(), value.clone(), -1, _db)
+                set_key_value(key.clone(), value.clone(), version, _db)
             } else {
                 let db_name_state = _db.name.clone();
                 send_message_to_primary(

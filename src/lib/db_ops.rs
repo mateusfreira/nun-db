@@ -121,6 +121,25 @@ pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Re
     }
 }
 
+pub fn get_key_value_safe(key: &String, sender: &Sender<String>, db: &Database) -> Response {
+    let db = db.map.read().unwrap();
+    let (value, version) = match db.get(&key.to_string()) {
+        Some(value) => (value.to_string(), value.version),
+        None => (String::from("<Empty>"), 0),
+    };
+    match sender
+        .clone()
+        .try_send(format_args!("value-version {} {}\n", version, value).to_string())
+    {
+        Ok(_n) => (),
+        Err(e) => log::warn!("Request::Get sender.send Error: {}", e),
+    }
+    Response::Value {
+        key: key.clone(),
+        value: value.to_string(),
+    }
+}
+
 pub fn get_key_value_new(key: &String, db: &Database) -> Response {
     let db = db.map.read().unwrap();
     let value = match db.get(&key.to_string()) {

@@ -362,7 +362,14 @@ impl Database {
                     msg: String::from("Invalid version!"),
                 };
             }
-            self.set_value_version(&key, &value, old_version.version + 1)
+            let new_version = old_version.version + 1;
+            log::debug!(
+                "Updating existing value Old version: {}, New version: {}, PassedVersion : {}",
+                old_version.version,
+                new_version,
+                version
+            );
+            self.set_value_version(&key, &value, new_version)
         } else {
             //new key
             self.set_value_version(&key, &value, 1)
@@ -622,6 +629,9 @@ impl OpLogRecord {
 #[derive(Clone)]
 pub enum Request {
     Get {
+        key: String,
+    },
+    GetSafe {
         key: String,
     },
     Remove {

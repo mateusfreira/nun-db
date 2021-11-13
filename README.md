@@ -154,6 +154,20 @@ Talk to me @mateusfreira I will help you get it to the scale you need.
 - [x] Require db auth
 - [x] Replicate? How? (replicate)
 
+### SetSafe
+Changes the value of a key, guarantees consistency by version
+Soon this will be the default way to set values to a key, since we are moving to a leader less replication model.
+#### Context
+- [ ] Require admin auth
+- [x] Require db auth
+- [x] Replicate? How? (replicate)
+Examples:
+```
+set-safe $version $key $value
+set-safe 10 name Mateus # Sets key name to mateus if version is equal or minor than 10
+```
+
+
 ### Remove
 #### Context
 - [ ] Require admin auth
