@@ -53,7 +53,7 @@ pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &C
         let empty_db = Arc::try_unwrap(empty_db_box);
         match empty_db {
             Ok(db) => {
-                set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);
+                set_key_value(TOKEN_KEY.to_string(), token.clone(), -1, &db);
                 match dbs.add_database(&name.to_string(), db) {
                     Response::Ok {} => {
                         match client
@@ -105,8 +105,8 @@ pub fn snapshot_db(db: &Database, dbs: &Databases) -> Response {
 pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Response {
     let db = db.map.read().unwrap();
     let value = match db.get(&key.to_string()) {
-        Some(value) => value,
-        None => "<Empty>",
+        Some(value) => value.to_string(),
+        None => String::from("<Empty>"),
     };
     match sender
         .clone()
@@ -121,11 +121,30 @@ pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Re
     }
 }
 
+pub fn get_key_value_safe(key: &String, sender: &Sender<String>, db: &Database) -> Response {
+    let db = db.map.read().unwrap();
+    let (value, version) = match db.get(&key.to_string()) {
+        Some(value) => (value.to_string(), value.version),
+        None => (String::from("<Empty>"), 0),
+    };
+    match sender
+        .clone()
+        .try_send(format_args!("value-version {} {}\n", version, value).to_string())
+    {
+        Ok(_n) => (),
+        Err(e) => log::warn!("Request::Get sender.send Error: {}", e),
+    }
+    Response::Value {
+        key: key.clone(),
+        value: value.to_string(),
+    }
+}
+
 pub fn get_key_value_new(key: &String, db: &Database) -> Response {
     let db = db.map.read().unwrap();
     let value = match db.get(&key.to_string()) {
-        Some(value) => value,
-        None => "<Empty>",
+        Some(value) => value.to_string(),
+        None => String::from("<Empty>"),
     };
     Response::Value {
         key: key.clone(),
@@ -150,14 +169,11 @@ pub fn is_valid_token(token: &String, db: &Database) -> bool {
 
 pub fn set_connection_counter(db: &Database) -> Response {
     let value = db.connections_count().to_string();
-    return set_key_value(CONNECTIONS_KEY.to_string(), value, db);
+    return set_key_value(CONNECTIONS_KEY.to_string(), value, -1, db);
 }
-pub fn set_key_value(key: String, value: String, db: &Database) -> Response {
-    db.set_value(key.to_string(), value.to_string());
-    Response::Set {
-        key: key.clone(),
-        value: value.to_string(),
-    }
+
+pub fn set_key_value(key: String, value: String, version: i32, db: &Database) -> Response {
+    db.set_value(key.to_string(), value.to_string(), version)
 }
 
 pub fn unwatch_key(key: &String, sender: &Sender<String>, db: &Database) -> Response {
@@ -260,7 +276,7 @@ mod tests {
         let hash = HashMap::new();
         let db =
             Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
-        set_key_value(key.clone(), value.clone(), &db);
+        set_key_value(key.clone(), value.clone(), -1, &db);
 
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
 
@@ -277,6 +293,48 @@ mod tests {
         let message = receiver.try_next().unwrap().unwrap();
         assert_eq!(message.to_string(), "value <Empty>\n".to_string());
     }
+
+    #[test]
+    fn should_fail_set_value_if_version_is_not_valid() {
+        let key = String::from("key");
+        let value = String::from("This is the value");
+        let value_new = String::from("This is the new value");
+        let hash = HashMap::new();
+        let db =
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
+        set_key_value(key.clone(), value.clone(), -1, &db);
+        set_key_value(key.clone(), value.clone(), 1, &db);
+        match set_key_value(key.clone(), value_new.clone(), 1, &db) {
+            Response::Error { msg } => {
+                assert_eq!(msg, "Invalid version!");
+            }
+            _ => {
+                assert_eq!(1, 2);
+            }
+        }
+    }
+
+    #[test]
+    fn should_set_value_if_version_is_valid() {
+        let key = String::from("key");
+        let value = String::from("This is the value");
+        let value_new = String::from("This is the new value");
+        let hash = HashMap::new();
+        let db =
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
+        set_key_value(key.clone(), value.clone(), 1, &db);
+        set_key_value(key.clone(), value_new.clone(), 2, &db);
+
+        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+
+        let _value_in_hash = get_key_value(&key, &sender, &db);
+        let message = receiver.try_next().unwrap().unwrap();
+        assert_eq!(
+            message.to_string(),
+            format_args!("value {}\n", value_new.to_string()).to_string()
+        );
+    }
+
     #[test]
     fn should_set_a_value() {
         let key = String::from("key");
@@ -284,7 +342,7 @@ mod tests {
         let hash = HashMap::new();
         let db =
             Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
-        set_key_value(key.clone(), value.clone(), &db);
+        set_key_value(key.clone(), value.clone(), -1, &db);
 
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
 
@@ -342,7 +400,7 @@ mod tests {
         let hash = HashMap::new();
         let db =
             Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
-        set_key_value(TOKEN_KEY.to_string(), token.clone(), &db);
+        set_key_value(TOKEN_KEY.to_string(), token.clone(), -1, &db);
 
         assert_eq!(is_valid_token(&token, &db), true);
         assert_eq!(is_valid_token(&token_invalid, &db), false);

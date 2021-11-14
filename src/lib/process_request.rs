@@ -68,11 +68,19 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             get_key_value(&key, &client.sender, _db)
         }),
 
+        Request::GetSafe { key } => apply_to_database(&dbs, &client, &|_db| {
+            get_key_value_safe(&key, &client.sender, _db)
+        }),
+
         Request::Remove { key } => apply_to_database(&dbs, &client, &|_db| remove_key(&key, _db)),
 
-        Request::Set { key, value } => apply_to_database(&dbs, &client, &|_db| {
+        Request::Set {
+            key,
+            value,
+            version,
+        } => apply_to_database(&dbs, &client, &|_db| {
             if dbs.is_primary() {
-                set_key_value(key.clone(), value.clone(), _db)
+                set_key_value(key.clone(), value.clone(), version, _db)
             } else {
                 let db_name_state = _db.name.clone();
                 send_message_to_primary(
@@ -104,7 +112,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         } => apply_if_auth(&client.auth, &|| {
             let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
-                Some(db) => set_key_value(key.clone(), value.clone(), db),
+                Some(db) => set_key_value(key.clone(), value.clone(), -1, db),
                 _ => {
                     log::debug!("Not a valid database name");
                     Response::Error {

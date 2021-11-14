@@ -6,9 +6,9 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
+use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use std::time::Instant;
 
 use crate::db_ops::*;
 
@@ -122,8 +122,56 @@ impl DatabaseMataData {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Value {
+    pub value: String,
+    pub version: i32,
+}
+
+impl From<String> for Value {
+    fn from(value: String) -> Value {
+        Value { value, version: 1 }
+    }
+}
+
+impl From<&str> for Value {
+    fn from(value: &str) -> Value {
+        Value::from(String::from(value))
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value.to_string())
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Value) -> bool {
+        self.value == other.value
+    }
+}
+
+impl PartialEq<String> for Value {
+    fn eq(&self, other: &String) -> bool {
+        self.value.eq(other)
+    }
+}
+
+impl PartialEq<str> for Value {
+    fn eq(&self, other: &str) -> bool {
+        self.value.eq(other)
+    }
+}
+
+impl PartialEq<&str> for Value {
+    fn eq(&self, other: &&str) -> bool {
+        self.value.eq(other)
+    }
+}
+
 pub struct Database {
-    pub map: std::sync::RwLock<HashMap<String, String>>,
+    pub map: std::sync::RwLock<HashMap<String, Value>>,
     pub name: String,
     pub watchers: Watchers,
     pub connections: RwLock<AtomicUsize>,
@@ -149,6 +197,14 @@ pub struct Databases {
 }
 
 impl Database {
+    pub fn to_string_hash(&self) -> HashMap<String, String> {
+        let data = self.map.read().expect("Error getting the db.map.read");
+        let mut value_data: HashMap<String, String> = HashMap::new();
+        for (key, value) in &*data {
+            value_data.insert(key.to_string(), value.to_string());
+        }
+        value_data
+    }
     pub fn connections_count(&self) -> usize {
         let connections = self
             .connections
@@ -162,8 +218,13 @@ impl Database {
         data: HashMap<String, String>,
         metadata: DatabaseMataData,
     ) -> Database {
+        let mut value_data: HashMap<String, Value> = HashMap::new();
+
+        for (key, value) in &data {
+            value_data.insert(key.to_string(), Value::from(value.to_string()));
+        }
         return Database {
-            map: RwLock::new(data),
+            map: RwLock::new(value_data),
             name,
             watchers: Watchers {
                 map: RwLock::new(HashMap::new()),
@@ -194,10 +255,15 @@ impl Database {
         // wait for the update_watchers to release the key
         let value = {
             let mut db = self.map.write().unwrap();
-            match i32::from_str_radix(db.get(&key.to_string()).unwrap_or(&String::from("0")), 10) {
+            match i32::from_str_radix(
+                &db.get(&key.to_string())
+                    .unwrap_or(&Value::from("0"))
+                    .to_string(),
+                10,
+            ) {
                 Ok(current) => {
                     let next = (current + inc).to_string();
-                    db.insert(key.clone(), next.clone());
+                    db.insert(key.clone(), Value::from(next.clone()));
                     next
                 }
                 _ => {
@@ -264,12 +330,56 @@ impl Database {
         Response::Ok {}
     }
 
-    pub fn set_value(&self, key: String, value: String) {
+    pub fn get_value(&self, key: String) -> Option<Value> {
+        let db = self.map.read().unwrap();
+        if let Some(value) = db.get(&key.to_string()) {
+            Some(Value {
+                value: value.value.to_string(),
+                version: value.version,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn set_value_version(&self, key: &String, value: &String, new_version: i32) {
         {
             let mut db = self.map.write().unwrap();
-            db.insert(key.clone(), value.clone());
+            db.insert(
+                key.clone(),
+                Value {
+                    value: value.clone(),
+                    version: new_version,
+                },
+            );
         } // release the db
+    }
+
+    pub fn set_value(&self, key: String, value: String, version: i32) -> Response {
+        if let Some(old_version) = self.get_value(key.clone()) {
+            if version != -1 && version < old_version.version {
+                return Response::Error {
+                    msg: String::from("Invalid version!"),
+                };
+            }
+            let new_version = old_version.version + 1;
+            log::debug!(
+                "Updating existing value Old version: {}, New version: {}, PassedVersion : {}",
+                old_version.version,
+                new_version,
+                version
+            );
+            self.set_value_version(&key, &value, new_version)
+        } else {
+            //new key
+            self.set_value_version(&key, &value, 1)
+        }
         self.notify_watchers(key.clone(), value.clone());
+
+        Response::Set {
+            key: key.clone(),
+            value: value.to_string(),
+        }
     }
 }
 impl Databases {
@@ -308,9 +418,11 @@ impl Databases {
                 let mut id_name_db_map = self.id_name_db_map.write().unwrap();
                 id_name_db_map.insert(database.metadata.id as u64, name.to_string());
                 dbs.insert(name.to_string(), database);
-                dbs.get(&String::from(ADMIN_DB))
-                    .unwrap()
-                    .set_value(name.to_string(), String::from("{}"));
+                dbs.get(&String::from(ADMIN_DB)).unwrap().set_value(
+                    name.to_string(),
+                    String::from("{}"),
+                    -1,
+                );
                 Response::Ok {}
             }
             _ => Response::Error {
@@ -378,7 +490,7 @@ impl Databases {
 
         let admin_db_name = String::from(ADMIN_DB);
         let admin_db = Database::new(admin_db_name.to_string(), DatabaseMataData::new(0)); // id 0 adnmin db
-        admin_db.set_value(String::from(TOKEN_KEY), pwd.to_string());
+        admin_db.set_value(String::from(TOKEN_KEY), pwd.to_string(), -1);
         dbs.add_database(&admin_db_name.to_string(), admin_db);
 
         dbs
@@ -447,7 +559,7 @@ impl Databases {
         };
     }
 
-    pub fn get_oplog_state(&self) -> String{
+    pub fn get_oplog_state(&self) -> String {
         let pending_opps = self.pending_opps.read().unwrap();
         format!("pending_opps: {}", pending_opps.keys().len())
     }
@@ -519,6 +631,9 @@ pub enum Request {
     Get {
         key: String,
     },
+    GetSafe {
+        key: String,
+    },
     Remove {
         key: String,
     },
@@ -529,6 +644,7 @@ pub enum Request {
     Set {
         key: String,
         value: String,
+        version: i32,
     },
     Increment {
         key: String,
@@ -698,7 +814,7 @@ mod tests {
             assert_eq!(
                 values
                     .get(&key.to_string())
-                    .unwrap_or(&String::from("0"))
+                    .unwrap_or(&Value::from(String::from("0")))
                     .clone(),
                 "1"
             );
@@ -709,7 +825,7 @@ mod tests {
             assert_eq!(
                 values
                     .get(&key.to_string())
-                    .unwrap_or(&String::from("0"))
+                    .unwrap_or(&Value::from("0"))
                     .clone(),
                 "2"
             );

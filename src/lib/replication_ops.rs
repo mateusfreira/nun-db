@@ -62,7 +62,11 @@ pub fn replicate_request(
                 Response::Ok {}
             }
 
-            Request::Set { value, key } => {
+            Request::Set {
+                value,
+                key,
+                version: _,
+            } => {
                 log::debug!("Will replicate the set of the key {} to {} ", key, value);
                 replicate_web(
                     replication_sender,
@@ -876,8 +880,8 @@ mod tests {
         {
             let map = dbs.map.read().unwrap();
             let db = map.get("$admin").unwrap();
-            set_key_value("key".to_string(), "value1".to_string(), db);
-            set_key_value("key".to_string(), "value3".to_string(), db);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db);
         }
 
         sender
@@ -911,8 +915,8 @@ mod tests {
         {
             let map = dbs.map.read().unwrap();
             let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
-            set_key_value("key".to_string(), "value1".to_string(), db);
-            set_key_value("key".to_string(), "value3".to_string(), db);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db);
         }
 
         thread::sleep(time::Duration::from_millis(10));
@@ -970,8 +974,8 @@ mod tests {
             let map = dbs.map.read().unwrap();
             let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
             //set_key_value("key".to_string(), "value".to_string(), db);
-            set_key_value("key".to_string(), "value1".to_string(), db);
-            set_key_value("key".to_string(), "value3".to_string(), db);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db);
         }
 
         thread::sleep(time::Duration::from_millis(10));
@@ -1028,14 +1032,14 @@ mod tests {
         {
             let map = dbs.map.read().unwrap();
             let db = map.get("$admin").unwrap();
-            set_key_value("key".to_string(), "value".to_string(), db);
-            set_key_value("key".to_string(), "value1".to_string(), db);
-            set_key_value("key".to_string(), "value3".to_string(), db);
-            set_key_value("key".to_string(), "value4".to_string(), db);
-            set_key_value("key".to_string(), "value5".to_string(), db);
-            set_key_value("key".to_string(), "value6".to_string(), db);
-            set_key_value("key".to_string(), "value7".to_string(), db);
-            set_key_value("key".to_string(), "value8".to_string(), db); // 11 recoreds on the op log
+            set_key_value("key".to_string(), "value".to_string(), -1, db);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db);
+            set_key_value("key".to_string(), "value4".to_string(), -1, db);
+            set_key_value("key".to_string(), "value5".to_string(), -1, db);
+            set_key_value("key".to_string(), "value6".to_string(), -1, db);
+            set_key_value("key".to_string(), "value7".to_string(), -1, db);
+            set_key_value("key".to_string(), "value8".to_string(), -1, db); // 11 recoreds on the op log
         }
 
         sender
@@ -1072,6 +1076,7 @@ mod tests {
             Request::Set {
                 key: "any".to_string(),
                 value: "any".to_string(),
+                version: -1,
             },
             &db_name,
             resp_error,
@@ -1094,6 +1099,7 @@ mod tests {
         let req_set = Request::Set {
             key: "any_key".to_string(),
             value: "any_value".to_string(),
+            version: -1,
         };
         let db_name = "some".to_string();
         let result = match replicate_request(req_set, &db_name, resp_set, &sender) {
@@ -1116,6 +1122,7 @@ mod tests {
         let req_set = Request::Set {
             key: "any_key".to_string(),
             value: "any_value".to_string(),
+            version: -1,
         };
         let db_name = "some".to_string();
         let _ = match replicate_request(req_set, &db_name, resp_set, &sender) {
