@@ -25,7 +25,6 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
     fn older_process_should_be_the_primary() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
@@ -56,9 +55,9 @@ mod tests {
             "{}:Primary",
             helpers::PRIMARY_TCP_ADDRESS
         )));
-        replicas_processes.0.kill()?;//Kill Primary
-        helpers::wait_secounds(5);//Give it 5 secounds to elect the new leader
-        // revisit
+        replicas_processes.0.kill()?; //Kill Primary
+        helpers::wait_seconds(5); //Give it 5 seconds to elect the new leader
+                                   // revisit
         helpers::nundb_exec(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
             &String::from("cluster-state"),

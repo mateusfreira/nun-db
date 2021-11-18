@@ -42,8 +42,8 @@ pub mod helpers {
     pub fn start_primary() -> std::process::Child {
         let mut cmd = Command::cargo_bin("nun-db").unwrap();
         let db_process = cmd
-            .args(["-p", USER_NAME])
-            .args(["--user", PWD])
+            .args(["-p", PWD])
+            .args(["--user", USER_NAME])
             .arg("start")
             .args(["--http-address", PRIMARY_HTTP_ADDRESS])
             .args(["--tcp-address", PRIMARY_TCP_ADDRESS])
@@ -52,7 +52,7 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs")
             .spawn()
             .unwrap();
-        wait_secounds(5);
+        wait_seconds(1);
         db_process
     }
 
@@ -69,7 +69,7 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs1")
             .spawn()
             .unwrap();
-        wait_secounds(5);
+        wait_seconds(1);
         db_process
     }
 
@@ -86,7 +86,7 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs2")
             .spawn()
             .unwrap();
-        wait_secounds(5);
+        wait_seconds(1);
         db_process
     }
 
@@ -101,7 +101,7 @@ pub mod helpers {
             .assert()
     }
 
-    pub fn wait_secounds(time: u64) {
+    pub fn wait_seconds(time: u64) {
         let time_to_start = time::Duration::from_secs(time);
         thread::sleep(time_to_start);
     }
@@ -113,15 +113,12 @@ pub mod helpers {
     }
 
     pub fn start_3_replicas() -> (Child, Child, Child) {
-        (
-        start_primary(),
-        start_secoundary(),
-        start_secoundary_2()
-        )
+        (start_primary(), start_secoundary(), start_secoundary_2())
     }
 
-
-    pub fn kill_replicas(mut replica_processes: (Child, Child, Child)) -> Result<(), Box<dyn std::error::Error>>{
+    pub fn kill_replicas(
+        mut replica_processes: (Child, Child, Child),
+    ) -> Result<(), Box<dyn std::error::Error>> {
         replica_processes.0.kill()?;
         replica_processes.1.kill()?;
         replica_processes.2.kill()?;
