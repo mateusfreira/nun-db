@@ -26,19 +26,6 @@ pub mod helpers {
 
     pub const REPLICATE_SET_ADDRS: &'static str = "127.0.0.1:3017,127.0.0.1:3018,127.0.0.1:3016";
 
-    pub fn start_db() -> std::process::Child {
-        let time_to_start = time::Duration::from_secs(1);
-        let mut cmd = Command::cargo_bin("nun-db").unwrap();
-        let db_process = cmd
-            .args(["-p", USER_NAME])
-            .args(["--user", PWD])
-            .arg("start")
-            .spawn()
-            .unwrap();
-        thread::sleep(time_to_start);
-        db_process
-    }
-
     pub fn start_primary() -> std::process::Child {
         let mut cmd = Command::cargo_bin("nun-db").unwrap();
         let db_process = cmd
@@ -52,7 +39,7 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs")
             .spawn()
             .unwrap();
-        wait_seconds(1);
+        wait_seconds(1);// Need 1s here to run initial election
         db_process
     }
 
@@ -90,7 +77,7 @@ pub mod helpers {
         db_process
     }
 
-    pub fn nundb_exec(host: &String, command: &String) -> assert_cmd::assert::Assert {
+    pub fn nundb_exec(host: &str, command: &str) -> assert_cmd::assert::Assert {
         Command::cargo_bin("nun-db")
             .unwrap()
             .args(["-p", "mateus"])
@@ -99,6 +86,10 @@ pub mod helpers {
             .arg("exec")
             .arg(command)
             .assert()
+    }
+
+    pub fn nundb_exec_primary(command: &str) -> assert_cmd::assert::Assert {
+        nundb_exec(PRIMARY_HTTP_URI, command)
     }
 
     pub fn wait_seconds(time: u64) {

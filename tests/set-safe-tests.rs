@@ -2,57 +2,39 @@
 pub mod helpers;
 mod tests {
     use crate::helpers::*;
-    use assert_cmd::prelude::*; // Add methods on commands
     use predicates::prelude::*; // Used for writing assertions
-    use std::process::Command;
 
     #[test]
     fn should_safe_sate_a_value() -> Result<(), Box<dyn std::error::Error>> {
-        let mut db_process = helpers::start_db();
-        let mut cmd = Command::cargo_bin("nun-db")?;
-        let get_cmd = cmd.args(["-p", "mateus"])
-            .args(["--user", "mateus"])
-            .arg("exec")
-            .arg("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; get-safe name");
-
-        get_cmd
-            .assert()
-            .success()
+        let mut db_process = helpers::start_primary();
+        helpers::nundb_exec_primary("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; get-safe name")
             .stdout(predicate::str::contains("value-version 1 mateus"));
         db_process.kill()?;
         Ok(())
     }
 
     #[test]
-    fn should_not_safe_if_set_safe_is_invalid() -> Result<(), Box<dyn std::error::Error>> {
-        let mut db_process = helpers::start_db();
-        let mut cmd = Command::cargo_bin("nun-db")?;
-        let get_cmd = cmd.args(["-p", "mateus"])
-            .args(["--user", "mateus"])
-            .arg("exec")
-            .arg("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; set-safe name 0 maria ;get-safe name");
-
-        get_cmd
-            .assert()
-            .success()
+    fn should_not_set_if_set_safe_is_invalid() -> Result<(), Box<dyn std::error::Error>> {
+        helpers::clean_env();
+        let mut db_process = helpers::start_primary();
+        helpers::nundb_exec_primary("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; set-safe name 0 maria;get-safe name")
             .stdout(predicate::str::contains("value-version 1 mateus"));
+
+        helpers::nundb_exec_primary("use-db test test-pwd;set-safe name 0 amanda;")
+            .stdout(predicate::str::contains("Invalid version!"));
+
+        helpers::nundb_exec_primary("use-db test test-pwd;set-safe name 1 amanda;")
+            .stdout(predicate::str::contains("empty;empty"));
         db_process.kill()?;
         Ok(())
     }
 
     #[test]
-    fn should_safe_if_set_safe_is_valid() -> Result<(), Box<dyn std::error::Error>> {
-        let mut db_process = helpers::start_db();
-        let mut cmd = Command::cargo_bin("nun-db")?;
-        let get_cmd = cmd.args(["-p", "mateus"])
-            .args(["--user", "mateus"])
-            .arg("exec")
-            .arg("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; set-safe name 2 maria;get-safe name");
-
-        get_cmd
-            .assert()
-            .success()
+    fn should_set_if_set_safe_is_valid() -> Result<(), Box<dyn std::error::Error>> {
+        let mut db_process = helpers::start_primary();
+        helpers::nundb_exec_primary("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; set-safe name 2 maria;get-safe name")
             .stdout(predicate::str::contains("value-version 2 maria"));
+
         db_process.kill()?;
         Ok(())
     }

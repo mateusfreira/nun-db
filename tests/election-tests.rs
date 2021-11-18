@@ -57,7 +57,7 @@ mod tests {
         )));
         replicas_processes.0.kill()?; //Kill Primary
         helpers::wait_seconds(5); //Give it 5 seconds to elect the new leader
-                                   // revisit
+                                  // revisit
         helpers::nundb_exec(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
             &String::from("cluster-state"),
