@@ -84,6 +84,8 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 
 [Leader election in rust the journey towards implementing nun-db leader election](https://mateusfreira.github.io/@mateusfreira-leader-election-rust-the-journey-towards-nun-db-leader-election-implementation/)
 
+[Integration tests in rust a multi-process test example](https://mateusfreira.github.io/@mateusfreira-integration-tests-for-rust-apps-testing-command-line-tools-in-rust/)
+
 ## Diagram
 
 ```bash
