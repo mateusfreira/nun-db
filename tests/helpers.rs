@@ -26,24 +26,11 @@ pub mod helpers {
 
     pub const REPLICATE_SET_ADDRS: &'static str = "127.0.0.1:3017,127.0.0.1:3018,127.0.0.1:3016";
 
-    pub fn start_db() -> std::process::Child {
-        let time_to_start = time::Duration::from_secs(1);
-        let mut cmd = Command::cargo_bin("nun-db").unwrap();
-        let db_process = cmd
-            .args(["-p", USER_NAME])
-            .args(["--user", PWD])
-            .arg("start")
-            .spawn()
-            .unwrap();
-        thread::sleep(time_to_start);
-        db_process
-    }
-
     pub fn start_primary() -> std::process::Child {
         let mut cmd = Command::cargo_bin("nun-db").unwrap();
         let db_process = cmd
-            .args(["-p", USER_NAME])
-            .args(["--user", PWD])
+            .args(["-p", PWD])
+            .args(["--user", USER_NAME])
             .arg("start")
             .args(["--http-address", PRIMARY_HTTP_ADDRESS])
             .args(["--tcp-address", PRIMARY_TCP_ADDRESS])
@@ -52,7 +39,7 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs")
             .spawn()
             .unwrap();
-        wait_secounds(5);
+        wait_seconds(1);// Need 1s here to run initial election
         db_process
     }
 
@@ -69,7 +56,7 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs1")
             .spawn()
             .unwrap();
-        wait_secounds(5);
+        wait_seconds(1);
         db_process
     }
 
@@ -86,11 +73,11 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs2")
             .spawn()
             .unwrap();
-        wait_secounds(5);
+        wait_seconds(1);
         db_process
     }
 
-    pub fn nundb_exec(host: &String, command: &String) -> assert_cmd::assert::Assert {
+    pub fn nundb_exec(host: &str, command: &str) -> assert_cmd::assert::Assert {
         Command::cargo_bin("nun-db")
             .unwrap()
             .args(["-p", "mateus"])
@@ -101,7 +88,11 @@ pub mod helpers {
             .assert()
     }
 
-    pub fn wait_secounds(time: u64) {
+    pub fn nundb_exec_primary(command: &str) -> assert_cmd::assert::Assert {
+        nundb_exec(PRIMARY_HTTP_URI, command)
+    }
+
+    pub fn wait_seconds(time: u64) {
         let time_to_start = time::Duration::from_secs(time);
         thread::sleep(time_to_start);
     }
@@ -113,15 +104,12 @@ pub mod helpers {
     }
 
     pub fn start_3_replicas() -> (Child, Child, Child) {
-        (
-        start_primary(),
-        start_secoundary(),
-        start_secoundary_2()
-        )
+        (start_primary(), start_secoundary(), start_secoundary_2())
     }
 
-
-    pub fn kill_replicas(mut replica_processes: (Child, Child, Child)) -> Result<(), Box<dyn std::error::Error>>{
+    pub fn kill_replicas(
+        mut replica_processes: (Child, Child, Child),
+    ) -> Result<(), Box<dyn std::error::Error>> {
         replica_processes.0.kill()?;
         replica_processes.1.kill()?;
         replica_processes.2.kill()?;
