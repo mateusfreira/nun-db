@@ -310,6 +310,19 @@ pub fn last_op_time() -> u64 {
     }
 }
 
+/// Returns operations log file size and count
+pub fn get_op_log_size() -> (u64, u64) {
+    let f = get_log_file_read_mode();
+    let size: u64 = match f.metadata() {
+        Ok(f) => f.len(),
+        Err(message) => {
+            log::debug!("Faile to get the op file size, returning 0, {}", message);
+            0
+        }
+    };
+    (size, size / OP_RECORD_SIZE as u64)
+}
+
 pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     let mut opps_since = HashMap::new();
     let mut f = get_log_file_read_mode();

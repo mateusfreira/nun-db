@@ -11,6 +11,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use crate::db_ops::*;
+use crate::disk_ops::*;
 
 pub const TOKEN_KEY: &'static str = "$$token";
 pub const ADMIN_DB: &'static str = "$admin";
@@ -561,7 +562,13 @@ impl Databases {
 
     pub fn get_oplog_state(&self) -> String {
         let pending_opps = self.pending_opps.read().unwrap();
-        format!("pending_opps: {}", pending_opps.keys().len())
+        let (file_size, count) = get_op_log_size();
+        format!(
+            "pending_ops: {}, op_log_file_size: {}, op_log_count: {}",
+            pending_opps.keys().len(),
+            file_size,
+            count
+        )
     }
 }
 
@@ -853,5 +860,26 @@ mod tests {
 
         dbs.add_database(&String::from("jose"), db);
         assert_eq!(dbs.map.read().expect("error to lock").keys().len(), 2); // Admin db and the db
+    }
+
+    #[test]
+    fn should_return_op_log_size() {
+        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender1, _): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
+        let dbs = Databases::new(
+            String::from(""),
+            String::from(""),
+            String::from(""),
+            sender,
+            sender1,
+            keys_map,
+            1 as u128,
+            true,
+        );
+        assert_eq!(
+            dbs.get_oplog_state(),
+            "pending_ops: 0, op_log_file_size: 0, op_log_count: 0"
+        );
     }
 }
