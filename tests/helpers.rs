@@ -39,7 +39,7 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs")
             .spawn()
             .unwrap();
-        wait_seconds(1);// Need 1s here to run initial election
+        wait_seconds(1); // Need 1s here to run initial election
         db_process
     }
 

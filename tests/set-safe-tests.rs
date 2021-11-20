@@ -7,8 +7,10 @@ mod tests {
     #[test]
     fn should_safe_sate_a_value() -> Result<(), Box<dyn std::error::Error>> {
         let mut db_process = helpers::start_primary();
-        helpers::nundb_exec_primary("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; get-safe name")
-            .stdout(predicate::str::contains("value-version 1 mateus"));
+        helpers::nundb_exec_primary(
+            "create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; get-safe name",
+        )
+        .stdout(predicate::str::contains("value-version 1 mateus"));
         db_process.kill()?;
         Ok(())
     }

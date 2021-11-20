@@ -269,9 +269,16 @@ pub fn get_log_file_read_mode() -> File {
     match OpenOptions::new().read(true).open(get_op_log_file_name()) {
         Err(e) => {
             log::error!("{:?}", e);
+            {
+                // Force create the fail
+                OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .open(get_op_log_file_name())
+                    .unwrap();
+            } // For createing the op log file, I don't return it here to avoind read processes holding the file in write more for too long
             OpenOptions::new()
                 .read(true)
-                .create(true)
                 .open(get_op_log_file_name())
                 .unwrap()
         }
@@ -308,6 +315,19 @@ pub fn last_op_time() -> u64 {
     } else {
         0
     }
+}
+
+/// Returns operations log file size and count
+pub fn get_op_log_size() -> (u64, u64) {
+    let f = get_log_file_read_mode();
+    let size: u64 = match f.metadata() {
+        Ok(f) => f.len(),
+        Err(message) => {
+            log::debug!("Faile to get the op file size, returning 0, {}", message);
+            0
+        }
+    };
+    (size, size / OP_RECORD_SIZE as u64)
 }
 
 pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
