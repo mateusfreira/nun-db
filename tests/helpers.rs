@@ -5,6 +5,7 @@ pub mod helpers {
     use std::process::Child;
     use std::process::Command;
     use std::{thread, time};
+    use std::env;
 
     pub const USER_NAME: &'static str = "mateus";
     pub const PWD: &'static str = "mateus";
@@ -26,6 +27,13 @@ pub mod helpers {
 
     pub const REPLICATE_SET_ADDRS: &'static str = "127.0.0.1:3017,127.0.0.1:3018,127.0.0.1:3016";
 
+    fn time_to_start_replica() -> u64 {
+        match env::var_os("TIME_TO_START") {
+            Some(dir_name) => dir_name.into_string().unwrap().parse::<u64>().unwrap(),
+            None => 1,
+        }
+    }
+
     pub fn start_primary() -> std::process::Child {
         let mut cmd = Command::cargo_bin("nun-db").unwrap();
         let db_process = cmd
@@ -39,7 +47,7 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs")
             .spawn()
             .unwrap();
-        wait_seconds(1); // Need 1s here to run initial election
+        wait_seconds(time_to_start_replica()); // Need 1s here to run initial election
         db_process
     }
 
@@ -56,7 +64,7 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs1")
             .spawn()
             .unwrap();
-        wait_seconds(1);
+        wait_seconds(time_to_start_replica()); // Need 1s here to run initial election
         db_process
     }
 
@@ -73,7 +81,7 @@ pub mod helpers {
             .env("NUN_DBS_DIR", "/tmp/dbs2")
             .spawn()
             .unwrap();
-        wait_seconds(1);
+        wait_seconds(time_to_start_replica()); // Need 1s here to run initial election
         db_process
     }
 
