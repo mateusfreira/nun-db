@@ -269,9 +269,16 @@ pub fn get_log_file_read_mode() -> File {
     match OpenOptions::new().read(true).open(get_op_log_file_name()) {
         Err(e) => {
             log::error!("{:?}", e);
+            {
+                // Force create the fail
+                OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .open(get_op_log_file_name())
+                    .unwrap();
+            } // For createing the op log file, I don't return it here to avoind read processes holding the file in write more for too long
             OpenOptions::new()
                 .read(true)
-                .create(true)
                 .open(get_op_log_file_name())
                 .unwrap()
         }
