@@ -2,10 +2,10 @@
 pub mod helpers {
 
     use assert_cmd::prelude::*; // Add methods on commands
+    use std::env;
     use std::process::Child;
     use std::process::Command;
     use std::{thread, time};
-    use std::env;
 
     pub const USER_NAME: &'static str = "mateus";
     pub const PWD: &'static str = "mateus";
@@ -25,7 +25,7 @@ pub mod helpers {
     pub const SECOUNDARY2_TCP_ADDRESS: &'static str = "127.0.0.1:3016";
     pub const SECOUNDARY2_WS_ADDRESS: &'static str = "127.0.0.1:3060";
 
-    pub const REPLICATE_SET_ADDRS: &'static str = "127.0.0.1:3017,127.0.0.1:3018,127.0.0.1:3016";
+    pub const REPLICATE_SET_ADDRS: &'static str = "127.0.0.1:3016,127.0.0.1:3017,127.0.0.1:3018";
 
     fn time_to_start_replica() -> u64 {
         match env::var_os("TIME_TO_START") {

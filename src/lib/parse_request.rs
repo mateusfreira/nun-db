@@ -378,14 +378,14 @@ impl Request {
                 let opp_id: u64 = match command.next() {
                     Some(id_str) => match id_str.parse::<u64>() {
                         Ok(id) => id,
-                        Err(_) => 0,
+                        Err(_) => {
+                            return Err(format!("Invalid request Id"));
+                        }
                     },
-                    None => 0,
+                    None => {
+                        return Err(format!("Invalid request Id"));
+                    }
                 };
-
-                if opp_id == 0 {
-                    return Err(format!("Invalid request Id"));
-                }
 
                 let request_str: String = String::from(match command.next() {
                     Some(request_str) => request_str,
@@ -405,14 +405,14 @@ impl Request {
                 let opp_id: u64 = match command.next() {
                     Some(id_str) => match id_str.parse::<u64>() {
                         Ok(id) => id,
-                        Err(_) => 0,
+                        Err(_) => {
+                            return Err(format!("Invalid request Id"));
+                        }
                     },
-                    None => 0,
+                    None => {
+                        return Err(format!("Invalid request Id"));
+                    }
                 };
-
-                if opp_id == 0 {
-                    return Err(format!("Invalid request Id"));
-                }
 
                 let server_name: String = String::from(match command.next() {
                     Some(request_str) => request_str,

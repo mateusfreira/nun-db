@@ -29,7 +29,7 @@ pub fn start_election(dbs: &Arc<Databases>) {
 }
 
 pub fn start_new_election(dbs: &Arc<Databases>) {
-    log::info!("Will start new election");
+    log::info!("Will start new election from {}", dbs.tcp_address);
     dbs.node_state
         .swap(ClusterRole::StartingUp as usize, Ordering::Relaxed);
     start_election(&dbs);
@@ -64,7 +64,10 @@ pub fn election_eval(dbs: &Arc<Databases>, candidate_id: u128) -> Response {
 }
 
 pub fn election_win(dbs: &Arc<Databases>) -> Response {
-    log::info!("Setting this server as a primary!");
+    log::info!(
+        "Setting this server as a primary! tcp_address : {}",
+        dbs.tcp_address
+    );
     match dbs
         .replication_supervisor_sender
         .clone()
