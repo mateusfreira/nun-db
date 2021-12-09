@@ -68,7 +68,7 @@ mod tests {
             helpers::SECOUNDARY_TCP_ADDRESS
         )));
         helpers::nundb_exec(
-            &helpers::SECOUNDAR_HTTP_URI.to_string(),
+            &helpers::SECOUNDAR2_HTTP_URI.to_string(),
             &String::from("cluster-state"),
         )
         .success()

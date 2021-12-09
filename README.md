@@ -165,8 +165,8 @@ Soon this will be the default way to set values to a key, since we are moving to
 - [x] Replicate? How? (replicate)
 Examples:
 ```
-set-safe $version $key $value
-set-safe 10 name Mateus # Sets key name to mateus if version is equal or minor than 10
+set-safe $key $version $value
+set-safe name 10 Mateus # Sets key name to mateus if version is equal or minor than 
 ```
 
 
