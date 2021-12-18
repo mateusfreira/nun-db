@@ -322,17 +322,21 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         Request::OpLogState {} => apply_if_auth(&client.auth, &|| {
             let oplog_state = dbs.get_oplog_state();
             log::debug!("OpLogState {}", oplog_state);
+            let monitoring_state = dbs.get_monitoring_state();
+            log::debug!("MonitoringState {}", monitoring_state);
+            let metrics_state = format!("{},{}\n", oplog_state, monitoring_state);
+
             match client
                 .sender
                 .clone()
-                .try_send(format_args!("oplog-state {}\n", oplog_state).to_string())
+                .try_send(format_args!("oplog-state {}\n", metrics_state).to_string())
             {
                 Err(e) => log::warn!("Request::ClusterState sender.send Error: {}", e),
                 _ => (),
             }
             Response::Value {
                 key: String::from("oplog-state"),
-                value: String::from(oplog_state),
+                value: String::from(metrics_state),
             }
         }),
 
@@ -408,6 +412,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
         input_to_log,
         elapsed
     );
+    dbs.update_query_time_moving_avg(elapsed.as_millis());
     let replication_result = replicate_request(
         request,
         &db_name_state,

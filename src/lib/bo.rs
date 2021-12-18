@@ -1,5 +1,5 @@
+use atomic_float::*;
 use futures::channel::mpsc::{channel, Receiver, Sender};
-use log;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -170,6 +170,13 @@ impl PartialEq<&str> for Value {
         self.value.eq(other)
     }
 }
+//Based on sabinchitrakar/ema-rs
+pub struct NunEma {
+    //Exponential Moving Average
+    pub ema: AtomicF64,
+    pub init: bool,
+    pub k: f64,
+}
 
 pub struct Database {
     pub map: std::sync::RwLock<HashMap<String, Value>>,
@@ -180,6 +187,8 @@ pub struct Database {
 }
 
 pub struct Databases {
+    pub query_ema: std::sync::RwLock<NunEma>,
+    pub replication_ema: std::sync::RwLock<NunEma>,
     pub map: std::sync::RwLock<HashMap<String, Database>>,
     pub id_name_db_map: std::sync::RwLock<HashMap<u64, String>>,
     pub pending_opps: std::sync::RwLock<HashMap<u64, ReplicationMessage>>,
@@ -470,6 +479,8 @@ impl Databases {
             id_keys_map.insert(*val, (*key).to_string());
         }
         let dbs = Databases {
+            query_ema: std::sync::RwLock::new(NunEma::new(100)), //@todo is 100 good?
+            replication_ema: std::sync::RwLock::new(NunEma::new(100)), //@todo is 100 good?
             map: std::sync::RwLock::new(initial_dbs),
             id_name_db_map: std::sync::RwLock::new(id_name_db_map),
             keys_map: std::sync::RwLock::new(keys_map),
@@ -537,6 +548,7 @@ impl Databases {
             Some(replicated_opp) => {
                 replicated_opp.ack();
                 let elapsed = replicated_opp.start_time.elapsed();
+                self.update_replication_time_moving_avg(elapsed.as_millis());
                 log::debug!(
                     "Acknowledged opp {} from {} in {:?}",
                     opp_id,

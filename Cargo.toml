@@ -21,6 +21,8 @@ tiny_http = "*"
 clap = "*"
 reqwest = { version="*" , features = ["blocking"]}
 signal-hook = "0.3.9"
+atomic_float = "0.1.0"
+
 [dev-dependencies]
 tokio-test = "*"
 assert_cmd = "0.10"
