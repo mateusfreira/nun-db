@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn should_computate_properly() {
-        let mut ema = NunEma::new(100);
+        let mut ema = NunEma::new(5);
         assert_eq!(ema.next(81.59), 81.59);
         assert_eq!(ema.next(81.06), 81.41333333333334);
         assert_eq!(ema.next(82.87), 81.8988888888889);
