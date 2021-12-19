@@ -726,7 +726,7 @@ pub enum Request {
         start_at: u64,
     },
     ClusterState {},
-    OpLogState {},
+    MetricsState {},
     ElectionWin {},
     Election {
         id: u128,

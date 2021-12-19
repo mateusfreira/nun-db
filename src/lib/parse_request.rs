@@ -44,7 +44,7 @@ impl Request {
                 })
             }
             Some("cluster-state") => Ok(Request::ClusterState {}),
-            Some("oplog-state") => Ok(Request::OpLogState {}),
+            Some("metrics-state") => Ok(Request::MetricsState {}),
             Some("election") => match command.next() {
                 Some("win") => Ok(Request::ElectionWin {}),
                 Some("cadidate") => {
@@ -692,8 +692,8 @@ mod tests {
 
     #[test]
     fn should_parse_oplogstate() -> Result<(), String> {
-        match Request::parse("oplog-state") {
-            Ok(Request::OpLogState {}) => Ok(()),
+        match Request::parse("metrics-state") {
+            Ok(Request::MetricsState {}) => Ok(()),
             _ => Err(String::from("wrong command parsed")),
         }
     }

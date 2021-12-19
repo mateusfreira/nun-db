@@ -319,9 +319,9 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             }
         }),
 
-        Request::OpLogState {} => apply_if_auth(&client.auth, &|| {
+        Request::MetricsState {} => apply_if_auth(&client.auth, &|| {
             let oplog_state = dbs.get_oplog_state();
-            log::debug!("OpLogState {}", oplog_state);
+            log::debug!("MetricsState {}", oplog_state);
             let monitoring_state = dbs.get_monitoring_state();
             log::debug!("MonitoringState {}", monitoring_state);
             let metrics_state = format!("{},{}\n", oplog_state, monitoring_state);

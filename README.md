@@ -282,21 +282,21 @@ response:
 cluster-state  127.0.0.1:3017:Primary, 127.0.0.1:3018:Secoundary,
 ```
 
-### OplogState
+### MetricsState
 #### Context
 - [x] Require admin auth
 - [ ] Require db auth
 - [ ] Replicate? How? (replicate-increment)
 - [ ] Register Oplog? How? (Update)
 
-Returns the oplog state, useful for debugging or admin proposes
+Returns the oplog and query metrics state, useful for debugging or admin proposes
 
 e.gs
 ```
 # request
-cluster-state;
+metrics-state;
 response: 
-oplog-state pending_opps: 0
+metrics-state pending_ops: 0, op_log_file_size: 0, op_log_count: 0,replication_time_moving_avg: 0.0, get_query_time_moving_avg: 0.0
 ```
 
 
