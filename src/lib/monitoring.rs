@@ -14,7 +14,7 @@ impl Databases {
         self.replication_ema.write().unwrap().next(current as f64); //Not sure if this will be performant
     }
 
-    pub fn get_replication_time_moving_avg(&self) -> f64{
+    pub fn get_replication_time_moving_avg(&self) -> f64 {
         self.replication_ema.read().unwrap().get()
     }
 
@@ -25,7 +25,6 @@ impl Databases {
             self.get_query_time_moving_avg(),
         )
     }
-
 }
 
 impl NunEma {

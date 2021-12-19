@@ -329,7 +329,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             match client
                 .sender
                 .clone()
-                .try_send(format_args!("oplog-state {}\n", metrics_state).to_string())
+                .try_send(format_args!("metrics-state {}\n", metrics_state).to_string())
             {
                 Err(e) => log::warn!("Request::ClusterState sender.send Error: {}", e),
                 _ => (),
