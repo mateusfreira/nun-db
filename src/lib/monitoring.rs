@@ -77,5 +77,8 @@ mod tests {
         assert_eq!(ema.next(85.53), 84.44389964266966);
         assert_eq!(ema.next(86.54), 85.14259976177978);
         assert_eq!(ema.next(86.89), 85.7250665078532);
+        assert_eq!(ema.next(200.00), 123.81671100523546);
+        assert_eq!(ema.next(270.00), 172.54447400349034);
+        assert_eq!(ema.next(5.00), 116.69631600232691);
     }
 }

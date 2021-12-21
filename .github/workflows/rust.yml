@@ -14,7 +14,7 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       env:
-        TIME_TO_START: 8
+        TIME_TO_START: 10
       run: mkdir dbs&&cargo test -- --test-threads=1 # threads=1 to avoid the problem with the in disk tests
       # - name: Test replication mult server
       # run: ./tests/test-replication-dbs.sh
