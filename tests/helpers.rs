@@ -29,7 +29,7 @@ pub mod helpers {
 
     fn time_to_start_replica() -> u64 {
         match env::var_os("TIME_TO_START") {
-            Some(dir_name) => dir_name.into_string().unwrap().parse::<u64>().unwrap(),
+            Some(time_to_start) => time_to_start.into_string().unwrap().parse::<u64>().unwrap(),
             None => 1,
         }
     }

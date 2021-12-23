@@ -14,7 +14,7 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains("empty")); // Empty is the expected response here
-        helpers::wait_seconds(1); //Wait 1s to the replication
+        helpers::wait_seconds(3); //Wait 1s to the replication
         helpers::nundb_exec(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
             &String::from("use-db test test-pwd;get name"),
