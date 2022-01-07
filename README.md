@@ -86,6 +86,8 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 
 [Integration tests in rust a multi-process test example](https://mateusfreira.github.io/@mateusfreira-integration-tests-for-rust-apps-testing-command-line-tools-in-rust/)
 
+[Writing a prometheus exporter in rust from idea to grafana chart](https://mateusfreira.github.io/@mateusfreira-writing-a-prometheus-exporter-in-rust-from-idea-to-grafana-chart/)
+
 ## Diagram
 
 ```bash
