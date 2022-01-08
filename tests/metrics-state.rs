@@ -13,8 +13,9 @@ mod tests {
 
         helpers::nundb_exec_primary("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; set-safe name 0 maria;set-safe name 1 mateus; set-safe name 0 maria;get-safe name");
 
-        helpers::nundb_exec_primary("metrics-state")
-            .stdout(predicate::str::contains("op_log_file_size: 75, op_log_count: 3")); //3 transations
+        helpers::nundb_exec_primary("metrics-state").stdout(predicate::str::contains(
+            "op_log_file_size: 75, op_log_count: 3",
+        )); //3 transations
 
         db_process.kill()?;
         Ok(())

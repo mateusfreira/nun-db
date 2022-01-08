@@ -582,6 +582,22 @@ impl Databases {
             count
         )
     }
+
+    pub fn get_pending_messages_debug(&self) -> Vec<String> {
+        let pending_opps = self.pending_opps.read().unwrap();
+        let messages = pending_opps.values();
+        messages
+            .into_iter()
+            .map(|p_m|
+                format!("message: \"{message}\", opp_id: {opp_id}, ack_count: {ack_count}, replicate_count: {replicate_count} ",
+                opp_id = p_m.opp_id,
+                message = p_m.message.to_string(),
+                ack_count = p_m.ack_count.load(Ordering::Relaxed),
+                replicate_count = p_m.replicate_count.load(Ordering::Relaxed),
+                )
+            )
+            .collect()
+    }
 }
 
 pub struct Watchers {
@@ -740,6 +756,9 @@ pub enum Request {
     Acknowledge {
         opp_id: u64,
         server_name: String,
+    },
+    Debug {
+        command: String,
     },
 }
 
