@@ -157,26 +157,19 @@ fn replicate_if_some(opt_sender: &Option<Sender<String>>, message: &String, name
     }
 }
 fn replicate_message_to_secoundary(op_log_id: u64, message: String, dbs: &Arc<Databases>) {
-    let replicate_message = ReplicationMessage::new(op_log_id, message.clone());
     log::debug!("Got the message {} to replicate ", message);
     let state = dbs.cluster_state.lock().unwrap();
     for (_name, member) in state.members.lock().unwrap().iter() {
         match member.role {
             ClusterRole::Secoundary => {
-                replicate_message.replicated();
-                replicate_if_some(
-                    &member.sender,
-                    &replicate_message.message_to_replicate(),
-                    &member.name,
-                )
+                let replicate_message = ReplicationMessage::new(op_log_id, message.clone());
+                let message_to_replicate = replicate_message.message_to_replicate();
+                dbs.add_pending_opp(replicate_message);
+                replicate_if_some(&member.sender, &message_to_replicate, &member.name)
             }
             ClusterRole::Primary => (),
             ClusterRole::StartingUp => (),
         }
-    }
-
-    if replicate_message.is_replicated() {
-        dbs.add_pending_opp(replicate_message);
     }
 }
 

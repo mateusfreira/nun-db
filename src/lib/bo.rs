@@ -538,6 +538,7 @@ impl Databases {
     }
 
     pub fn add_pending_opp(&self, replication_message: ReplicationMessage) {
+        replication_message.replicated();
         let mut pending_opps = self.pending_opps.write().unwrap();
         pending_opps.insert(replication_message.opp_id, replication_message);
     }
