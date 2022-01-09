@@ -369,17 +369,39 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         Request::Acknowledge {
             opp_id,
             server_name,
-        } => {
-            dbs.acknowledge_pending_opp(opp_id, server_name);
+        } => apply_if_auth(&client.auth, &|| {
+            dbs.acknowledge_pending_opp(opp_id, server_name.clone());
             Response::Ok {}
-        }
+        }),
         Request::ReplicateRequest {
             request_str,
             opp_id,
         } => {
-            send_message_to_primary(format!("ack {} {}", opp_id, dbs.tcp_address), dbs);
+            send_message_to_primary(format!("ack {} {}", opp_id, dbs.tcp_address), dbs); // Todo validate auth
             process_request(&request_str, &dbs, client)
         }
+        /*
+         * This command should only return get opperations
+         * No change must be made as part of a Debug command
+         */
+        Request::Debug { command } => apply_if_auth(&client.auth, &|| {
+            match command.as_str() {
+                "pending-ops" => {
+                    let pendin_msgs = dbs.get_pending_messages_debug().join("\n");
+                    log::info!("Peding messages on the server {}", pendin_msgs);
+                    match client
+                        .sender
+                        .clone()
+                        .try_send(format_args!("pending-ops {}\n", pendin_msgs).to_string())
+                    {
+                        Err(e) => log::warn!("Request::pending-ops sender.send Error: {}", e),
+                        _ => (),
+                    }
+                }
+                _ => log::info!("Invalid debug command"),
+            };
+            Response::Ok {}
+        }),
     }
 }
 

@@ -428,6 +428,18 @@ impl Request {
                     server_name,
                 })
             }
+            Some("debug") => {
+                let debug_command = match command.next() {
+                    Some(command) => command.to_string(),
+                    None => {
+                        return Err(format!("command is mandatory"));
+                    }
+                };
+
+                Ok(Request::Debug {
+                    command: debug_command,
+                })
+            }
             Some(cmd) => Err(format!("unknown command: {}", cmd)),
             _ => Err(format!("no command sent")),
         };
@@ -834,6 +846,34 @@ mod tests {
                 }
             }
             _ => Err(String::from("Invalid parsing")),
+        }
+    }
+
+    #[test]
+    fn should_parse_debug_command() -> Result<(), String> {
+        match Request::parse("debug pending_messages") {
+            Ok(Request::Debug { command }) => {
+                if command == "pending_messages" {
+                    Ok(())
+                } else {
+                    Err(String::from("Invalid command"))
+                }
+            }
+            _ => Err(String::from("Invalid parsing")),
+        }
+    }
+
+    #[test]
+    fn should_parse_debug_command_invalid() -> Result<(), String> {
+        match Request::parse("debug") {
+            Err(message) => {
+                if message == "command is mandatory" {
+                    Ok(())
+                } else {
+                    Err(String::from("Invalid error message"))
+                }
+            }
+            _ => Err(String::from("Should not have parsed!!")),
         }
     }
 }

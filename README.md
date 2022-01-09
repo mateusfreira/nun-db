@@ -86,6 +86,10 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 
 [Integration tests in rust a multi-process test example](https://mateusfreira.github.io/@mateusfreira-integration-tests-for-rust-apps-testing-command-line-tools-in-rust/)
 
+[Writing a prometheus exporter in rust from idea to grafana chart](https://mateusfreira.github.io/@mateusfreira-writing-a-prometheus-exporter-in-rust-from-idea-to-grafana-chart/)
+
+[Why does Nun-db we have a Debug command?](https://mateusfreira.github.io/@mateusfreira-the-nun-db-debug-command/)
+
 ## Diagram
 
 ```bash
@@ -297,6 +301,22 @@ e.gs
 metrics-state;
 response: 
 metrics-state pending_ops: 0, op_log_file_size: 0, op_log_count: 0,replication_time_moving_avg: 0.0, get_query_time_moving_avg: 0.0
+```
+
+### Debug
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [ ] Replicate? How? (replicate-increment)
+- [ ] Register Oplog? How? (Update)
+
+The debug command holds admin queries for Nun-db, like, for example, checking the messages that are pending replication from a specific node in the cluster.
+
+e.gs
+```
+debug pending_ops
+#result
+pending_ops #list-of-pending-ops#
 ```
 
 

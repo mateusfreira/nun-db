@@ -18,7 +18,7 @@ timer = "*"
 chrono = "*"
 thread-id = "*"
 tiny_http = "*"
-clap = "*"
+clap = "2.34.0"
 reqwest = { version="*" , features = ["blocking"]}
 signal-hook = "0.3.9"
 atomic_float = "0.1.0"
