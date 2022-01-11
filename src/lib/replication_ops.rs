@@ -162,9 +162,7 @@ fn replicate_message_to_secoundary(op_log_id: u64, message: String, dbs: &Arc<Da
     for (_name, member) in state.members.lock().unwrap().iter() {
         match member.role {
             ClusterRole::Secoundary => {
-                let replicate_message = ReplicationMessage::new(op_log_id, message.clone());
-                let message_to_replicate = replicate_message.message_to_replicate();
-                dbs.add_pending_opp(replicate_message);
+                let message_to_replicate = dbs.register_pending_opp(op_log_id, message.clone());
                 replicate_if_some(&member.sender, &message_to_replicate, &member.name)
             }
             ClusterRole::Primary => (),
@@ -260,13 +258,15 @@ pub async fn start_replication_thread(
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove)
                     }
 
-                    Request::SetPrimary { name: _ } => 0, //Election events won't be registed in OpLog
+                    // Even if not in op log we need to return a valid id so the message can be ack
+                    Request::SetPrimary { name: _ } => Databases::next_op_log_id(), //Election events won't be registed in OpLog
                     _ => {
                         log::debug!(
                             "Ignoring command {} in replication oplog register! not unimplemented!",
                             message
                         );
-                        0
+                        // Even if not in op log we need to return a valid id so the message can be ack
+                        Databases::next_op_log_id()
                     }
                 };
 

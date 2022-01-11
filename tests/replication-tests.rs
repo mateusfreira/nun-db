@@ -42,7 +42,7 @@ mod tests {
         .success()
         .stdout(predicate::str::contains("empty;empty"));
 
-        helpers::wait_seconds(1); //Wait 1s to the replication
+        helpers::wait_seconds(3); //Wait 3s to the replication
 
         helpers::nundb_exec(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
