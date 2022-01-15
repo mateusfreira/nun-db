@@ -537,9 +537,32 @@ impl Databases {
         members.remove(&name.to_string());
     }
 
-    pub fn add_pending_opp(&self, replication_message: ReplicationMessage) {
-        let mut pending_opps = self.pending_opps.write().unwrap();
-        pending_opps.insert(replication_message.opp_id, replication_message);
+    /**
+     * Registers the message as pending from replication and return the message_to_replicate.
+     * The method ensures that the message are registered only once
+     * @todo this method has 2 locks for the pending_opps to make it safe ideally no lock would be
+     * needed but for now they are needed.
+     */
+    pub fn register_pending_opp(&self, op_log_id: u64, message: String) -> String {
+        let exists = { self.pending_opps.read().unwrap().contains_key(&op_log_id) }; //To limit the scope of the read lock
+        if !exists {
+            let replication_message = ReplicationMessage::new(op_log_id, message.clone());
+            let message_to_replicate = replication_message.message_to_replicate();
+            replication_message.replicated();
+            let mut pending_opps = self.pending_opps.write().unwrap();
+            pending_opps.insert(replication_message.opp_id, replication_message);
+            message_to_replicate
+        } else {
+            let message_to_replicate = {
+                self.pending_opps
+                    .read()
+                    .unwrap()
+                    .get(&op_log_id)
+                    .unwrap()
+                    .message_to_replicate()
+            };// To limit the scope of the read lock
+            message_to_replicate
+        }
     }
 
     pub fn acknowledge_pending_opp(&self, opp_id: u64, server_name: String) {
