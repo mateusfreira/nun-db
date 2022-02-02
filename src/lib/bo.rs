@@ -560,7 +560,7 @@ impl Databases {
                     .get(&op_log_id)
                     .unwrap()
                     .message_to_replicate()
-            };// To limit the scope of the read lock
+            }; // To limit the scope of the read lock
             message_to_replicate
         }
     }
