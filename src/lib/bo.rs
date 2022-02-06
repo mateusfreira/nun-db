@@ -823,10 +823,6 @@ impl ReplicationMessage {
         self.replicate_count.load(Ordering::Relaxed) == self.ack_count.load(Ordering::Relaxed)
     }
 
-    pub fn is_replicated(&self) -> bool {
-        self.replicate_count.load(Ordering::Relaxed) > 0
-    }
-
     pub fn message_to_replicate(&self) -> String {
         format!("rp {} {}", self.opp_id, self.message)
     }
