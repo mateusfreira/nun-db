@@ -4,6 +4,7 @@ use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
 use futures::join;
 use lib::*;
+use lib::configuration::Configuration;
 use log;
 use signal_hook::{consts::SIGINT, iterator::Signals};
 use std::thread;
@@ -13,8 +14,8 @@ use std::sync::Arc;
 use clap::ArgMatches;
 use env_logger::{Builder, Env, Target};
 
-fn init_logger() {
-    let env = Env::default().filter_or("NUN_LOG_LEVEL", "info");
+fn init_logger(config: &Configuration) {
+    let env = Env::default().filter_or(config.nun_log_level.as_str(), "info");
     Builder::from_env(env)
         .format_level(false)
         .target(Target::Stdout)
@@ -23,21 +24,23 @@ fn init_logger() {
 }
 
 fn main() -> Result<(), String> {
-    init_logger();
+    let config = configuration::get_configuration();
+
+    init_logger(&config);
     log::info!("nundb starting!");
     let matches: ArgMatches<'_> = lib::commad_line::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
         return start_db(
-            matches.value_of("user").unwrap(),
-            matches.value_of("pwd").unwrap(),
-            start_match
-                .value_of("tcp-address")
-                .unwrap_or("0.0.0.0:3014"),
-            start_match.value_of("ws-address").unwrap_or("0.0.0.0:3012"),
+            matches.value_of("user").unwrap_or(config.nun_user.as_str()),
+            matches.value_of("pwd").unwrap_or(config.nun_pwd.as_str()),
+            start_match.value_of("ws-address").unwrap_or(config.nun_ws_addr.as_str()),
             start_match
                 .value_of("http-address")
-                .unwrap_or("0.0.0.0:3013"),
-            start_match.value_of("replicate-address").unwrap_or(""),
+                .unwrap_or(config.nun_http_addr.as_str()),
+            start_match
+                .value_of("tcp-address")
+                .unwrap_or(config.nun_tcp_addr.as_str()),
+            start_match.value_of("replicate-address").unwrap_or(config.nun_replicate_addr.as_str()),
         );
     } else {
         return lib::commad_line::commands::exec_command(&matches);
@@ -47,11 +50,12 @@ fn main() -> Result<(), String> {
 fn start_db(
     user: &str,
     pwd: &str,
-    tcp_address: &str,
     ws_address: &str,
     http_address: &str,
+    tcp_address: &str,
     replicate_address: &str,
 ) -> Result<(), String> {
+
     let (replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =
         channel(100);
 

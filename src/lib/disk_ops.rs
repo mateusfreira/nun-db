@@ -17,10 +17,11 @@ use std::time::Instant;
 
 use crate::bo::*;
 
+use super::configuration::get_configuration;
+
 const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
 const FILE_NAME: &'static str = "-nun.data";
 const META_FILE_NAME: &'static str = "-nun.madadata";
-const DIR_NAME: &'static str = "dbs";
 
 const KEYS_FILE: &'static str = "keys-nun.keys";
 
@@ -34,10 +35,7 @@ const OP_OP_SIZE: usize = 1;
 const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
 
 pub fn get_dir_name() -> String {
-    match env::var_os("NUN_DBS_DIR") {
-        Some(dir_name) => dir_name.into_string().unwrap(),
-        None => DIR_NAME.to_string(),
-    }
+    get_configuration().nun_dbs_dir
 }
 
 pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
@@ -204,7 +202,10 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
 
 pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
     let queue_len = { dbs.to_snapshot.read().unwrap().len() };
+    println!("called snapshot_all_pendding_dbs");
+    println!("queue_len > 0 == {}", queue_len);
     if queue_len > 0 {
+        println!("inside queue_len");
         snapshot_keys(&dbs);
         let mut dbs_to_snapshot = {
             let dbs = dbs.to_snapshot.write().unwrap();
