@@ -12,11 +12,10 @@ use std::thread;
 use std::sync::Arc;
 
 use clap::ArgMatches;
-use env_logger::{Builder, Env, Target};
+use env_logger::{Builder, Target};
 
 fn init_logger(config: &Configuration) {
-    let env = Env::default().filter_or(config.nun_log_level.as_str(), "info");
-    Builder::from_env(env)
+    Builder::from_env(config.nun_log_level.as_str())
         .format_level(false)
         .target(Target::Stdout)
         .format_timestamp_nanos()
