@@ -572,4 +572,37 @@ mod tests {
         let opp_id1 = write_op_log(&mut f, 1, 1, ReplicateOpp::Update);
         assert_ne!(opp_id, opp_id1);
     }
+
+    fn remove_database_file(db_name:String) {
+        let file_name = file_name_from_db_name(db_name.clone());
+        if Path::new(&file_name).exists() {
+            fs::remove_file(file_name).unwrap();
+            fs::remove_file(meta_file_name_from_db_name(db_name)).unwrap();
+        }
+    }
+
+    #[test]
+    fn should_store_data_in_disk() {
+        let db_name = String::from("test-db");
+        let mut hash = HashMap::new();
+        hash.insert(String::from("some"), String::from("value"));
+        hash.insert(String::from("some1"), String::from("value1"));
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        storage_data_disk(&db, db_name.clone());
+        let loaded_db = load_db_from_disck_or_empty(db_name.clone());
+        assert_eq!(
+            loaded_db
+                .get(&String::from("some"))
+                .unwrap_or(&String::from("jose")),
+            &String::from("value")
+        );
+
+        assert_eq!(
+            loaded_db
+                .get(&String::from("some1"))
+                .unwrap_or(&String::from("jose")),
+            &String::from("value1")
+        );
+        remove_database_file(db_name);
+    }
 }

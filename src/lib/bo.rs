@@ -560,7 +560,7 @@ impl Databases {
                     .get(&op_log_id)
                     .unwrap()
                     .message_to_replicate()
-            };// To limit the scope of the read lock
+            }; // To limit the scope of the read lock
             message_to_replicate
         }
     }
@@ -821,10 +821,6 @@ impl ReplicationMessage {
 
     pub fn is_full_acknowledged(&self) -> bool {
         self.replicate_count.load(Ordering::Relaxed) == self.ack_count.load(Ordering::Relaxed)
-    }
-
-    pub fn is_replicated(&self) -> bool {
-        self.replicate_count.load(Ordering::Relaxed) > 0
     }
 
     pub fn message_to_replicate(&self) -> String {
