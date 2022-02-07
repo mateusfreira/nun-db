@@ -202,10 +202,8 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
 
 pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
     let queue_len = { dbs.to_snapshot.read().unwrap().len() };
-    println!("called snapshot_all_pendding_dbs");
-    println!("queue_len > 0 == {}", queue_len);
+    log::debug!("snapshot_all_pendding_dbs | queue_len == {}", queue_len);
     if queue_len > 0 {
-        println!("inside queue_len");
         snapshot_keys(&dbs);
         let mut dbs_to_snapshot = {
             let dbs = dbs.to_snapshot.write().unwrap();
