@@ -10,14 +10,12 @@ pub fn prepare_args<'a>() -> ArgMatches<'static> {
             Arg::with_name("user")
                 .short("u")
                 .long("user")
-                //.required(false)
                 .takes_value(true)
                 .help("Admin username"),
         )
         .arg(
             Arg::with_name("pwd")
                 .short("p")
-                //.required(false)
                 .takes_value(true)
                 .help("Admin password"),
         )
