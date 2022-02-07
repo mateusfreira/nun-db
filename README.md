@@ -76,7 +76,8 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 * [How to create your simple version of google analytics real-time using Nun-db](https://mateusfreira.github.io/@mateusfreira-create-a-simple-verison-of-google-analytics-realtime-using-nun-db/)
 * [NunDb How to backup one or all databases](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
 
-
+* [To snapshot the database from memory to disk]
+nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-db $DB_NAME $DB_TOKEN; snapshot"
 
 ## Technical documentations
 
