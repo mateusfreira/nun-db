@@ -15,7 +15,8 @@ use clap::ArgMatches;
 use env_logger::{Builder, Target};
 
 fn init_logger(config: &Configuration) {
-    Builder::from_env(config.nun_log_level.as_str())
+    let env = Env::default().filter_or("NUN_LOG_LEVEL", config.nun_log_level.as_str());
+    Builder::from_env(env)
         .format_level(false)
         .target(Target::Stdout)
         .format_timestamp_nanos()
