@@ -12,7 +12,7 @@ use std::thread;
 use std::sync::Arc;
 
 use clap::ArgMatches;
-use env_logger::{Builder, Target};
+use env_logger::{Builder, Env, Target};
 
 fn init_logger(config: &Configuration) {
     let env = Env::default().filter_or("NUN_LOG_LEVEL", config.nun_log_level.as_str());
