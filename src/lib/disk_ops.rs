@@ -1,6 +1,5 @@
 use log;
 use std::collections::HashMap;
-use std::env;
 use std::fs;
 use std::fs::OpenOptions;
 use std::fs::{create_dir_all, read_dir, File};
