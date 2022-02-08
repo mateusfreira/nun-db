@@ -41,3 +41,21 @@ pub fn get_configuration() -> Configuration {
         nun_log_to_file: expect_env_var("NUN_LOG_TO_FILE", "true"), //true or false
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use crate::lib::configuration::{get_configuration};
+
+    #[test]
+    fn run_mode_should_get_empty_but_debug_mode_got_value() {
+        let config = get_configuration();
+        
+        #[cfg(debug_assertions)]
+        assert_eq!(config.nun_user, "mateus".to_string());
+
+        #[cfg(not(debug_assertions))]
+        assert_eq!(config.nun_user, "".to_string())
+    }
+
+}
