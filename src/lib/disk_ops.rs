@@ -16,8 +16,6 @@ use std::time::Instant;
 
 use crate::bo::*;
 
-use super::configuration::get_configuration;
-
 const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
 const FILE_NAME: &'static str = "-nun.data";
 const META_FILE_NAME: &'static str = "-nun.madadata";
@@ -33,8 +31,11 @@ const OP_TIME_SIZE: usize = 8;
 const OP_OP_SIZE: usize = 1;
 const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
 
+
+use crate::lib::configuration::{NUN_DBS_DIR};
+
 pub fn get_dir_name() -> String {
-    get_configuration().nun_dbs_dir
+    NUN_DBS_DIR.to_string()
 }
 
 pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
