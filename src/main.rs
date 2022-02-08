@@ -26,6 +26,11 @@ fn init_logger(config: &Configuration) {
 fn main() -> Result<(), String> {
     let config = configuration::get_configuration();
 
+    if config.nun_user.as_str() == "" || config.nun_pwd == "" {
+        println!("NUN_USER and NUN_PWD must be provided.");
+        std::process::exit(0);
+    }
+    
     init_logger(&config);
     log::info!("nundb starting!");
     let matches: ArgMatches<'_> = lib::commad_line::commands::prepare_args();
