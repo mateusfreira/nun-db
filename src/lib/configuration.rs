@@ -34,7 +34,7 @@ pub fn get_configuration() -> Configuration {
         nun_dbs_dir: expect_env_var("NUN_DBS_DIR", "/tmp/data/nun_db"),
         nun_ws_addr: expect_env_var("NUN_WS_ADDR", "0.0.0.0:3012"),
         nun_http_addr: expect_env_var("NUN_HTTP_ADDR", "0.0.0.0:3013"),
-        nun_tcp_addr: expect_env_var("NUN_HTTP_ADDR", "0.0.0.0:3014"),
+        nun_tcp_addr: expect_env_var("NUN_TCP_ADDR", "0.0.0.0:3014"),
         nun_replicate_addr: expect_env_var("NUN_REPLICATE_ADDR", ""),
         nun_log_level: expect_env_var("NUN_LOG_LEVEL", "Info"), //(Off, Error, Warn, Info, Debug, Trace)
         nun_log_dir: expect_env_var("NUN_LOG_DIR", "/tmp/data/nun_db/log"),
