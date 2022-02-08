@@ -76,7 +76,7 @@ pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
 
 pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
     let mut initial_db = HashMap::new();
-    let db_file_name = file_name_from_db_name(name.clone());
+    let db_file_name = file_name_from_db_name(&name);
     log::debug!("Will read the database {} from disk", db_file_name);
     if Path::new(&db_file_name).exists() {
         // May I should move this out of here
@@ -106,16 +106,20 @@ fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::D
     if let Ok(entry) = entry {
         let full_name = entry.file_name().into_string().unwrap();
         if full_name.ends_with(FILE_NAME) {
-            let db_name = db_name_from_file_name(full_name);
-            let db_data = load_db_from_disck_or_empty(db_name.to_string());
-            let meta = load_db_metadata_from_disk_or_empty(db_name.to_string(), dbs);
-            dbs.add_database(
-                &db_name.to_string(),
-                Database::create_db_from_hash(db_name.to_string(), db_data, meta),
-            );
+            let db = create_db_from_file_name(&full_name, &dbs);
+            let db_name = db_name_from_file_name(&full_name);
+            dbs.add_database(&db_name.to_string(), db);
         }
     }
 }
+
+fn create_db_from_file_name(full_name: &String, dbs: &Arc<Databases>) -> Database {
+    let db_name = db_name_from_file_name(&full_name);
+    let db_data = load_db_from_disck_or_empty(db_name.to_string());
+    let meta = load_db_metadata_from_disk_or_empty(db_name.to_string(), dbs);
+    Database::create_db_from_hash(db_name.to_string(), db_data, meta)
+}
+
 pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
     log::debug!("Will load dbs from disck");
     match create_dir_all(get_dir_name()) {
@@ -132,7 +136,7 @@ pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
     }
 }
 // send the given database to the disc
-pub fn file_name_from_db_name(db_name: String) -> String {
+pub fn file_name_from_db_name(db_name: &String) -> String {
     format!(
         "{dir}/{db_name}{sufix}",
         dir = get_dir_name(),
@@ -166,7 +170,7 @@ pub fn meta_file_name_from_db_name(db_name: String) -> String {
     )
 }
 
-pub fn db_name_from_file_name(full_name: String) -> String {
+pub fn db_name_from_file_name(full_name: &String) -> String {
     let partial_name = full_name.replace(FILE_NAME, "");
     let splited_name: Vec<&str> = partial_name.split("/").collect();
     let db_name = splited_name.last().unwrap();
@@ -176,7 +180,7 @@ pub fn db_name_from_file_name(full_name: String) -> String {
 fn storage_data_disk(db: &Database, db_name: String) {
     let data = db.to_string_hash();
     // store data
-    let mut file = File::create(file_name_from_db_name(db_name.to_string())).unwrap();
+    let mut file = File::create(file_name_from_db_name(&db_name)).unwrap();
     bincode::serialize_into(&mut file, &data.clone()).unwrap();
 
     let mut meta_file = OpenOptions::new()
@@ -545,7 +549,7 @@ mod tests {
     #[test]
     fn should_return_the_db_name() {
         assert_eq!(
-            db_name_from_file_name(String::from("dbs/org-1-nun.data")),
+            db_name_from_file_name(&String::from("dbs/org-1-nun.data")),
             "org-1"
         );
     }
@@ -572,8 +576,8 @@ mod tests {
         assert_ne!(opp_id, opp_id1);
     }
 
-    fn remove_database_file(db_name:String) {
-        let file_name = file_name_from_db_name(db_name.clone());
+    fn remove_database_file(db_name: String) {
+        let file_name = file_name_from_db_name(&db_name);
         if Path::new(&file_name).exists() {
             fs::remove_file(file_name).unwrap();
             fs::remove_file(meta_file_name_from_db_name(db_name)).unwrap();
@@ -582,26 +586,69 @@ mod tests {
 
     #[test]
     fn should_store_data_in_disk() {
+        let dbs = create_test_dbs();
         let db_name = String::from("test-db");
         let mut hash = HashMap::new();
         hash.insert(String::from("some"), String::from("value"));
         hash.insert(String::from("some1"), String::from("value1"));
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
         storage_data_disk(&db, db_name.clone());
-        let loaded_db = load_db_from_disck_or_empty(db_name.clone());
-        assert_eq!(
-            loaded_db
-                .get(&String::from("some"))
-                .unwrap_or(&String::from("jose")),
-            &String::from("value")
-        );
+        let db_file_name = file_name_from_db_name(&db_name);
+        let loaded_db = create_db_from_file_name(&db_file_name, &dbs);
 
         assert_eq!(
-            loaded_db
-                .get(&String::from("some1"))
-                .unwrap_or(&String::from("jose")),
-            &String::from("value1")
+            loaded_db.get_value(String::from("some1")).unwrap().value,
+            String::from("value1")
         );
         remove_database_file(db_name);
+    }
+
+    #[test]
+    fn should_restore_keys_with_same_version() {
+        let dbs = create_test_dbs();
+        let db_name = String::from("test-db");
+        let mut hash = HashMap::new();
+        let key = String::from("some");
+        let value = String::from("value");
+        let value_updated = String::from("value_updated");
+        hash.insert(key.clone(), value.clone());
+        hash.insert(String::from("some1"), String::from("value1"));
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+
+        let key_value = db.get_value(String::from("some1")).unwrap();
+        assert_eq!(key_value.value, String::from("value1"));
+        db.set_value(key.clone(), value_updated.clone(), 2);
+        let key_value_new = db.get_value(key.to_string()).unwrap();
+        assert_eq!(key_value_new.version, 2);
+        dbs.is_oplog_valid.store(false, Ordering::Relaxed);
+        storage_data_disk(&db, db_name.clone());
+        snapshot_keys(&dbs);
+
+        let db_file_name = file_name_from_db_name(&db_name);
+        let loaded_db = create_db_from_file_name(&db_file_name, &dbs);
+        let key_value = loaded_db.get_value(key.to_string()).unwrap();
+        assert_eq!(key_value.value, value_updated);
+
+        assert_eq!(key_value.version, 2);
+        remove_database_file(db_name);
+    }
+
+    fn create_test_dbs() -> Arc<Databases> {
+        let (sender, _replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
+        let dbs = Arc::new(Databases::new(
+            String::from(""),
+            String::from(""),
+            String::from(""),
+            sender.clone(),
+            sender.clone(),
+            keys_map,
+            1 as u128,
+            true,
+        ));
+
+        dbs.node_state
+            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+        dbs
     }
 }
