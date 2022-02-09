@@ -27,7 +27,7 @@ fn expect_env_var(name: &str, _default: &str, required: bool) -> String {
             name = name
         ));
     } else {
-        return env::var(name).unwrap_or("");
+        return env::var(name).unwrap_or("".to_string());
     }
 }
 
