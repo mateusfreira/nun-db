@@ -1,10 +1,10 @@
-use std::env;
 use lazy_static::lazy_static;
+use std::env;
 
 lazy_static! {
-    pub static ref NUN_USER: String = expect_env_var("NUN_USER", "nun", false);// Can be overiden by command line
-    pub static ref NUN_PWD: String = expect_env_var("NUN_PWD", "nun-pwd", false);// Can be overiden by command line
-    pub static ref NUN_DBS_DIR: String = expect_env_var("NUN_DBS_DIR", "dbs", false);
+    pub static ref NUN_USER: String = expect_env_var("NUN_USER", "nun", false);// Can be overridden by command line
+    pub static ref NUN_PWD: String = expect_env_var("NUN_PWD", "nun-pwd", false);// Can be overridden by command line
+    pub static ref NUN_DBS_DIR: String = optional_env_var("NUN_DBS_DIR", "dbs");
     pub static ref NUN_WS_ADDR: String = optional_env_var("NUN_WS_ADDR", "0.0.0.0:3012");
     pub static ref NUN_HTTP_ADDR: String = optional_env_var("NUN_HTTP_ADDR", "0.0.0.0:3013");
     pub static ref NUN_TCP_ADDR: String = optional_env_var("NUN_TCP_ADDR", "0.0.0.0:3014");
@@ -34,7 +34,6 @@ fn expect_env_var(name: &str, _default: &str, required: bool) -> String {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::lib::configuration::expect_env_var;
@@ -43,7 +42,10 @@ mod tests {
     #[test]
     fn run_mode_should_get_empty_but_debug_mode_got_value() {
         #[cfg(debug_assertions)]
-        assert_eq!(expect_env_var("NUN_USER", "mateus", false), "mateus".to_string());
+        assert_eq!(
+            expect_env_var("NUN_USER", "mateus", false),
+            "mateus".to_string()
+        );
 
         #[cfg(not(debug_assertions))]
         assert_eq!(expect_env_var("NUN_USER", "", false), "".to_string())
@@ -53,5 +55,4 @@ mod tests {
     fn optional_env_var_should_default_value_if_not_present() {
         assert_eq!(optional_env_var("NUN_USER", "jose"), "jose".to_string());
     }
-
 }

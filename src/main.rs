@@ -13,10 +13,11 @@ use std::sync::Arc;
 use clap::ArgMatches;
 use env_logger::{Builder, Env, Target};
 
-use crate::lib::configuration::{NUN_LOG_LEVEL, NUN_USER, NUN_PWD, NUN_WS_ADDR, NUN_HTTP_ADDR, NUN_TCP_ADDR, NUN_REPLICATE_ADDR};
+use crate::lib::configuration::{
+    NUN_HTTP_ADDR, NUN_LOG_LEVEL, NUN_PWD, NUN_REPLICATE_ADDR, NUN_TCP_ADDR, NUN_USER, NUN_WS_ADDR,
+};
 
 fn init_logger() {
-
     let env = Env::default().filter_or("NUN_LOG_LEVEL", NUN_LOG_LEVEL.as_str());
     Builder::from_env(env)
         .format_level(false)
@@ -26,7 +27,6 @@ fn init_logger() {
 }
 
 fn main() -> Result<(), String> {
-    
     init_logger();
     log::info!("nundb starting!");
     let matches: ArgMatches<'_> = lib::commad_line::commands::prepare_args();
@@ -34,14 +34,18 @@ fn main() -> Result<(), String> {
         return start_db(
             matches.value_of("user").unwrap_or(NUN_USER.as_str()),
             matches.value_of("pwd").unwrap_or(NUN_PWD.as_str()),
-            start_match.value_of("ws-address").unwrap_or(NUN_WS_ADDR.as_str()),
+            start_match
+                .value_of("ws-address")
+                .unwrap_or(NUN_WS_ADDR.as_str()),
             start_match
                 .value_of("http-address")
                 .unwrap_or(NUN_HTTP_ADDR.as_str()),
             start_match
                 .value_of("tcp-address")
                 .unwrap_or(NUN_TCP_ADDR.as_str()),
-            start_match.value_of("replicate-address").unwrap_or(NUN_REPLICATE_ADDR.as_str()),
+            start_match
+                .value_of("replicate-address")
+                .unwrap_or(NUN_REPLICATE_ADDR.as_str()),
         );
     } else {
         return lib::commad_line::commands::exec_command(&matches);
@@ -57,7 +61,7 @@ fn start_db(
     replicate_address: &str,
 ) -> Result<(), String> {
     if user == "" || pwd == "" {
-        println!("NUN_USER and NUN_PWD must be provided via command (-u $USER -p $PWD) line or env var.");
+        println!("NUN_USER and NUN_PWD must be provided via command line (nun-db -u $USER -p $PWD ...) or env var.");
         std::process::exit(1);
     }
     let (replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =

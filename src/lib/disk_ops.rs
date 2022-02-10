@@ -31,8 +31,7 @@ const OP_TIME_SIZE: usize = 8;
 const OP_OP_SIZE: usize = 1;
 const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
 
-
-use crate::lib::configuration::{NUN_DBS_DIR};
+use crate::lib::configuration::NUN_DBS_DIR;
 
 pub fn get_dir_name() -> String {
     NUN_DBS_DIR.to_string()
@@ -571,7 +570,7 @@ mod tests {
         assert_ne!(opp_id, opp_id1);
     }
 
-    fn remove_database_file(db_name:String) {
+    fn remove_database_file(db_name: String) {
         let file_name = file_name_from_db_name(db_name.clone());
         if Path::new(&file_name).exists() {
             fs::remove_file(file_name).unwrap();
