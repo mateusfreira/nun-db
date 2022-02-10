@@ -56,7 +56,10 @@ fn start_db(
     tcp_address: &str,
     replicate_address: &str,
 ) -> Result<(), String> {
-
+    if user == "" || pwd == "" {
+        println!("NUN_USER and NUN_PWD must be provided via command (-u $USER -p $PWD) line or env var.");
+        std::process::exit(1);
+    }
     let (replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =
         channel(100);
 
