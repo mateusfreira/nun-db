@@ -1,0 +1,1 @@
+cargo run  -- -u mateus -p mateus exec "use-db todos tokenxyz; snapshot;"

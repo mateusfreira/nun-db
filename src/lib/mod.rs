@@ -1,3 +1,4 @@
+pub mod configuration;
 pub mod bo;
 pub mod commad_line;
 pub mod db_ops;

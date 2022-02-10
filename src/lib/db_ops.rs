@@ -94,6 +94,7 @@ pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &C
         }
     }
 }
+
 pub fn snapshot_db(db: &Database, dbs: &Databases) -> Response {
     let name = db.name.clone();
     {

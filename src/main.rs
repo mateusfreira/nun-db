@@ -13,8 +13,11 @@ use std::sync::Arc;
 use clap::ArgMatches;
 use env_logger::{Builder, Env, Target};
 
+use crate::lib::configuration::{NUN_LOG_LEVEL, NUN_USER, NUN_PWD, NUN_WS_ADDR, NUN_HTTP_ADDR, NUN_TCP_ADDR, NUN_REPLICATE_ADDR};
+
 fn init_logger() {
-    let env = Env::default().filter_or("NUN_LOG_LEVEL", "info");
+
+    let env = Env::default().filter_or("NUN_LOG_LEVEL", NUN_LOG_LEVEL.as_str());
     Builder::from_env(env)
         .format_level(false)
         .target(Target::Stdout)
@@ -23,21 +26,22 @@ fn init_logger() {
 }
 
 fn main() -> Result<(), String> {
+    
     init_logger();
     log::info!("nundb starting!");
     let matches: ArgMatches<'_> = lib::commad_line::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
         return start_db(
-            matches.value_of("user").unwrap(),
-            matches.value_of("pwd").unwrap(),
-            start_match
-                .value_of("tcp-address")
-                .unwrap_or("0.0.0.0:3014"),
-            start_match.value_of("ws-address").unwrap_or("0.0.0.0:3012"),
+            matches.value_of("user").unwrap_or(NUN_USER.as_str()),
+            matches.value_of("pwd").unwrap_or(NUN_PWD.as_str()),
+            start_match.value_of("ws-address").unwrap_or(NUN_WS_ADDR.as_str()),
             start_match
                 .value_of("http-address")
-                .unwrap_or("0.0.0.0:3013"),
-            start_match.value_of("replicate-address").unwrap_or(""),
+                .unwrap_or(NUN_HTTP_ADDR.as_str()),
+            start_match
+                .value_of("tcp-address")
+                .unwrap_or(NUN_TCP_ADDR.as_str()),
+            start_match.value_of("replicate-address").unwrap_or(NUN_REPLICATE_ADDR.as_str()),
         );
     } else {
         return lib::commad_line::commands::exec_command(&matches);
@@ -47,11 +51,12 @@ fn main() -> Result<(), String> {
 fn start_db(
     user: &str,
     pwd: &str,
-    tcp_address: &str,
     ws_address: &str,
     http_address: &str,
+    tcp_address: &str,
     replicate_address: &str,
 ) -> Result<(), String> {
+
     let (replication_sender, replication_receiver): (Sender<String>, Receiver<String>) =
         channel(100);
 

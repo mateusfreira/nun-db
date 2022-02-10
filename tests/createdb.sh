@@ -1,0 +1,1 @@
+cargo run -- -u mateus -p mateus create-db -d todos -t tokenxyz
