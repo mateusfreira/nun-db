@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 lazy_static! {
     pub static ref NUN_USER: String = expect_env_var("NUN_USER", "mateus", false);
     pub static ref NUN_PWD: String = expect_env_var("NUN_PWD", "mateus", false);
-    pub static ref NUN_DBS_DIR: String = expect_env_var("NUN_DBS_DIR", "/tmp/data/nun_db", false);
+    pub static ref NUN_DBS_DIR: String = expect_env_var("NUN_DBS_DIR", "dbs", false);
     pub static ref NUN_WS_ADDR: String = expect_env_var("NUN_WS_ADDR", "0.0.0.0:3012", false);
     pub static ref NUN_HTTP_ADDR: String = expect_env_var("NUN_HTTP_ADDR", "0.0.0.0:3013", false);
     pub static ref NUN_TCP_ADDR: String = expect_env_var("NUN_TCP_ADDR", "0.0.0.0:3014", false);
