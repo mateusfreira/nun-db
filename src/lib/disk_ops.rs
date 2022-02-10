@@ -63,16 +63,18 @@ fn remove_invalidate_oplog_file() {
 
 // @todo speed up saving
 pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
-    let db_file_name = get_keys_map_file_name();
-    log::debug!("Will write the keys {} from disk", db_file_name);
+    let keys_file_name = get_keys_map_file_name();
+    log::debug!("Will write the keys {} from disk", keys_file_name);
 
     let mut keys_file = OpenOptions::new()
         .create(true)
         .write(true)
-        .open(db_file_name)
+        .open(keys_file_name)
         .unwrap();
     bincode::serialize_into(&mut keys_file, &keys.clone()).unwrap();
 }
+
+
 
 pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
     let mut initial_db = HashMap::new();
@@ -631,6 +633,41 @@ mod tests {
 
         assert_eq!(key_value.version, 2);
         remove_database_file(db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
+    }
+
+    #[test]
+    fn should_restore_should_be_fast() {
+        let start = Instant::now();
+        let dbs = create_test_dbs();
+        let db_name = String::from("test-db");
+        let mut hash = HashMap::new();
+        for i in 1..10000 {
+            hash.insert(format!("key_{}",i), format!("key_{}", i));
+        }
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+
+        dbs.is_oplog_valid.store(false, Ordering::Relaxed);
+        storage_data_disk(&db, db_name.clone());
+        println!(
+            "TIme {:?}",
+            start.elapsed(),
+        );
+        //assert!(start.elapsed().as_millis() < 100);
+
+        let start_load = Instant::now();
+        let db_file_name = file_name_from_db_name(&db_name);
+        let _loaded_db = create_db_from_file_name(&db_file_name, &dbs);
+        println!(
+            "TIme {:?}",
+            start_load.elapsed(),
+        );
+        assert!(start_load.elapsed().as_millis() < 40);
+
+        remove_database_file(db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
     }
 
     fn create_test_dbs() -> Arc<Databases> {
@@ -650,5 +687,12 @@ mod tests {
         dbs.node_state
             .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
         dbs
+    }
+
+    fn remove_keys_file() {
+        let key_file_name = get_keys_map_file_name();
+        if Path::new(&key_file_name).exists() {
+            fs::remove_file(key_file_name).unwrap();
+        }
     }
 }
