@@ -181,6 +181,46 @@ fn storage_data_disk(db: &Database, db_name: String) {
     // store data
     let mut file = File::create(file_name_from_db_name(&db_name)).unwrap();
     bincode::serialize_into(&mut file, &data.clone()).unwrap();
+    let mut meta_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(meta_file_name_from_db_name(db_name))
+        .unwrap();
+    meta_file.write(&db.metadata.id.to_le_bytes()).unwrap(); //8 bytes
+}
+
+fn storage_data_disk_new(db: &Database, db_name: String) {
+   let mut keys_file = BufWriter::with_capacity(
+        OP_RECORD_SIZE * 10,
+        OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open( format!("{}.keys",file_name_from_db_name(&db_name)))
+            .unwrap(),
+    );
+
+   let mut values_file = BufWriter::with_capacity(
+        OP_RECORD_SIZE * 10,
+        OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open( format!("{}.values",file_name_from_db_name(&db_name)))
+            .unwrap(),
+    );
+    let data = db.map.read().expect("Error getting the db.map.read");
+    let mut values_addr = 0 as usize;
+    for (key, value) in &*data {
+        keys_file.write(&key.len().to_le_bytes()).unwrap();//8bytes
+        keys_file.write(&key.as_bytes()).unwrap();//Nth bytes
+        keys_file.write(&value.version.to_le_bytes()).unwrap();//8 bytes
+        keys_file.write(&values_addr.to_le_bytes()).unwrap();//8 bytes
+
+        values_file.write(&value.value.len().to_le_bytes()).unwrap();//8bytes
+        values_addr = values_file.write(&value.value.as_bytes()).unwrap();//Nth bytes
+
+    }
+    keys_file.flush().unwrap();
+    values_file.flush().unwrap();
 
     let mut meta_file = OpenOptions::new()
         .create(true)
@@ -621,7 +661,7 @@ mod tests {
         let key_value_new = db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value_new.version, 2);
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk(&db, db_name.clone());
+        storage_data_disk_new(&db, db_name.clone());
         snapshot_keys(&dbs);
 
         let db_file_name = file_name_from_db_name(&db_name);
@@ -647,12 +687,13 @@ mod tests {
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk(&db, db_name.clone());
+        storage_data_disk_new(&db, db_name.clone());
+        //storage_data_disk(&db, db_name.clone());
         println!(
             "TIme {:?}",
             start.elapsed(),
         );
-        //assert!(start.elapsed().as_millis() < 100);
+        assert!(start.elapsed().as_millis() < 50);
 
         let start_load = Instant::now();
         let db_file_name = file_name_from_db_name(&db_name);
