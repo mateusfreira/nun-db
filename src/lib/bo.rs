@@ -222,6 +222,21 @@ impl Database {
             .expect("Error getting the db.connections.lock to decrement");
         return connections.load(Ordering::Relaxed);
     }
+    pub fn create_db_from_value_hash(
+        name: String,
+        value_data: HashMap<String, Value>,
+        metadata: DatabaseMataData,
+    ) -> Database {
+        return Database {
+            map: RwLock::new(value_data),
+            name,
+            watchers: Watchers {
+                map: RwLock::new(HashMap::new()),
+            },
+            connections: RwLock::new(AtomicUsize::new(0)),
+            metadata,
+        };
+    }
 
     pub fn create_db_from_hash(
         name: String,
@@ -233,15 +248,7 @@ impl Database {
         for (key, value) in &data {
             value_data.insert(key.to_string(), Value::from(value.to_string()));
         }
-        return Database {
-            map: RwLock::new(value_data),
-            name,
-            watchers: Watchers {
-                map: RwLock::new(HashMap::new()),
-            },
-            connections: RwLock::new(AtomicUsize::new(0)),
-            metadata,
-        };
+        Database::create_db_from_value_hash(name,value_data, metadata)
     }
 
     pub fn dec_connections(&self) {

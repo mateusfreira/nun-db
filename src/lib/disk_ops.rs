@@ -10,6 +10,7 @@ use std::io::Read;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
+use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
@@ -71,8 +72,6 @@ pub fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
     bincode::serialize_into(&mut keys_file, &keys.clone()).unwrap();
 }
 
-
-
 pub fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
     let mut initial_db = HashMap::new();
     let db_file_name = file_name_from_db_name(&name);
@@ -117,6 +116,55 @@ fn create_db_from_file_name(full_name: &String, dbs: &Arc<Databases>) -> Databas
     let db_data = load_db_from_disck_or_empty(db_name.to_string());
     let meta = load_db_metadata_from_disk_or_empty(db_name.to_string(), dbs);
     Database::create_db_from_hash(db_name.to_string(), db_data, meta)
+}
+
+fn create_db_from_file_name_new(full_name: &String, dbs: &Arc<Databases>) -> Database {
+    let db_name = db_name_from_file_name(&full_name);
+    let meta = load_db_metadata_from_disk_or_empty(db_name.to_string(), dbs);
+    let keys_file_name = format!("{}.keys", full_name);
+    let values_file_name = format!("{}.values", full_name);
+    let mut keys_file = OpenOptions::new().read(true).open(keys_file_name).unwrap();
+    let mut values_file = OpenOptions::new()
+        .read(true)
+        .open(values_file_name)
+        .unwrap();
+    let mut value_data: HashMap<String, Value> = HashMap::new();
+
+    let mut length_buffer = [0; OP_TIME_SIZE];
+    let mut value_addr_buffer = [0; OP_TIME_SIZE];
+    let mut version_buffer = [0; 4];
+    keys_file.seek(SeekFrom::Start(0)).unwrap();
+    while let Ok(read) = keys_file.read(&mut length_buffer) {
+        if read == 0 {//If could not read anything stop
+            break;
+        }
+        let key_length: usize = usize::from_le_bytes(length_buffer);
+        let mut key_buffer = vec![0; key_length];
+        keys_file.read(&mut key_buffer).unwrap();
+        let key = str::from_utf8(&key_buffer).unwrap();
+        let _ = keys_file.read(&mut version_buffer).unwrap();
+        let version = i32::from_le_bytes(version_buffer);
+
+        let _ = keys_file.read(&mut value_addr_buffer).unwrap();
+        let value_addr = u64::from_le_bytes(value_addr_buffer);
+        values_file
+            .seek(SeekFrom::Start(value_addr as u64))
+            .unwrap();
+        let _ = values_file.read(&mut length_buffer).unwrap();
+        let value_length = usize::from_le_bytes(length_buffer);
+        let mut value_buffer = vec![0; value_length];
+        let _ = values_file.read(&mut value_buffer);
+        let value = str::from_utf8(&value_buffer).unwrap();
+
+        value_data.insert(
+            key.to_string(),
+            Value {
+                version,
+                value: value.to_string(),
+            },
+        );
+    }
+    Database::create_db_from_value_hash(db_name.to_string(), value_data, meta)
 }
 
 pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
@@ -190,34 +238,36 @@ fn storage_data_disk(db: &Database, db_name: String) {
 }
 
 fn storage_data_disk_new(db: &Database, db_name: String) {
-   let mut keys_file = BufWriter::with_capacity(
+    remove_database_file(&db_name);
+    let mut keys_file = BufWriter::with_capacity(
         OP_RECORD_SIZE * 10,
         OpenOptions::new()
             .append(true)
             .create(true)
-            .open( format!("{}.keys",file_name_from_db_name(&db_name)))
+            .open(format!("{}.keys", file_name_from_db_name(&db_name)))
             .unwrap(),
     );
 
-   let mut values_file = BufWriter::with_capacity(
+    let mut values_file = BufWriter::with_capacity(
         OP_RECORD_SIZE * 10,
         OpenOptions::new()
             .append(true)
             .create(true)
-            .open( format!("{}.values",file_name_from_db_name(&db_name)))
+            .open(format!("{}.values", file_name_from_db_name(&db_name)))
             .unwrap(),
     );
     let data = db.map.read().expect("Error getting the db.map.read");
-    let mut values_addr = 0 as usize;
+    let mut value_addr = 0 as u64;
     for (key, value) in &*data {
-        keys_file.write(&key.len().to_le_bytes()).unwrap();//8bytes
-        keys_file.write(&key.as_bytes()).unwrap();//Nth bytes
-        keys_file.write(&value.version.to_le_bytes()).unwrap();//8 bytes
-        keys_file.write(&values_addr.to_le_bytes()).unwrap();//8 bytes
+        keys_file.write(&key.len().to_le_bytes()).unwrap(); //8bytes
+        keys_file.write(&key.as_bytes()).unwrap(); //Nth bytes
+        keys_file.write(&value.version.to_le_bytes()).unwrap(); //8 bytes
+        keys_file.write(&value_addr.to_le_bytes()).unwrap(); //8 bytes
 
-        values_file.write(&value.value.len().to_le_bytes()).unwrap();//8bytes
-        values_addr = values_file.write(&value.value.as_bytes()).unwrap();//Nth bytes
-
+        values_file.write(&value.value.len().to_le_bytes()).unwrap(); //8bytes
+        let value_as_bytes = value.value.as_bytes();
+        values_file.write(&value_as_bytes).unwrap(); //Nth bytes
+        value_addr = value_addr + 8 + value_as_bytes.len() as u64;
     }
     keys_file.flush().unwrap();
     values_file.flush().unwrap();
@@ -539,6 +589,25 @@ fn mark_op_log_as_valid(dbs: &Arc<Databases>) -> Result<usize, Error> {
     file_writer.write(&[1])
 }
 
+fn remove_database_file(db_name: &String) {
+    let file_name = file_name_from_db_name(&db_name);
+    if Path::new(&file_name).exists() {
+        fs::remove_file(file_name.clone()).unwrap();
+        fs::remove_file(meta_file_name_from_db_name(db_name.to_string())).unwrap();
+    }
+
+    let keys_file_name = format!("{}.keys", file_name);
+    let values_file_name = format!("{}.values", file_name);
+    if Path::new(&keys_file_name).exists() {
+        fs::remove_file(keys_file_name.clone()).unwrap();
+    }
+
+    if Path::new(&values_file_name).exists() {
+        fs::remove_file(values_file_name).unwrap();
+    }
+
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -616,13 +685,6 @@ mod tests {
         assert_ne!(opp_id, opp_id1);
     }
 
-    fn remove_database_file(db_name: String) {
-        let file_name = file_name_from_db_name(&db_name);
-        if Path::new(&file_name).exists() {
-            fs::remove_file(file_name).unwrap();
-            fs::remove_file(meta_file_name_from_db_name(db_name)).unwrap();
-        }
-    }
 
     #[test]
     fn should_store_data_in_disk() {
@@ -640,7 +702,7 @@ mod tests {
             loaded_db.get_value(String::from("some1")).unwrap().value,
             String::from("value1")
         );
-        remove_database_file(db_name);
+        remove_database_file(&db_name);
     }
 
     #[test]
@@ -665,12 +727,12 @@ mod tests {
         snapshot_keys(&dbs);
 
         let db_file_name = file_name_from_db_name(&db_name);
-        let loaded_db = create_db_from_file_name(&db_file_name, &dbs);
+        let loaded_db = create_db_from_file_name_new(&db_file_name, &dbs);
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value.value, value_updated);
 
         assert_eq!(key_value.version, 2);
-        remove_database_file(db_name);
+        remove_database_file(&db_name);
         clean_op_log_metadata_files();
         remove_keys_file();
     }
@@ -682,29 +744,23 @@ mod tests {
         let db_name = String::from("test-db");
         let mut hash = HashMap::new();
         for i in 1..10000 {
-            hash.insert(format!("key_{}",i), format!("key_{}", i));
+            hash.insert(format!("key_{}", i), format!("key_{}", i));
         }
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk_new(&db, db_name.clone());
         //storage_data_disk(&db, db_name.clone());
-        println!(
-            "TIme {:?}",
-            start.elapsed(),
-        );
+        println!("TIme {:?}", start.elapsed(),);
         assert!(start.elapsed().as_millis() < 50);
 
         let start_load = Instant::now();
         let db_file_name = file_name_from_db_name(&db_name);
-        let _loaded_db = create_db_from_file_name(&db_file_name, &dbs);
-        println!(
-            "TIme {:?}",
-            start_load.elapsed(),
-        );
+        let _loaded_db = create_db_from_file_name_new(&db_file_name, &dbs);
+        println!("TIme {:?}", start_load.elapsed(),);
         assert!(start_load.elapsed().as_millis() < 40);
 
-        remove_database_file(db_name);
+        remove_database_file(&db_name);
         clean_op_log_metadata_files();
         remove_keys_file();
     }

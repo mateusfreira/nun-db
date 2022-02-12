@@ -29,8 +29,9 @@ I did not like this process too much I would need to store all the data all the 
 # keys file
  +-------------++---------------------++---------------------+
  |  key        ||         version     ||      value_addr     |
- | length:rest || 4 bytes             ||      4 bytes        |
+ | length:rest || 4 bytes             ||      8 bytes        |
  +-------------++---------------------++---------------------+
+ ## If key address is -1 means the key is deleted
 
 # Values file
 
