@@ -9,6 +9,8 @@ use std::sync::RwLock;
 use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use std::convert::TryFrom;
+
 
 use crate::db_ops::*;
 use crate::disk_ops::*;
@@ -83,6 +85,7 @@ pub enum ClusterRole {
     Secoundary = 2,
 }
 
+
 impl From<usize> for ClusterRole {
     fn from(val: usize) -> Self {
         use self::ClusterRole::*;
@@ -104,6 +107,33 @@ impl fmt::Display for ClusterRole {
         }
     }
 }
+
+#[derive(Clone, PartialEq, Copy)]
+pub enum ValueStatus {
+    Ok = 0,
+    Deleted = 1,
+}
+
+
+impl From<i32> for ValueStatus {
+    fn from(val: i32) -> Self {
+        use self::ValueStatus::*;
+        match val {
+            0 => Ok,
+            _ => Deleted,
+        }
+    }
+}
+
+impl ValueStatus {
+    pub fn to_le_bytes(&self) -> [u8; 4] {
+        match self {
+            ValueStatus::Ok => (0 as i32).to_le_bytes(),
+            ValueStatus::Deleted => (1 as i32).to_le_bytes(),
+        }
+    }
+}
+
 
 pub struct ClusterState {
     pub members: Mutex<HashMap<String, ClusterMember>>,

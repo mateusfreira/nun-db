@@ -32,6 +32,7 @@ const OP_TIME_SIZE: usize = 8;
 const OP_OP_SIZE: usize = 1;
 const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
 
+
 use crate::lib::configuration::NUN_DBS_DIR;
 
 pub fn get_dir_name() -> String {
@@ -258,6 +259,7 @@ fn storage_data_disk_new(db: &Database, db_name: String) {
     );
     let data = db.map.read().expect("Error getting the db.map.read");
     let mut value_addr = 0 as u64;
+    let status = ValueStatus::Ok;
     for (key, value) in &*data {
         keys_file.write(&key.len().to_le_bytes()).unwrap(); //8bytes
         keys_file.write(&key.as_bytes()).unwrap(); //Nth bytes
@@ -267,7 +269,8 @@ fn storage_data_disk_new(db: &Database, db_name: String) {
         values_file.write(&value.value.len().to_le_bytes()).unwrap(); //8bytes
         let value_as_bytes = value.value.as_bytes();
         values_file.write(&value_as_bytes).unwrap(); //Nth bytes
-        value_addr = value_addr + 8 + value_as_bytes.len() as u64;
+        values_file.write(&status.to_le_bytes()).unwrap(); //4 bytes
+        value_addr = value_addr + 8 + value_as_bytes.len() as u64 + 4;
     }
     keys_file.flush().unwrap();
     values_file.flush().unwrap();
@@ -709,29 +712,35 @@ mod tests {
     fn should_restore_keys_with_same_version() {
         let dbs = create_test_dbs();
         let db_name = String::from("test-db");
+        let db_file_name = file_name_from_db_name(&db_name);
         let mut hash = HashMap::new();
         let key = String::from("some");
         let value = String::from("value");
         let value_updated = String::from("value_updated");
-        hash.insert(key.clone(), value.clone());
-        hash.insert(String::from("some1"), String::from("value1"));
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let key1 = String::from("some1");
+        let value1 = String::from("value1");
 
-        let key_value = db.get_value(String::from("some1")).unwrap();
-        assert_eq!(key_value.value, String::from("value1"));
+        hash.insert(key.clone(), value.clone());
+        hash.insert(key1.clone(), value1.clone());
+
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
         db.set_value(key.clone(), value_updated.clone(), 2);
+
         let key_value_new = db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value_new.version, 2);
+
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk_new(&db, db_name.clone());
-        snapshot_keys(&dbs);
 
-        let db_file_name = file_name_from_db_name(&db_name);
         let loaded_db = create_db_from_file_name_new(&db_file_name, &dbs);
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value.value, value_updated);
-
         assert_eq!(key_value.version, 2);
+
+        let key1_value = loaded_db.get_value(key1.to_string()).unwrap();
+        assert_eq!(key1_value.value, value1);
+        assert_eq!(key1_value.version, 1);
+
         remove_database_file(&db_name);
         clean_op_log_metadata_files();
         remove_keys_file();
