@@ -32,7 +32,6 @@ const OP_TIME_SIZE: usize = 8;
 const OP_OP_SIZE: usize = 1;
 const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
 
-
 use crate::lib::configuration::NUN_DBS_DIR;
 
 pub fn get_dir_name() -> String {
@@ -136,7 +135,8 @@ fn create_db_from_file_name_new(full_name: &String, dbs: &Arc<Databases>) -> Dat
     let mut version_buffer = [0; 4];
     keys_file.seek(SeekFrom::Start(0)).unwrap();
     while let Ok(read) = keys_file.read(&mut length_buffer) {
-        if read == 0 {//If could not read anything stop
+        if read == 0 {
+            //If could not read anything stop
             break;
         }
         let key_length: usize = usize::from_le_bytes(length_buffer);
@@ -230,57 +230,83 @@ fn storage_data_disk(db: &Database, db_name: String) {
     // store data
     let mut file = File::create(file_name_from_db_name(&db_name)).unwrap();
     bincode::serialize_into(&mut file, &data.clone()).unwrap();
-    let mut meta_file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .open(meta_file_name_from_db_name(db_name))
-        .unwrap();
-    meta_file.write(&db.metadata.id.to_le_bytes()).unwrap(); //8 bytes
+    write_metadata_file(&db_name, db);
 }
 
-fn storage_data_disk_new(db: &Database, db_name: String) {
-    remove_database_file(&db_name);
-    let mut keys_file = BufWriter::with_capacity(
+fn get_key_file_append_mode(db_name: &String) -> BufWriter<File> {
+    BufWriter::with_capacity(
         OP_RECORD_SIZE * 10,
         OpenOptions::new()
             .append(true)
             .create(true)
             .open(format!("{}.keys", file_name_from_db_name(&db_name)))
             .unwrap(),
-    );
+    )
+}
 
-    let mut values_file = BufWriter::with_capacity(
+fn get_values_file_append_mode(db_name: &String) -> BufWriter<File> {
+    BufWriter::with_capacity(
         OP_RECORD_SIZE * 10,
         OpenOptions::new()
             .append(true)
             .create(true)
             .open(format!("{}.values", file_name_from_db_name(&db_name)))
             .unwrap(),
-    );
+    )
+}
+
+fn storage_data_disk_new(db: &Database, db_name: &String) {
+    remove_database_file(&db_name); // this is unsafe
+    let mut keys_file = get_key_file_append_mode(&db_name);
+    let mut values_file = get_values_file_append_mode(&db_name);
+
     let data = db.map.read().expect("Error getting the db.map.read");
+
     let mut value_addr = 0 as u64;
     let status = ValueStatus::Ok;
-    for (key, value) in &*data {
-        keys_file.write(&key.len().to_le_bytes()).unwrap(); //8bytes
-        keys_file.write(&key.as_bytes()).unwrap(); //Nth bytes
-        keys_file.write(&value.version.to_le_bytes()).unwrap(); //8 bytes
-        keys_file.write(&value_addr.to_le_bytes()).unwrap(); //8 bytes
 
-        values_file.write(&value.value.len().to_le_bytes()).unwrap(); //8bytes
-        let value_as_bytes = value.value.as_bytes();
-        values_file.write(&value_as_bytes).unwrap(); //Nth bytes
-        values_file.write(&status.to_le_bytes()).unwrap(); //4 bytes
-        value_addr = value_addr + 8 + value_as_bytes.len() as u64 + 4;
+    for (key, value) in &*data {
+        write_key(&mut keys_file, key, value, value_addr);
+        let record_size = write_value(&mut values_file, value, status);
+        value_addr = value_addr + record_size;
     }
     keys_file.flush().unwrap();
     values_file.flush().unwrap();
 
+    write_metadata_file(db_name, db);
+}
+
+fn write_value(values_file: &mut BufWriter<File>, value: &Value, status: ValueStatus) -> u64 {
+    values_file.write(&value.value.len().to_le_bytes()).unwrap();
+    //8bytes
+    let value_as_bytes = value.value.as_bytes();
+    values_file.write(&value_as_bytes).unwrap();
+    //Nth bytes
+    values_file.write(&status.to_le_bytes()).unwrap();
+    //4 bytes
+    let record_size = 8 + value_as_bytes.len() as u64 + 4;
+    record_size
+}
+
+fn write_key(keys_file: &mut BufWriter<File>, key: &String, value: &Value, value_addr: u64) {
+    keys_file.write(&key.len().to_le_bytes()).unwrap();
+    //8bytes
+    keys_file.write(&key.as_bytes()).unwrap();
+    //Nth bytes
+    keys_file.write(&value.version.to_le_bytes()).unwrap();
+    //8 bytes
+    keys_file.write(&value_addr.to_le_bytes()).unwrap();
+    //8 bytes
+}
+
+fn write_metadata_file(db_name: &String, db: &Database) {
     let mut meta_file = OpenOptions::new()
         .create(true)
         .write(true)
-        .open(meta_file_name_from_db_name(db_name))
+        .open(meta_file_name_from_db_name(db_name.to_string()))
         .unwrap();
-    meta_file.write(&db.metadata.id.to_le_bytes()).unwrap(); //8 bytes
+    meta_file.write(&db.metadata.id.to_le_bytes()).unwrap();
+    //8 bytes
 }
 
 // calls storage_data_disk each $SNAPSHOT_TIME seconds
@@ -608,7 +634,6 @@ fn remove_database_file(db_name: &String) {
     if Path::new(&values_file_name).exists() {
         fs::remove_file(values_file_name).unwrap();
     }
-
 }
 
 #[cfg(test)]
@@ -688,7 +713,6 @@ mod tests {
         assert_ne!(opp_id, opp_id1);
     }
 
-
     #[test]
     fn should_store_data_in_disk() {
         let dbs = create_test_dbs();
@@ -730,7 +754,7 @@ mod tests {
         assert_eq!(key_value_new.version, 2);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk_new(&db, db_name.clone());
+        storage_data_disk_new(&db, &db_name);
 
         let loaded_db = create_db_from_file_name_new(&db_file_name, &dbs);
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
@@ -758,16 +782,16 @@ mod tests {
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk_new(&db, db_name.clone());
+        storage_data_disk_new(&db, &db_name);
         //storage_data_disk(&db, db_name.clone());
         println!("TIme {:?}", start.elapsed(),);
-        assert!(start.elapsed().as_millis() < 50);
+        assert!(start.elapsed().as_millis() < 100);
 
         let start_load = Instant::now();
         let db_file_name = file_name_from_db_name(&db_name);
         let _loaded_db = create_db_from_file_name_new(&db_file_name, &dbs);
         println!("TIme {:?}", start_load.elapsed(),);
-        assert!(start_load.elapsed().as_millis() < 40);
+        assert!(start_load.elapsed().as_millis() < 100);
 
         remove_database_file(&db_name);
         clean_op_log_metadata_files();

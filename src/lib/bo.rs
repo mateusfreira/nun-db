@@ -9,8 +9,6 @@ use std::sync::RwLock;
 use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
-use std::convert::TryFrom;
-
 
 use crate::db_ops::*;
 use crate::disk_ops::*;
@@ -85,7 +83,6 @@ pub enum ClusterRole {
     Secoundary = 2,
 }
 
-
 impl From<usize> for ClusterRole {
     fn from(val: usize) -> Self {
         use self::ClusterRole::*;
@@ -114,7 +111,6 @@ pub enum ValueStatus {
     Deleted = 1,
 }
 
-
 impl From<i32> for ValueStatus {
     fn from(val: i32) -> Self {
         use self::ValueStatus::*;
@@ -133,7 +129,6 @@ impl ValueStatus {
         }
     }
 }
-
 
 pub struct ClusterState {
     pub members: Mutex<HashMap<String, ClusterMember>>,
@@ -278,7 +273,7 @@ impl Database {
         for (key, value) in &data {
             value_data.insert(key.to_string(), Value::from(value.to_string()));
         }
-        Database::create_db_from_value_hash(name,value_data, metadata)
+        Database::create_db_from_value_hash(name, value_data, metadata)
     }
 
     pub fn dec_connections(&self) {
