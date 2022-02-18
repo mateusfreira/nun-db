@@ -19,6 +19,7 @@ use crate::bo::*;
 
 const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
 const FILE_NAME: &'static str = "-nun.data";
+const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
 const META_FILE_NAME: &'static str = "-nun.madadata";
 
 const KEYS_FILE: &'static str = "keys-nun.keys";
@@ -103,9 +104,17 @@ pub fn load_db_metadata_from_disk_or_empty(name: String, dbs: &Arc<Databases>) -
 fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::DirEntry>) {
     if let Ok(entry) = entry {
         let full_name = entry.file_name().into_string().unwrap();
+        println!("{}", full_name);
         if full_name.ends_with(FILE_NAME) {
+            log::warn!(
+                "Will migrate the database {} in the next snapshot",
+                full_name
+            );
             let db = create_db_from_file_name(&full_name, &dbs);
             let db_name = db_name_from_file_name(&full_name);
+            dbs.add_database(&db_name.to_string(), db);
+        } else if full_name.ends_with(DB_KEYS_FILE_NAME) {
+            let (db, db_name) = create_db_from_file_name_new(&full_name, &dbs);
             dbs.add_database(&db_name.to_string(), db);
         }
     }
@@ -118,11 +127,13 @@ fn create_db_from_file_name(full_name: &String, dbs: &Arc<Databases>) -> Databas
     Database::create_db_from_hash(db_name.to_string(), db_data, meta)
 }
 
-fn create_db_from_file_name_new(full_name: &String, dbs: &Arc<Databases>) -> Database {
-    let db_name = db_name_from_file_name(&full_name);
+fn create_db_from_file_name_new(file_name: &String, dbs: &Arc<Databases>) -> (Database, String) {
+    let db_name = db_name_from_file_name(&file_name.replace(".keys", ""));
+    let full_name = file_name_from_db_name(&db_name);
     let meta = load_db_metadata_from_disk_or_empty(db_name.to_string(), dbs);
     let keys_file_name = format!("{}.keys", full_name);
     let values_file_name = format!("{}.values", full_name);
+    println!("New file {}. here", keys_file_name);
     let mut keys_file = OpenOptions::new().read(true).open(keys_file_name).unwrap();
     let mut values_file = OpenOptions::new()
         .read(true)
@@ -165,7 +176,10 @@ fn create_db_from_file_name_new(full_name: &String, dbs: &Arc<Databases>) -> Dat
             },
         );
     }
-    Database::create_db_from_value_hash(db_name.to_string(), value_data, meta)
+    (
+        Database::create_db_from_value_hash(db_name.to_string(), value_data, meta),
+        db_name.clone(),
+    )
 }
 
 pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
@@ -183,7 +197,7 @@ pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
         }
     }
 }
-// send the given database to the disc
+
 pub fn file_name_from_db_name(db_name: &String) -> String {
     format!(
         "{dir}/{db_name}{sufix}",
@@ -223,14 +237,6 @@ pub fn db_name_from_file_name(full_name: &String) -> String {
     let splited_name: Vec<&str> = partial_name.split("/").collect();
     let db_name = splited_name.last().unwrap();
     return db_name.to_string();
-}
-
-fn storage_data_disk(db: &Database, db_name: String) {
-    let data = db.to_string_hash();
-    // store data
-    let mut file = File::create(file_name_from_db_name(&db_name)).unwrap();
-    bincode::serialize_into(&mut file, &data.clone()).unwrap();
-    write_metadata_file(&db_name, db);
 }
 
 fn get_key_file_append_mode(db_name: &String) -> BufWriter<File> {
@@ -340,7 +346,7 @@ pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
             let dbs_map = dbs.map.read().unwrap();
             let db_opt = dbs_map.get(&database_name);
             if let Some(db) = db_opt {
-                storage_data_disk(db, database_name.clone());
+                storage_data_disk_new(db, &database_name);
             } else {
                 log::warn!("Database not found {}", database_name)
             }
@@ -641,6 +647,23 @@ mod tests {
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
 
+    fn storage_data_disk(db: &Database, db_name: String) {
+        let data = db.to_string_hash();
+        // store data
+        let mut file = File::create(file_name_from_db_name(&db_name)).unwrap();
+        bincode::serialize_into(&mut file, &data.clone()).unwrap();
+        write_metadata_file(&db_name, db);
+    }
+
+    const FILE_NAME_OLD: &'static str = "-nun.data";
+    fn file_name_from_db_name_old(db_name: &String) -> String {
+        format!(
+            "{dir}/{db_name}{sufix}",
+            dir = get_dir_name(),
+            db_name = db_name,
+            sufix = FILE_NAME_OLD
+        )
+    }
     fn create_dbs() -> std::sync::Arc<Databases> {
         clean_op_log_metadata_files();
         let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
@@ -756,7 +779,7 @@ mod tests {
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk_new(&db, &db_name);
 
-        let loaded_db = create_db_from_file_name_new(&db_file_name, &dbs);
+        let (loaded_db, _) = create_db_from_file_name_new(&db_file_name, &dbs);
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value.value, value_updated);
         assert_eq!(key_value.version, 2);
@@ -765,6 +788,106 @@ mod tests {
         assert_eq!(key1_value.value, value1);
         assert_eq!(key1_value.version, 1);
 
+        remove_database_file(&db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
+    }
+
+    #[test]
+    fn shold_migrate_the_file_of_database_is_old() {
+        let dbs = create_test_dbs();
+        let db_name = String::from("test-db");
+        let mut hash = HashMap::new();
+        let key = String::from("some");
+        let value = String::from("value");
+        let value_updated = String::from("value_updated");
+        let key1 = String::from("some1");
+        let value1 = String::from("value1");
+
+        hash.insert(key.clone(), value.clone());
+        hash.insert(key1.clone(), value1.clone());
+
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        db.set_value(key.clone(), value_updated.clone(), 2);
+
+        let key_value_new = db.get_value(key.to_string()).unwrap();
+        assert_eq!(key_value_new.version, 2);
+
+        dbs.is_oplog_valid.store(false, Ordering::Relaxed);
+        storage_data_disk(&db, db_name.clone()); //Store as old
+
+        let dbs = create_test_dbs();
+        load_all_dbs_from_disk(&dbs);
+        let map = dbs.map.read().unwrap();
+        let db_loaded = map.get(&db_name).unwrap();
+        assert_eq!(db_loaded.get_value(key).unwrap(), value_updated);
+        storage_data_disk_new(&db_loaded, &db_name); //Store as new
+        let db_file_name = file_name_from_db_name_old(&db_name);
+        assert!(!Path::new(&db_file_name).exists());
+    }
+
+    #[test]
+    fn shold_load_the_database_from_disk_old() {
+        let dbs = create_test_dbs();
+        let db_name = String::from("test-db");
+        let mut hash = HashMap::new();
+        let key = String::from("some");
+        let value = String::from("value");
+        let value_updated = String::from("value_updated");
+        let key1 = String::from("some1");
+        let value1 = String::from("value1");
+
+        hash.insert(key.clone(), value.clone());
+        hash.insert(key1.clone(), value1.clone());
+
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        db.set_value(key.clone(), value_updated.clone(), 2);
+
+        let key_value_new = db.get_value(key.to_string()).unwrap();
+        assert_eq!(key_value_new.version, 2);
+
+        dbs.is_oplog_valid.store(false, Ordering::Relaxed);
+        storage_data_disk(&db, db_name.clone()); //Store as old
+
+        let dbs = create_test_dbs();
+        load_all_dbs_from_disk(&dbs);
+        let map = dbs.map.read().unwrap();
+        let db_loaded = map.get(&db_name).unwrap();
+        assert_eq!(db_loaded.get_value(key).unwrap(), value_updated);
+
+        remove_database_file(&db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
+    }
+
+    #[test]
+    fn shold_load_the_database_from_disk_new() {
+        let dbs = create_test_dbs();
+        let db_name = String::from("test-db");
+        let mut hash = HashMap::new();
+        let key = String::from("some");
+        let value = String::from("value");
+        let value_updated = String::from("value_updated");
+        let key1 = String::from("some1");
+        let value1 = String::from("value1");
+
+        hash.insert(key.clone(), value.clone());
+        hash.insert(key1.clone(), value1.clone());
+
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        db.set_value(key.clone(), value_updated.clone(), 2);
+
+        let key_value_new = db.get_value(key.to_string()).unwrap();
+        assert_eq!(key_value_new.version, 2);
+
+        dbs.is_oplog_valid.store(false, Ordering::Relaxed);
+        storage_data_disk_new(&db, &db_name); //Store as old
+
+        let dbs = create_test_dbs();
+        load_all_dbs_from_disk(&dbs);
+        let map = dbs.map.read().unwrap();
+        let db_loaded = map.get(&db_name).unwrap();
+        assert_eq!(db_loaded.get_value(key).unwrap(), value_updated);
         remove_database_file(&db_name);
         clean_op_log_metadata_files();
         remove_keys_file();
