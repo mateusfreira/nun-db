@@ -177,6 +177,8 @@ fn create_db_from_file_name(file_name: &String, dbs: &Arc<Databases>) -> (Databa
             Value {
                 version,
                 value: value.to_string(),
+                state: ValueStatus::Ok,
+                value_disk_addr: value_addr,
             },
         );
     }
@@ -254,32 +256,45 @@ fn get_key_file_append_mode(db_name: &String) -> BufWriter<File> {
     )
 }
 
-fn get_values_file_append_mode(db_name: &String) -> BufWriter<File> {
-    BufWriter::with_capacity(
-        OP_RECORD_SIZE * 10,
-        OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(format!("{}.values", file_name_from_db_name(&db_name)))
-            .unwrap(),
+fn get_values_file_append_mode(db_name: &String) -> (BufWriter<File>, u64) {
+    let file_name = format!("{}.values", file_name_from_db_name(&db_name));
+    let size = match fs::metadata(&file_name) {
+        Ok(metadata) => metadata.len(),
+        _ => 0,
+    };
+    (
+        BufWriter::with_capacity(
+            OP_RECORD_SIZE * 10,
+            OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(file_name)
+                .unwrap(),
+        ),
+        size,
     )
 }
 
 fn storage_data_disk(db: &Database, db_name: &String) {
-    remove_database_file(&db_name); // this is unsafe
+    remove_old_db_file(&db_name); // this is unsafe
     let mut keys_file = get_key_file_append_mode(&db_name);
-    let mut values_file = get_values_file_append_mode(&db_name);
+    let (mut values_file, current_value_file_size) = get_values_file_append_mode(&db_name);
 
     let data = db.map.read().expect("Error getting the db.map.read");
 
-    let mut value_addr = 0 as u64;
+    let mut value_addr = current_value_file_size;
     let status = ValueStatus::Ok;
 
     for (key, value) in &*data {
-        write_key(&mut keys_file, key, value, value_addr);
-        let record_size = write_value(&mut values_file, value, status);
-        value_addr = value_addr + record_size;
+        if value.state == ValueStatus::Updated {
+            let record_size = write_value(&mut values_file, value, status);
+            write_key(&mut keys_file, key, value, value_addr);
+            value_addr = value_addr + record_size;
+        } else {
+            write_key(&mut keys_file, key, value, value.value_disk_addr);
+        }
     }
+
     keys_file.flush().unwrap();
     values_file.flush().unwrap();
 
@@ -632,20 +647,10 @@ fn mark_op_log_as_valid(dbs: &Arc<Databases>) -> Result<usize, Error> {
     file_writer.write(&[1])
 }
 
-fn remove_database_file(db_name: &String) {
+fn remove_old_db_file(db_name: &String) {
     let file_name = file_name_from_db_name(&db_name);
     if Path::new(&file_name).exists() {
         fs::remove_file(file_name.clone()).unwrap();
-        fs::remove_file(meta_file_name_from_db_name(db_name.to_string())).unwrap();
-    }
-
-    let (keys_file_name, values_file_name) = get_key_value_files_name_from_file_name(file_name);
-    if Path::new(&keys_file_name).exists() {
-        fs::remove_file(keys_file_name.clone()).unwrap();
-    }
-
-    if Path::new(&values_file_name).exists() {
-        fs::remove_file(values_file_name).unwrap();
     }
 }
 
@@ -667,6 +672,26 @@ mod tests {
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
 
+    fn remove_database_file(db_name: &String) {
+        remove_invalidate_oplog_file();
+        let file_name = file_name_from_db_name(&db_name);
+        let metada_data_file_name = meta_file_name_from_db_name(db_name.to_string());
+        if Path::new(&metada_data_file_name).exists() {
+            fs::remove_file(&metada_data_file_name).unwrap();
+        }
+        if Path::new(&file_name).exists() {
+            fs::remove_file(file_name.clone()).unwrap();
+        }
+
+        let (keys_file_name, values_file_name) = get_key_value_files_name_from_file_name(file_name);
+        if Path::new(&keys_file_name).exists() {
+            fs::remove_file(keys_file_name.clone()).unwrap();
+        }
+
+        if Path::new(&values_file_name).exists() {
+            fs::remove_file(values_file_name).unwrap();
+        }
+    }
     fn storage_data_disk_old(db: &Database, db_name: String) {
         let data = db.to_string_hash();
         // store data
@@ -916,6 +941,40 @@ mod tests {
     #[test]
     fn should_restore_should_be_fast() {
         let start = Instant::now();
+        let (dbs, db_name, db) = create_db_with_10k_keys();
+        storage_data_disk(&db, &db_name);
+        log::info!("TIme {:?}", start.elapsed());
+        assert!(start.elapsed().as_millis() < 100);
+
+        let start_load = Instant::now();
+        let db_file_name = file_name_from_db_name(&db_name);
+        let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
+        let time_in_ms = start_load.elapsed().as_millis();
+        log::info!("TIme to update {:?}ms", time_in_ms);
+        assert!(start_load.elapsed().as_millis() < 100);
+
+        let value = loaded_db.get_value(String::from("key_1")).unwrap();
+        assert_eq!(value.state, ValueStatus::Ok);
+
+        loaded_db.set_value(String::from("key_1"), String::from("New-value"), 2);
+
+        let value = loaded_db.get_value(String::from("key_1")).unwrap();
+        let value_100 = loaded_db.get_value(String::from("key_100")).unwrap();
+        assert_eq!(value.state, ValueStatus::Updated);
+        assert_eq!(value_100.state, ValueStatus::Ok);
+        let start_secount_storage = Instant::now();
+        storage_data_disk(&loaded_db, &db_name);
+
+        let time_in_ms = start_secount_storage.elapsed().as_millis();
+        log::info!("TIme to update {:?}ms", time_in_ms);
+        assert!( time_in_ms < 10);
+
+        remove_database_file(&db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
+    }
+
+    fn create_db_with_10k_keys() -> (Arc<Databases>, String, Database) {
         let dbs = create_test_dbs();
         let db_name = String::from("test-db");
         let mut hash = HashMap::new();
@@ -923,22 +982,8 @@ mod tests {
             hash.insert(format!("key_{}", i), format!("key_{}", i));
         }
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk(&db, &db_name);
-        //storage_data_disk_old(&db, db_name.clone());
-        log::info!("TIme {:?}", start.elapsed(),);
-        assert!(start.elapsed().as_millis() < 100);
-
-        let start_load = Instant::now();
-        let db_file_name = file_name_from_db_name(&db_name);
-        let _loaded_db = create_db_from_file_name(&db_file_name, &dbs);
-        log::info!("TIme {:?}", start_load.elapsed(),);
-        assert!(start_load.elapsed().as_millis() < 100);
-
-        remove_database_file(&db_name);
-        clean_op_log_metadata_files();
-        remove_keys_file();
+        (dbs, db_name, db)
     }
 
     fn create_test_dbs() -> Arc<Databases> {

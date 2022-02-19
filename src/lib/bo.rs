@@ -105,9 +105,10 @@ impl fmt::Display for ClusterRole {
     }
 }
 
-#[derive(Clone, PartialEq, Copy)]
+#[derive(Clone, PartialEq, Copy, Debug)]
 pub enum ValueStatus {
     Ok = 0,
+    Updated = 2,
     Deleted = 1,
 }
 
@@ -115,8 +116,9 @@ impl From<i32> for ValueStatus {
     fn from(val: i32) -> Self {
         use self::ValueStatus::*;
         match val {
-            0 => Ok,
-            _ => Deleted,
+            1 => Deleted,
+            2 => Updated,
+            _ => Ok,
         }
     }
 }
@@ -126,6 +128,7 @@ impl ValueStatus {
         match self {
             ValueStatus::Ok => (0 as i32).to_le_bytes(),
             ValueStatus::Deleted => (1 as i32).to_le_bytes(),
+            ValueStatus::Updated => (2 as i32).to_le_bytes(),
         }
     }
 }
@@ -152,11 +155,18 @@ impl DatabaseMataData {
 pub struct Value {
     pub value: String,
     pub version: i32,
+    pub state: ValueStatus,
+    pub value_disk_addr: u64,
 }
 
 impl From<String> for Value {
     fn from(value: String) -> Value {
-        Value { value, version: 1 }
+        Value {
+            value,
+            version: 1,
+            state: ValueStatus::Updated,
+            value_disk_addr: 0,
+        }
     }
 }
 
@@ -379,6 +389,8 @@ impl Database {
             Some(Value {
                 value: value.value.to_string(),
                 version: value.version,
+                state: value.state,
+                value_disk_addr: value.value_disk_addr,
             })
         } else {
             None
@@ -393,6 +405,8 @@ impl Database {
                 Value {
                     value: value.clone(),
                     version: new_version,
+                    state: ValueStatus::Updated,
+                    value_disk_addr: 0, // will change on the store
                 },
             );
         } // release the db

@@ -46,15 +46,17 @@ I did not like this process too much I would need to store all the data all the 
 
  ... this needs to be faster than the current solution... 100ms to store 10k records and 50ms read the same from disk to ready in memory
 
- ...Performance was much better than previos implementation.
+ ...Performance was much better than previous implementation.
 
  Time to think in the migration time
 
- Migration will be done at snapshot time ... unti test will cover ...
+ Migration will be done at snapshot time ... unit test will cover ...
 
  Hard brave dev mode fail ... TDD saved the day :)
 
- Code is a bit messy time to refactory
+ Code is a bit messy time to refactoring
+ 
+ Update in place implemented
 
 Can store like that ... won't be fast to search
 
