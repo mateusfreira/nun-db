@@ -423,14 +423,14 @@ fn add_sencoundary_to_secoundary(
 }
 
 /**
- * This function goal is to start the theread to connecto to the other cluster members
+ * This function goal is to start the thread to connect to the other cluster members
  *
  * The command send to the replication_start_receiver are like
  *
  * commads e.g:
  * secoundary some_sever:1412
  * primary some_sever:1412
- * <kind> <name:port>
+ * <kind> <name port>
  *
  */
 

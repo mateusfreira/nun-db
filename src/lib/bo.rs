@@ -232,7 +232,6 @@ pub struct Databases {
 }
 
 impl Database {
-
     #[cfg(test)]
     pub fn to_string_hash(&self) -> HashMap<String, String> {
         let data = self.map.read().expect("Error getting the db.map.read");
