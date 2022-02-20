@@ -142,6 +142,7 @@ fn create_db_from_file_name(file_name: &String, dbs: &Arc<Databases>) -> (Databa
     let mut length_buffer = [0; OP_TIME_SIZE];
     let mut value_addr_buffer = [0; OP_TIME_SIZE];
     let mut version_buffer = [0; 4];
+    let mut key_disk_addr = 0;
     while let Ok(read) = keys_file.read(&mut length_buffer) {
         if read == 0 {
             //If could not read anything stop
@@ -179,8 +180,10 @@ fn create_db_from_file_name(file_name: &String, dbs: &Arc<Databases>) -> (Databa
                 value: value.to_string(),
                 state: ValueStatus::Ok,
                 value_disk_addr: value_addr,
+                key_disk_addr,
             },
         );
+        key_disk_addr = key_disk_addr + 8 + key_length as u64 + 8;
     }
     (
         Database::create_db_from_value_hash(db_name.to_string(), value_data, meta),
@@ -256,6 +259,17 @@ fn get_key_file_append_mode(db_name: &String) -> BufWriter<File> {
     )
 }
 
+fn get_key_write_mode(db_name: &String) -> BufWriter<File> {
+    BufWriter::with_capacity(
+        OP_RECORD_SIZE * 10,
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(format!("{}.keys", file_name_from_db_name(&db_name)))
+            .unwrap(),
+    )
+}
+
 fn get_values_file_append_mode(db_name: &String) -> (BufWriter<File>, u64) {
     let file_name = format!("{}.values", file_name_from_db_name(&db_name));
     let size = match fs::metadata(&file_name) {
@@ -276,22 +290,37 @@ fn get_values_file_append_mode(db_name: &String) -> (BufWriter<File>, u64) {
 }
 
 fn storage_data_disk(db: &Database, db_name: &String) {
-    remove_old_db_file(&db_name); // this is unsafe
+    remove_old_db_file(&db_name);
     let mut keys_file = get_key_file_append_mode(&db_name);
+    let mut keys_file_write = get_key_write_mode(&db_name);
     let (mut values_file, current_value_file_size) = get_values_file_append_mode(&db_name);
-
-    let data = db.map.read().expect("Error getting the db.map.read");
+    let mut keys_to_update = vec![];
+    {
+        let data = db.map.read().expect("Error getting the db.map.read");
+        data.iter()
+            .filter(|&(_k, v)| v.state == ValueStatus::Updated ||  v.state == ValueStatus::New)
+            .for_each(|(k, v)| keys_to_update.push((k.clone(), v.clone())))
+    }; // Release the locker
 
     let mut value_addr = current_value_file_size;
     let status = ValueStatus::Ok;
-
-    for (key, value) in &*data {
-        if value.state == ValueStatus::Updated {
-            let record_size = write_value(&mut values_file, value, status);
-            write_key(&mut keys_file, key, value, value_addr);
-            value_addr = value_addr + record_size;
-        } else {
-            write_key(&mut keys_file, key, value, value.value_disk_addr);
+    for (key, value) in keys_to_update {
+        println!("{} {} {:?}", key, value, value.state);
+        match value.state {
+            ValueStatus::New => {
+                let record_size = write_value(&mut values_file, &value, status);
+                write_key(&mut keys_file, &key, &value, value_addr);
+                value_addr = value_addr + record_size;
+                db.set_value_as_ok(&key, &value, value_addr, value.key_disk_addr);
+            },
+            ValueStatus::Updated => {
+                let record_size = write_value(&mut values_file, &value, status);
+                update_key(&mut keys_file_write, &key, value_addr, value.key_disk_addr);
+                value_addr = value_addr + record_size;
+                db.set_value_as_ok(&key, &value, value_addr, value.key_disk_addr);
+            }
+            ValueStatus::Ok => panic!("Values Ok should never get here"),
+            ValueStatus::Deleted => panic!("Values Deleted should never get here"),
         }
     }
 
@@ -324,6 +353,13 @@ fn write_key(keys_file: &mut BufWriter<File>, key: &String, value: &Value, value
     keys_file.write(&key.as_bytes()).unwrap();
     //8 bytes
     keys_file.write(&value.version.to_le_bytes()).unwrap();
+    //8 bytes
+    keys_file.write(&value_addr.to_le_bytes()).unwrap();
+}
+
+//Update key in place
+fn update_key(keys_file: &mut BufWriter<File>, key: &String, value_addr: u64, key_disk_addr: u64) {
+    keys_file.seek(SeekFrom::Start(key_disk_addr + key.len() as u64 + 8)).unwrap();// Skipe all bites
     //8 bytes
     keys_file.write(&value_addr.to_le_bytes()).unwrap();
 }
@@ -938,6 +974,58 @@ mod tests {
         remove_keys_file();
     }
 
+    fn get_file_size(file_name: &String) -> u64 {
+        match fs::metadata(&file_name) {
+            Ok(metadata) => metadata.len(),
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn keys_file_size_should_not_change_if_no_new_keys_added() {
+        let (_dbs, db_name, db) = create_db_with_10k_keys();
+        remove_database_file(&db_name); // Clean old tests
+        let full_name = file_name_from_db_name(&db_name);
+        let (keys_file_name, _values_file_name) =
+            get_key_value_files_name_from_file_name(full_name);
+        storage_data_disk(&db, &db_name);
+        let key_file_size_before = get_file_size(&keys_file_name);
+        //remove_database_file(&db_name);
+        storage_data_disk(&db, &db_name);
+        let key_file_after = get_file_size(&keys_file_name);
+        assert_eq!(key_file_size_before, key_file_after);
+
+        remove_database_file(&db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
+    }
+
+    #[test]
+    fn keys_file_size_should_not_change_if_no_only_updates_happens() {
+        let (_dbs, db_name, db) = create_db_with_10k_keys();
+        remove_database_file(&db_name); // Clean old tests
+        let full_name = file_name_from_db_name(&db_name);
+        let (keys_file_name, _values_file_name) =
+            get_key_value_files_name_from_file_name(full_name);
+        storage_data_disk(&db, &db_name);
+        let key_file_size_before = get_file_size(&keys_file_name);
+        let key_1 = String::from("key_1");
+        let value = db.get_value(key_1.clone()).unwrap();
+        assert_eq!(value.state, ValueStatus::Ok);
+        db.set_value(key_1.clone(), String::from("NewValue"), 2);
+
+        let value = db.get_value(key_1.clone()).unwrap();
+        assert_eq!(value.state, ValueStatus::Updated);
+
+        storage_data_disk(&db, &db_name);
+        let key_file_after = get_file_size(&keys_file_name);
+        assert_eq!(key_file_size_before, key_file_after);
+
+        remove_database_file(&db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
+    }
+
     #[test]
     fn should_restore_should_be_fast() {
         let start = Instant::now();
@@ -967,7 +1055,7 @@ mod tests {
 
         let time_in_ms = start_secount_storage.elapsed().as_millis();
         log::info!("TIme to update {:?}ms", time_in_ms);
-        assert!( time_in_ms < 10);
+        assert!(time_in_ms < 10);
 
         remove_database_file(&db_name);
         clean_op_log_metadata_files();

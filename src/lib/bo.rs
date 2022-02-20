@@ -110,6 +110,7 @@ pub enum ValueStatus {
     Ok = 0,
     Updated = 2,
     Deleted = 1,
+    New = 3,
 }
 
 impl From<i32> for ValueStatus {
@@ -118,6 +119,7 @@ impl From<i32> for ValueStatus {
         match val {
             1 => Deleted,
             2 => Updated,
+            3 => New,
             _ => Ok,
         }
     }
@@ -129,6 +131,7 @@ impl ValueStatus {
             ValueStatus::Ok => (0 as i32).to_le_bytes(),
             ValueStatus::Deleted => (1 as i32).to_le_bytes(),
             ValueStatus::Updated => (2 as i32).to_le_bytes(),
+            ValueStatus::New => (3 as i32).to_le_bytes(),
         }
     }
 }
@@ -157,6 +160,7 @@ pub struct Value {
     pub version: i32,
     pub state: ValueStatus,
     pub value_disk_addr: u64,
+    pub key_disk_addr: u64,
 }
 
 impl From<String> for Value {
@@ -164,8 +168,9 @@ impl From<String> for Value {
         Value {
             value,
             version: 1,
-            state: ValueStatus::Updated,
+            state: ValueStatus::New,
             value_disk_addr: 0,
+            key_disk_addr: 0,
         }
     }
 }
@@ -391,13 +396,22 @@ impl Database {
                 version: value.version,
                 state: value.state,
                 value_disk_addr: value.value_disk_addr,
+                key_disk_addr: value.key_disk_addr,
             })
         } else {
             None
         }
     }
 
-    fn set_value_version(&self, key: &String, value: &String, new_version: i32) {
+    fn set_value_version(
+        &self,
+        key: &String,
+        value: &String,
+        new_version: i32,
+        state: ValueStatus,
+        value_disk_addr: u64,
+        key_disk_addr: u64,
+    ) {
         {
             let mut db = self.map.write().unwrap();
             db.insert(
@@ -405,11 +419,23 @@ impl Database {
                 Value {
                     value: value.clone(),
                     version: new_version,
-                    state: ValueStatus::Updated,
-                    value_disk_addr: 0, // will change on the store
+                    state,
+                    value_disk_addr, // will change on the store
+                    key_disk_addr, // will change on the store
                 },
             );
         } // release the db
+    }
+
+    pub fn set_value_as_ok(&self, key: &String, value: &Value, value_disk_addr: u64, key_disk_addr: u64) {
+        self.set_value_version(
+            key,
+            &value.value,
+            value.version,
+            ValueStatus::Ok,
+            value_disk_addr,
+            key_disk_addr,
+        );
     }
 
     pub fn set_value(&self, key: String, value: String, version: i32) -> Response {
@@ -426,10 +452,22 @@ impl Database {
                 new_version,
                 version
             );
-            self.set_value_version(&key, &value, new_version)
+            let state = if old_version.state == ValueStatus::New {
+                ValueStatus::New
+            } else {
+                ValueStatus::Updated
+            };
+            self.set_value_version(
+                &key,
+                &value,
+                new_version,
+                state,
+                old_version.value_disk_addr,
+                old_version.key_disk_addr,
+            )
         } else {
             //new key
-            self.set_value_version(&key, &value, 1)
+            self.set_value_version(&key, &value, 1, ValueStatus::New, 0, 0) // not in disk yet
         }
         self.notify_watchers(key.clone(), value.clone());
 
