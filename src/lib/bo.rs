@@ -421,13 +421,19 @@ impl Database {
                     version: new_version,
                     state,
                     value_disk_addr, // will change on the store
-                    key_disk_addr, // will change on the store
+                    key_disk_addr,   // will change on the store
                 },
             );
         } // release the db
     }
 
-    pub fn set_value_as_ok(&self, key: &String, value: &Value, value_disk_addr: u64, key_disk_addr: u64) {
+    pub fn set_value_as_ok(
+        &self,
+        key: &String,
+        value: &Value,
+        value_disk_addr: u64,
+        key_disk_addr: u64,
+    ) {
         self.set_value_version(
             key,
             &value.value,
