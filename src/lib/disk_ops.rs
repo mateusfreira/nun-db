@@ -34,7 +34,7 @@ const OP_TIME_SIZE: usize = 8;
 const OP_OP_SIZE: usize = 1;
 const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
 
-// Record dizes
+// Record sizes
 const VERSION_SIZE: usize = 4;
 const ADDR_SIZE: usize = 8;
 const U64_SIZE: usize = 8;
@@ -1043,6 +1043,52 @@ mod tests {
         let map = dbs.map.read().unwrap();
         let db_loaded = map.get(&db_name).unwrap();
         assert_eq!(db_loaded.get_value(key).unwrap(), value_updated);
+        remove_database_file(&db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
+    }
+
+    #[test]
+    fn shold_load_remove_keys_from_disk_if_keys_excluded() {
+        let dbs = create_test_dbs();
+        let db_name = String::from("test-db");
+        let mut hash = HashMap::new();
+        let key = String::from("some");
+        let value = String::from("value");
+        let value_updated = String::from("value_updated");
+        let key1 = String::from("some1");
+        let value1 = String::from("value1");
+
+        hash.insert(key.clone(), value.clone());
+        hash.insert(key1.clone(), value1.clone());
+
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        db.set_value(key.clone(), value_updated.clone(), 2);
+
+        let key_value_new = db.get_value(key.to_string()).unwrap();
+        assert_eq!(key_value_new.version, 2);
+        assert_eq!(db.count_keys(), 2);
+
+        dbs.is_oplog_valid.store(false, Ordering::Relaxed);
+        storage_data_disk(&db, &db_name); //Store as old
+
+        let dbs = create_test_dbs();
+        load_all_dbs_from_disk(&dbs);
+        let map = dbs.map.read().unwrap();
+        let db_loaded = map.get(&db_name).unwrap();
+
+        db_loaded.remove_value(key.to_string());
+        assert_eq!(db_loaded.count_keys(), 1);
+        storage_data_disk(&db, &db_name); //Store as old
+
+        let dbs = create_test_dbs();
+        load_all_dbs_from_disk(&dbs);
+        let map = dbs.map.read().unwrap();
+        let db_loaded_final = map.get(&db_name).unwrap();
+
+        assert_eq!(db_loaded_final.count_keys(), 1);
+        storage_data_disk(&db, &db_name); //Store as old
+
         remove_database_file(&db_name);
         clean_op_log_metadata_files();
         remove_keys_file();

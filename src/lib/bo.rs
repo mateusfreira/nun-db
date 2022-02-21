@@ -256,6 +256,12 @@ impl Database {
         }
         value_data
     }
+
+    #[cfg(test)]
+    pub fn count_keys(&self) -> usize {
+        let data = self.map.read().expect("Error getting the db.map.read");
+        data.len()
+    }
     pub fn connections_count(&self) -> usize {
         let connections = self
             .connections
@@ -369,8 +375,10 @@ impl Database {
 
     pub fn remove_value(&self, key: String) -> Response {
         let mut watchers = self.watchers.map.write().unwrap();
-        let mut db = self.map.write().unwrap();
-        db.remove(&key.to_string());
+        {
+            let mut db = self.map.write().unwrap();
+            db.remove(&key.to_string());
+        }// Release the lock
         match watchers.get_mut(&key) {
             Some(senders) => {
                 for sender in senders {
