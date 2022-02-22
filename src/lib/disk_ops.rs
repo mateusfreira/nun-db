@@ -1,7 +1,6 @@
 use log;
 use std::collections::HashMap;
 use std::fs;
-use std::os::unix::prelude::FileExt;
 use std::fs::OpenOptions;
 use std::fs::{create_dir_all, read_dir, File};
 use std::io::prelude::*;
@@ -10,6 +9,7 @@ use std::io::Error;
 use std::io::Read;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::os::unix::prelude::FileExt;
 use std::path::Path;
 use std::str;
 use std::sync::atomic::Ordering;
@@ -38,6 +38,8 @@ const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP
 const VERSION_SIZE: usize = 4;
 const ADDR_SIZE: usize = 8;
 const U64_SIZE: usize = 8;
+
+const VERSION_DELETED: i32 = -1;
 
 use crate::lib::configuration::NUN_DBS_DIR;
 
@@ -180,16 +182,20 @@ fn create_db_from_file_name(file_name: &String, dbs: &Arc<Databases>) -> (Databa
         let _ = values_file.read(&mut value_buffer);
         let value = str::from_utf8(&value_buffer).unwrap();
 
-        value_data.insert(
-            key.to_string(),
-            Value {
-                version,
-                value: value.to_string(),
-                state: ValueStatus::Ok,
-                value_disk_addr: value_addr,
-                key_disk_addr,
-            },
-        );
+        if version != VERSION_DELETED {
+            value_data.insert(
+                key.to_string(),
+                Value {
+                    version,
+                    value: value.to_string(),
+                    state: ValueStatus::Ok,
+                    value_disk_addr: value_addr,
+                    key_disk_addr,
+                },
+            );
+        } else {
+            log::debug!("Key {} not loaded becuase it is deleted", key);
+        }
         key_disk_addr = key_disk_addr + get_key_disk_size(key_length);
     }
     (
@@ -273,10 +279,7 @@ fn get_key_write_mode(db_name: &String) -> (File, u64) {
         _ => 0,
     };
     (
-        OpenOptions::new()
-        .write(true)
-        .open(file_name)
-        .unwrap(),
+        OpenOptions::new().write(true).open(file_name).unwrap(),
         size,
     )
 }
@@ -305,12 +308,12 @@ fn storage_data_disk(db: &Database, db_name: &String) {
     let mut keys_file = get_key_file_append_mode(&db_name);
     let (mut values_file, current_value_file_size) = get_values_file_append_mode(&db_name);
     let (mut keys_file_write, current_key_file_size) = get_key_write_mode(&db_name);
-    log::debug!("current_key_file_size: {}",  current_key_file_size);
+    log::debug!("current_key_file_size: {}", current_key_file_size);
     let mut keys_to_update = vec![];
     {
         let data = db.map.read().expect("Error getting the db.map.read");
         data.iter()
-            .filter(|&(_k, v)| v.state == ValueStatus::Updated || v.state == ValueStatus::New)
+            .filter(|&(_k, v)| v.state != ValueStatus::Ok)
             .for_each(|(k, v)| keys_to_update.push((k.clone(), v.clone())))
     }; // Release the locker
 
@@ -323,7 +326,9 @@ fn storage_data_disk(db: &Database, db_name: &String) {
                 let record_size = write_value(&mut values_file, &value, status);
                 log::debug!(
                     "Write key: {}, addr: {} value_addr: {} ",
-                    key, next_key_addr, value_addr
+                    key,
+                    next_key_addr,
+                    value_addr
                 );
                 let key_size = write_key(&mut keys_file, &key, &value, value_addr);
                 value_addr = value_addr + record_size;
@@ -343,7 +348,15 @@ fn storage_data_disk(db: &Database, db_name: &String) {
                 db.set_value_as_ok(&key, &value, value_addr, value.key_disk_addr);
             }
             ValueStatus::Ok => panic!("Values Ok should never get here"),
-            ValueStatus::Deleted => panic!("Values Deleted should never get here"),
+            ValueStatus::Deleted => {
+                update_key(
+                    &mut keys_file_write,
+                    &key,
+                    VERSION_DELETED, // Version -1 means deleted
+                    0,
+                    value.key_disk_addr,
+                );
+            }
         }
     }
 
@@ -397,12 +410,19 @@ fn update_key(
     let start_at = key_disk_addr + get_key_disk_size(key.len()) - (8 + VERSION_SIZE as u64);
     log::debug!(
         "Update key: {}, addr: {} value_addr: {} start_at: {}",
-        key, key_disk_addr, value_addr, start_at
+        key,
+        key_disk_addr,
+        value_addr,
+        start_at
     );
     //4 bytes
-    keys_file.write_at(&version.to_le_bytes(), start_at).unwrap();
+    keys_file
+        .write_at(&version.to_le_bytes(), start_at)
+        .unwrap();
     //8 bytes
-    keys_file.write_at(&value_addr.to_le_bytes(), start_at + VERSION_SIZE as u64).unwrap();
+    keys_file
+        .write_at(&value_addr.to_le_bytes(), start_at + VERSION_SIZE as u64)
+        .unwrap();
 }
 
 fn write_metadata_file(db_name: &String, db: &Database) {
@@ -769,6 +789,13 @@ mod tests {
             fs::remove_file(values_file_name).unwrap();
         }
     }
+
+    fn clean_all_db_files(db_name: &String) {
+        remove_database_file(&db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
+    }
+
     fn storage_data_disk_old(db: &Database, db_name: String) {
         let data = db.to_string_hash();
         // store data
@@ -881,10 +908,9 @@ mod tests {
     fn should_restore_keys_with_same_version() {
         let dbs = create_test_dbs();
         let db_name = String::from("test-db");
-        remove_database_file(&db_name);
-        clean_op_log_metadata_files();
-        remove_keys_file();
         let db_file_name = file_name_from_db_name(&db_name);
+        clean_all_db_files(&db_name);
+
         let mut hash = HashMap::new();
         let key = String::from("some");
         let value = String::from("value");
@@ -943,9 +969,7 @@ mod tests {
         assert_eq!(key1_value.value, value1);
         assert_eq!(key1_value.version, 1);
 
-        remove_database_file(&db_name);
-        clean_op_log_metadata_files();
-        remove_keys_file();
+        clean_all_db_files(&db_name);
     }
 
     #[test]
@@ -1052,6 +1076,7 @@ mod tests {
     fn shold_load_remove_keys_from_disk_if_keys_excluded() {
         let dbs = create_test_dbs();
         let db_name = String::from("test-db");
+        clean_all_db_files(&db_name);
         let mut hash = HashMap::new();
         let key = String::from("some");
         let value = String::from("value");
@@ -1078,8 +1103,8 @@ mod tests {
         let db_loaded = map.get(&db_name).unwrap();
 
         db_loaded.remove_value(key.to_string());
-        assert_eq!(db_loaded.count_keys(), 1);
-        storage_data_disk(&db, &db_name); //Store as old
+        //assert_eq!(db_loaded.count_keys(), 1);
+        storage_data_disk(&db_loaded, &db_name);
 
         let dbs = create_test_dbs();
         load_all_dbs_from_disk(&dbs);
@@ -1087,7 +1112,7 @@ mod tests {
         let db_loaded_final = map.get(&db_name).unwrap();
 
         assert_eq!(db_loaded_final.count_keys(), 1);
-        storage_data_disk(&db, &db_name); //Store as old
+        storage_data_disk(&db, &db_name);
 
         remove_database_file(&db_name);
         clean_op_log_metadata_files();
@@ -1148,9 +1173,9 @@ mod tests {
 
     #[test]
     fn should_restore_should_be_fast() {
-        let start = Instant::now();
         let (dbs, db_name, db) = create_db_with_10k_keys();
-        remove_database_file(&db_name);
+        clean_all_db_files(&db_name);
+        let start = Instant::now();
         storage_data_disk(&db, &db_name);
         log::info!("TIme {:?}", start.elapsed());
         assert!(start.elapsed().as_millis() < 100);

@@ -376,9 +376,18 @@ impl Database {
     pub fn remove_value(&self, key: String) -> Response {
         let mut watchers = self.watchers.map.write().unwrap();
         {
-            let mut db = self.map.write().unwrap();
-            db.remove(&key.to_string());
-        }// Release the lock
+            if let Some(value) = self.get_value(key.clone()) {
+                // value.
+                self.set_value_version(
+                    &key,
+                    &String::from("<Empty>"),
+                    value.version + 1,
+                    ValueStatus::Deleted,
+                    value.value_disk_addr,
+                    value.key_disk_addr,
+                );
+            }
+        } // Release the lock
         match watchers.get_mut(&key) {
             Some(senders) => {
                 for sender in senders {
