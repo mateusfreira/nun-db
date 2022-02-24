@@ -323,6 +323,7 @@ fn storage_data_disk(db: &Database, db_name: &String) {
     for (key, value) in keys_to_update {
         match value.state {
             ValueStatus::New => {
+                // Append value file
                 let record_size = write_value(&mut values_file, &value, status);
                 log::debug!(
                     "Write key: {}, addr: {} value_addr: {} ",
@@ -330,13 +331,19 @@ fn storage_data_disk(db: &Database, db_name: &String) {
                     next_key_addr,
                     value_addr
                 );
+
+                // Append key file
                 let key_size = write_key(&mut keys_file, &key, &value, value_addr);
                 value_addr = value_addr + record_size;
                 db.set_value_as_ok(&key, &value, value_addr, next_key_addr);
                 next_key_addr = next_key_addr + key_size;
             }
+
             ValueStatus::Updated => {
+                // Append value file
                 let record_size = write_value(&mut values_file, &value, status);
+
+                // In place upate in key file
                 update_key(
                     &mut keys_file_write,
                     &key,
@@ -347,8 +354,9 @@ fn storage_data_disk(db: &Database, db_name: &String) {
                 value_addr = value_addr + record_size;
                 db.set_value_as_ok(&key, &value, value_addr, value.key_disk_addr);
             }
-            ValueStatus::Ok => panic!("Values Ok should never get here"),
+
             ValueStatus::Deleted => {
+                // In place upate in key file
                 update_key(
                     &mut keys_file_write,
                     &key,
@@ -357,6 +365,8 @@ fn storage_data_disk(db: &Database, db_name: &String) {
                     value.key_disk_addr,
                 );
             }
+
+            ValueStatus::Ok => panic!("Values Ok should never get here"),
         }
     }
 

@@ -107,9 +107,13 @@ impl fmt::Display for ClusterRole {
 
 #[derive(Clone, PartialEq, Copy, Debug)]
 pub enum ValueStatus {
+    /// Value is ok memory == disk values
     Ok = 0,
+    /// Value is updated on memory not yet stored in disk
     Updated = 2,
+    /// Value value needs to be deleted in the disk
     Deleted = 1,
+    /// Value is new it is not present on disk yet
     New = 3,
 }
 
