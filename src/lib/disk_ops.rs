@@ -114,11 +114,13 @@ fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::D
         let full_name = entry.file_name().into_string().unwrap();
         if full_name.ends_with(FILE_NAME) {
             log::warn!(
-                "Will migrate the database {} in the next snapshot",
+                "Will migrate the database {} before moving ahead!",
                 full_name
             );
             let db = create_db_from_file_name_old(&full_name, &dbs);
             let db_name = db_name_from_file_name(&full_name);
+            storage_data_disk(&db, &db_name);
+            remove_old_db_file(&db_name);
             dbs.add_database(&db_name.to_string(), db);
         } else if full_name.ends_with(DB_KEYS_FILE_NAME) {
             let (db, db_name) = create_db_from_file_name(&full_name, &dbs);
@@ -304,7 +306,6 @@ fn get_values_file_append_mode(db_name: &String) -> (BufWriter<File>, u64) {
 }
 
 fn storage_data_disk(db: &Database, db_name: &String) {
-    remove_old_db_file(&db_name);
     let mut keys_file = get_key_file_append_mode(&db_name);
     let (mut values_file, current_value_file_size) = get_values_file_append_mode(&db_name);
     let (mut keys_file_write, current_key_file_size) = get_key_write_mode(&db_name);
