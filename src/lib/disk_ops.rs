@@ -19,7 +19,7 @@ use std::time::Instant;
 use crate::bo::*;
 
 const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
-const FILE_NAME: &'static str = "-nun.data";
+const OLD_FILE_NAME: &'static str = "-nun.data";
 const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
 const META_FILE_NAME: &'static str = "-nun.madadata";
 
@@ -112,7 +112,7 @@ pub fn load_db_metadata_from_disk_or_empty(name: String, dbs: &Arc<Databases>) -
 fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::DirEntry>) {
     if let Ok(entry) = entry {
         let full_name = entry.file_name().into_string().unwrap();
-        if full_name.ends_with(FILE_NAME) {
+        if full_name.ends_with(OLD_FILE_NAME) {
             log::warn!(
                 "Will migrate the database {} before moving ahead!",
                 full_name
@@ -227,7 +227,7 @@ pub fn file_name_from_db_name(db_name: &String) -> String {
         "{dir}/{db_name}{sufix}",
         dir = get_dir_name(),
         db_name = db_name,
-        sufix = FILE_NAME
+        sufix = OLD_FILE_NAME
     )
 }
 
@@ -257,7 +257,7 @@ pub fn meta_file_name_from_db_name(db_name: String) -> String {
 }
 
 pub fn db_name_from_file_name(full_name: &String) -> String {
-    let partial_name = full_name.replace(FILE_NAME, "");
+    let partial_name = full_name.replace(OLD_FILE_NAME, "");
     let splited_name: Vec<&str> = partial_name.split("/").collect();
     let db_name = splited_name.last().unwrap();
     return db_name.to_string();
@@ -815,13 +815,12 @@ mod tests {
         write_metadata_file(&db_name, db);
     }
 
-    const FILE_NAME_OLD: &'static str = "-nun.data";
     fn file_name_from_db_name_old(db_name: &String) -> String {
         format!(
             "{dir}/{db_name}{sufix}",
             dir = get_dir_name(),
             db_name = db_name,
-            sufix = FILE_NAME_OLD
+            sufix = OLD_FILE_NAME
         )
     }
     fn create_dbs() -> std::sync::Arc<Databases> {
