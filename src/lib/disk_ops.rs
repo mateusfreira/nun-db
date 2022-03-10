@@ -305,7 +305,8 @@ fn get_values_file_append_mode(db_name: &String) -> (BufWriter<File>, u64) {
     )
 }
 
-fn storage_data_disk(db: &Database, db_name: &String) {
+fn storage_data_disk(db: &Database, db_name: &String) -> u32 {
+    let mut changed_keys = 0;
     let mut keys_file = get_key_file_append_mode(&db_name);
     let (mut values_file, current_value_file_size) = get_values_file_append_mode(&db_name);
     let (mut keys_file_write, current_key_file_size) = get_key_write_mode(&db_name);
@@ -324,6 +325,7 @@ fn storage_data_disk(db: &Database, db_name: &String) {
     for (key, value) in keys_to_update {
         match value.state {
             ValueStatus::New => {
+                changed_keys = changed_keys + 1;
                 // Append value file
                 let record_size = write_value(&mut values_file, &value, status);
                 log::debug!(
@@ -341,6 +343,7 @@ fn storage_data_disk(db: &Database, db_name: &String) {
             }
 
             ValueStatus::Updated => {
+                changed_keys = changed_keys + 1;
                 // Append value file
                 let record_size = write_value(&mut values_file, &value, status);
 
@@ -357,6 +360,7 @@ fn storage_data_disk(db: &Database, db_name: &String) {
             }
 
             ValueStatus::Deleted => {
+                changed_keys = changed_keys + 1;
                 // In place upate in key file
                 update_key(
                     &mut keys_file_write,
@@ -376,6 +380,8 @@ fn storage_data_disk(db: &Database, db_name: &String) {
     values_file.flush().unwrap();
 
     write_metadata_file(db_name, db);
+    log::debug!("snapshoted {} keys", changed_keys);
+    changed_keys
 }
 
 /// Writes a value to a giving file
@@ -777,6 +783,7 @@ fn get_key_value_files_name_from_file_name(file_name: String) -> (String, String
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
 
@@ -1186,9 +1193,10 @@ mod tests {
         let (dbs, db_name, db) = create_db_with_10k_keys();
         clean_all_db_files(&db_name);
         let start = Instant::now();
-        storage_data_disk(&db, &db_name);
+        let changed_keys = storage_data_disk(&db, &db_name);
         log::info!("TIme {:?}", start.elapsed());
         assert!(start.elapsed().as_millis() < 100);
+        assert_eq!(changed_keys, 10000);
 
         let start_load = Instant::now();
         let db_file_name = file_name_from_db_name(&db_name);
@@ -1210,7 +1218,57 @@ mod tests {
         assert_eq!(value_100.value, String::from("key_100"));
         assert_eq!(value_1000.value, String::from("key_1000"));
         let start_secount_storage = Instant::now();
-        storage_data_disk(&loaded_db, &db_name);
+        let changed_keys = storage_data_disk(&loaded_db, &db_name);
+        assert_eq!(changed_keys, 1);
+
+
+        let time_in_ms = start_secount_storage.elapsed().as_millis();
+        log::debug!("TIme to update {:?}ms", time_in_ms);
+        assert!(time_in_ms < 2);
+
+        remove_database_file(&db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
+    }
+
+
+    #[test]
+    fn should_restore_all_keys_if_reclame_space_mode() {
+        let (dbs, db_name, db) = create_db_with_10k_keys();
+        clean_all_db_files(&db_name);
+        let start = Instant::now();
+        let changed_keys = storage_data_disk(&db, &db_name);
+        log::info!("TIme {:?}", start.elapsed());
+        assert!(start.elapsed().as_millis() < 100);
+        assert_eq!(changed_keys, 10000);
+
+        let start_load = Instant::now();
+        let db_file_name = file_name_from_db_name(&db_name);
+        let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
+        let time_in_ms = start_load.elapsed().as_millis();
+        log::info!("TIme to update {:?}ms", time_in_ms);
+        assert!(start_load.elapsed().as_millis() < 100);
+
+        let value = loaded_db.get_value(String::from("key_1")).unwrap();
+        assert_eq!(value.state, ValueStatus::Ok);
+
+        loaded_db.set_value(String::from("key_1"), String::from("New-value"), 2);
+
+        let value = loaded_db.get_value(String::from("key_1")).unwrap();
+        let value_100 = loaded_db.get_value(String::from("key_100")).unwrap();
+        let value_1000 = loaded_db.get_value(String::from("key_1000")).unwrap();
+        assert_eq!(value.state, ValueStatus::Updated);
+        assert_eq!(value_100.state, ValueStatus::Ok);
+        assert_eq!(value_100.value, String::from("key_100"));
+        assert_eq!(value_1000.value, String::from("key_1000"));
+        let start_secount_storage = Instant::now();
+        let changed_keys = storage_data_disk(&loaded_db, &db_name);
+        assert_eq!(changed_keys, 1);
+        let changed_keys = storage_data_disk(&loaded_db, &db_name);
+        assert_eq!(changed_keys, 0);
+        let changed_keys = storage_data_disk(&loaded_db, &db_name);
+        assert_eq!(changed_keys, 10000);
+
 
         let time_in_ms = start_secount_storage.elapsed().as_millis();
         log::debug!("TIme to update {:?}ms", time_in_ms);
@@ -1225,7 +1283,7 @@ mod tests {
         let dbs = create_test_dbs();
         let db_name = String::from("test-db");
         let mut hash = HashMap::new();
-        for i in 1..10000 {
+        for i in 0..10000 {
             hash.insert(format!("key_{}", i), format!("key_{}", i));
         }
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
