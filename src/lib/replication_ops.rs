@@ -58,7 +58,10 @@ pub fn replicate_request(
 
             Request::ReplicateSnapshot { db, reclaim_space } => {
                 log::debug!("Will replicate a snapshot to the database {}", db);
-                replicate_web(replication_sender, format!("replicate-snapshot {} {}", db, reclaim_space));
+                replicate_web(
+                    replication_sender,
+                    format!("replicate-snapshot {} {}", db, reclaim_space),
+                );
                 Response::Ok {}
             }
 

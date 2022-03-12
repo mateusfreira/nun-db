@@ -238,7 +238,7 @@ pub struct Databases {
     pub pending_opps: std::sync::RwLock<HashMap<u64, ReplicationMessage>>,
     pub keys_map: std::sync::RwLock<HashMap<String, u64>>,
     pub id_keys_map: std::sync::RwLock<HashMap<u64, String>>,
-    pub to_snapshot: RwLock<Vec<(String, bool)>>,// (database_name, reclaim_space)
+    pub to_snapshot: RwLock<Vec<(String, bool)>>, // (database_name, reclaim_space)
     pub cluster_state: Mutex<ClusterState>,
     pub replication_supervisor_sender: Sender<String>,
     pub replication_sender: Sender<String>,

@@ -98,10 +98,7 @@ pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &C
 pub fn snapshot_db(db: &Database, dbs: &Databases, reclaim_space: bool) -> Response {
     let name = db.name.clone();
     {
-        dbs.to_snapshot
-            .write()
-            .unwrap()
-            .push((name, reclaim_space));
+        dbs.to_snapshot.write().unwrap().push((name, reclaim_space));
     };
     Response::Ok {}
 }
