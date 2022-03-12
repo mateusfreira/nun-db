@@ -15,7 +15,7 @@ impl Request {
             Some("unwatch-all") => Ok(Request::UnWatchAll {}),
             Some("keys") => Ok(Request::Keys {}),
             Some("snapshot") => {
-                let reclaim_space = command.next().unwrap_or("true");
+                let reclaim_space = command.next().unwrap_or("false");
                 Ok(Request::Snapshot {
                     reclaim_space: reclaim_space == "true",
                 })
@@ -658,6 +658,20 @@ mod tests {
                     Ok(())
                 } else {
                     Err(String::from("db should vue key should be jose value 1"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_snapshot() -> Result<(), String> {
+        match Request::parse("snapshot") {
+            Ok(Request::Snapshot { reclaim_space }) => {
+                if !reclaim_space {
+                    Ok(())
+                } else {
+                    Err(String::from("Should not reclaim_space by default"))
                 }
             }
             _ => Err(String::from("wrong command parsed")),
