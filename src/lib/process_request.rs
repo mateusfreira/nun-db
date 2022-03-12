@@ -123,16 +123,17 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             respose
         }),
 
-        Request::Snapshot {} => apply_if_auth(&client.auth, &|| {
-            apply_to_database(&dbs, &client, &|_db| snapshot_db(_db, &dbs))
+        Request::Snapshot { reclaim_space } => apply_if_auth(&client.auth, &|| {
+            apply_to_database(&dbs, &client, &|_db| snapshot_db(_db, &dbs, reclaim_space))
         }),
 
         Request::ReplicateSnapshot {
+            reclaim_space,
             db: db_to_snap_shot,
         } => apply_if_auth(&client.auth, &|| {
             let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock");
             match dbs_map.get(&db_to_snap_shot.to_string()) {
-                Some(db) => snapshot_db(db, &dbs),
+                Some(db) => snapshot_db(db, &dbs, reclaim_space),
                 _ => Response::Error {
                     msg: "Invalid db name".to_string(),
                 },

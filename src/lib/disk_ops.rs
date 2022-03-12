@@ -543,13 +543,13 @@ pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
             dbs
         };
         dbs_to_snapshot.dedup();
-        while let Some(database_name) = dbs_to_snapshot.pop() {
+        while let Some((database_name, reclaim_space)) = dbs_to_snapshot.pop() {
             log::debug!("Will snapshot the database {}", database_name);
             let dbs = dbs.clone();
             let dbs_map = dbs.map.read().unwrap();
             let db_opt = dbs_map.get(&database_name);
             if let Some(db) = db_opt {
-                storage_data_disk(db, &database_name, false);
+                storage_data_disk(db, &database_name, reclaim_space);
             } else {
                 log::warn!("Database not found {}", database_name)
             }
