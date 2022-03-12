@@ -119,7 +119,7 @@ fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::D
             );
             let db = create_db_from_file_name_old(&full_name, &dbs);
             let db_name = db_name_from_file_name(&full_name);
-            storage_data_disk(&db, &db_name);
+            storage_data_disk(&db, &db_name, true);
             remove_old_db_file(&db_name);
             dbs.add_database(&db_name.to_string(), db);
         } else if full_name.ends_with(DB_KEYS_FILE_NAME) {
@@ -263,13 +263,22 @@ pub fn db_name_from_file_name(full_name: &String) -> String {
     return db_name.to_string();
 }
 
-fn get_key_file_append_mode(db_name: &String) -> BufWriter<File> {
+fn get_key_file_append_mode(db_name: &String, reclame_space: bool) -> BufWriter<File> {
+    let file_name = format!("{}.keys", file_name_from_db_name(&db_name));
+    let backup_file = format!("{}.old", file_name);
+
+    if reclame_space && Path::new(&file_name).exists() {
+        fs::rename(&file_name, &backup_file)
+            .expect("Could not rename the data file to reclame space");
+        fs::remove_file(&backup_file).expect("Could not delete the backup file to reclame  space");
+    }
+
     BufWriter::with_capacity(
         OP_RECORD_SIZE * 10,
         OpenOptions::new()
             .append(true)
             .create(true)
-            .open(format!("{}.keys", file_name_from_db_name(&db_name)))
+            .open(&file_name)
             .unwrap(),
     )
 }
@@ -286,8 +295,15 @@ fn get_key_write_mode(db_name: &String) -> (File, u64) {
     )
 }
 
-fn get_values_file_append_mode(db_name: &String) -> (BufWriter<File>, u64) {
+fn get_values_file_append_mode(db_name: &String, reclame_space: bool) -> (BufWriter<File>, u64) {
     let file_name = format!("{}.values", file_name_from_db_name(&db_name));
+    let backup_file = format!("{}.old", file_name);
+    if reclame_space && Path::new(&file_name).exists() {
+        fs::rename(&file_name, &backup_file)
+            .expect("Could not rename the data file to reclame space");
+        fs::remove_file(&backup_file).expect("Could not delete the backup file to reclame  space");
+    }
+
     let size = match fs::metadata(&file_name) {
         Ok(metadata) => metadata.len(),
         _ => 0,
@@ -305,17 +321,18 @@ fn get_values_file_append_mode(db_name: &String) -> (BufWriter<File>, u64) {
     )
 }
 
-fn storage_data_disk(db: &Database, db_name: &String) -> u32 {
+fn storage_data_disk(db: &Database, db_name: &String, reclame_space: bool) -> u32 {
     let mut changed_keys = 0;
-    let mut keys_file = get_key_file_append_mode(&db_name);
-    let (mut values_file, current_value_file_size) = get_values_file_append_mode(&db_name);
+    let mut keys_file = get_key_file_append_mode(&db_name, reclame_space);
+    let (mut values_file, current_value_file_size) =
+        get_values_file_append_mode(&db_name, reclame_space);
     let (mut keys_file_write, current_key_file_size) = get_key_write_mode(&db_name);
     log::debug!("current_key_file_size: {}", current_key_file_size);
     let mut keys_to_update = vec![];
     {
         let data = db.map.read().expect("Error getting the db.map.read");
         data.iter()
-            .filter(|&(_k, v)| v.state != ValueStatus::Ok)
+            .filter(|&(_k, v)| v.state != ValueStatus::Ok || reclame_space)
             .for_each(|(k, v)| keys_to_update.push((k.clone(), v.clone())))
     }; // Release the locker
 
@@ -323,55 +340,104 @@ fn storage_data_disk(db: &Database, db_name: &String) -> u32 {
     let mut next_key_addr = current_key_file_size;
     let status = ValueStatus::Ok;
     for (key, value) in keys_to_update {
-        match value.state {
-            ValueStatus::New => {
-                changed_keys = changed_keys + 1;
-                // Append value file
-                let record_size = write_value(&mut values_file, &value, status);
-                log::debug!(
-                    "Write key: {}, addr: {} value_addr: {} ",
-                    key,
-                    next_key_addr,
-                    value_addr
-                );
+        if reclame_space {
+            match value.state {
+                ValueStatus::New => {
+                    changed_keys = changed_keys + 1;
+                    // Append value file
+                    let record_size = write_value(&mut values_file, &value, status);
+                    // Append key file
+                    let key_size = write_key(&mut keys_file, &key, &value, value_addr);
+                    value_addr = value_addr + record_size;
+                    db.set_value_as_ok(&key, &value, value_addr, next_key_addr);
+                    next_key_addr = next_key_addr + key_size;
+                }
 
-                // Append key file
-                let key_size = write_key(&mut keys_file, &key, &value, value_addr);
-                value_addr = value_addr + record_size;
-                db.set_value_as_ok(&key, &value, value_addr, next_key_addr);
-                next_key_addr = next_key_addr + key_size;
+                ValueStatus::Updated => {
+                    changed_keys = changed_keys + 1;
+                    // Append value file
+                    let record_size = write_value(&mut values_file, &value, status);
+                    db.set_value_as_ok(&key, &value, value_addr, value.key_disk_addr);
+                    // Append key file
+                    let key_size = write_key(&mut keys_file, &key, &value, value_addr);
+                    value_addr = value_addr + record_size;
+                    db.set_value_as_ok(&key, &value, value_addr, next_key_addr);
+                    next_key_addr = next_key_addr + key_size;
+                }
+
+                ValueStatus::Ok => {
+                    changed_keys = changed_keys + 1;
+                    // Append value file
+                    let record_size = write_value(&mut values_file, &value, status);
+                    log::debug!(
+                        "reclame_space write key: {}, addr: {} value_addr: {} ",
+                        key,
+                        next_key_addr,
+                        value_addr
+                    );
+
+                    // Append key file
+                    let key_size = write_key(&mut keys_file, &key, &value, value_addr);
+                    value_addr = value_addr + record_size;
+                    db.set_value_as_ok(&key, &value, value_addr, next_key_addr);
+                    next_key_addr = next_key_addr + key_size;
+                }
+
+                ValueStatus::Deleted => {} // To reclame_space nothing need to be done on delete
             }
+        } else {
+            match value.state {
+                ValueStatus::New => {
+                    changed_keys = changed_keys + 1;
+                    // Append value file
+                    let record_size = write_value(&mut values_file, &value, status);
+                    log::debug!(
+                        "Write key: {}, addr: {} value_addr: {} ",
+                        key,
+                        next_key_addr,
+                        value_addr
+                    );
 
-            ValueStatus::Updated => {
-                changed_keys = changed_keys + 1;
-                // Append value file
-                let record_size = write_value(&mut values_file, &value, status);
+                    // Append key file
+                    let key_size = write_key(&mut keys_file, &key, &value, value_addr);
+                    value_addr = value_addr + record_size;
+                    db.set_value_as_ok(&key, &value, value_addr, next_key_addr);
+                    next_key_addr = next_key_addr + key_size;
+                }
 
-                // In place upate in key file
-                update_key(
-                    &mut keys_file_write,
-                    &key,
-                    value.version,
-                    value_addr,
-                    value.key_disk_addr,
-                );
-                value_addr = value_addr + record_size;
-                db.set_value_as_ok(&key, &value, value_addr, value.key_disk_addr);
+                ValueStatus::Updated => {
+                    changed_keys = changed_keys + 1;
+                    // Append value file
+                    let record_size = write_value(&mut values_file, &value, status);
+
+                    // In place upate in key file
+                    update_key(
+                        &mut keys_file_write,
+                        &key,
+                        value.version,
+                        value_addr,
+                        value.key_disk_addr,
+                    );
+                    value_addr = value_addr + record_size;
+                    db.set_value_as_ok(&key, &value, value_addr, next_key_addr);
+                }
+
+                ValueStatus::Deleted => {
+                    changed_keys = changed_keys + 1;
+                    // In place upate in key file
+                    update_key(
+                        &mut keys_file_write,
+                        &key,
+                        VERSION_DELETED, // Version -1 means deleted
+                        0,
+                        value.key_disk_addr,
+                    );
+                }
+
+                ValueStatus::Ok => {
+                    panic!("Values Ok should never get here")
+                }
             }
-
-            ValueStatus::Deleted => {
-                changed_keys = changed_keys + 1;
-                // In place upate in key file
-                update_key(
-                    &mut keys_file_write,
-                    &key,
-                    VERSION_DELETED, // Version -1 means deleted
-                    0,
-                    value.key_disk_addr,
-                );
-            }
-
-            ValueStatus::Ok => panic!("Values Ok should never get here"),
         }
     }
 
@@ -483,7 +549,7 @@ pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
             let dbs_map = dbs.map.read().unwrap();
             let db_opt = dbs_map.get(&database_name);
             if let Some(db) = db_opt {
-                storage_data_disk(db, &database_name);
+                storage_data_disk(db, &database_name, false);
             } else {
                 log::warn!("Database not found {}", database_name)
             }
@@ -945,7 +1011,7 @@ mod tests {
         assert_eq!(key_value_new.version, 2);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk(&db, &db_name);
+        storage_data_disk(&db, &db_name, false);
 
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
@@ -960,7 +1026,7 @@ mod tests {
         loaded_db.set_value(key.clone(), final_value.clone(), 3);
 
         // To test in place update
-        storage_data_disk(&loaded_db, &db_name);
+        storage_data_disk(&loaded_db, &db_name, false);
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
 
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
@@ -975,7 +1041,7 @@ mod tests {
         loaded_db.set_value(key.clone(), final_value.clone(), 3);
 
         // To test in place update
-        storage_data_disk(&loaded_db, &db_name);
+        storage_data_disk(&loaded_db, &db_name, false);
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
 
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
@@ -1017,7 +1083,7 @@ mod tests {
         let map = dbs.map.read().unwrap();
         let db_loaded = map.get(&db_name).unwrap();
         assert_eq!(db_loaded.get_value(key).unwrap(), value_updated);
-        storage_data_disk(&db_loaded, &db_name); //Store as new
+        storage_data_disk(&db_loaded, &db_name, false); //Store as new
         let db_file_name = file_name_from_db_name_old(&db_name);
         assert!(!Path::new(&db_file_name).exists());
     }
@@ -1077,7 +1143,7 @@ mod tests {
         assert_eq!(key_value_new.version, 2);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk(&db, &db_name); //Store as old
+        storage_data_disk(&db, &db_name, false);
 
         let dbs = create_test_dbs();
         load_all_dbs_from_disk(&dbs);
@@ -1112,7 +1178,7 @@ mod tests {
         assert_eq!(db.count_keys(), 2);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk(&db, &db_name); //Store as old
+        storage_data_disk(&db, &db_name, false);
 
         let dbs = create_test_dbs();
         load_all_dbs_from_disk(&dbs);
@@ -1121,7 +1187,7 @@ mod tests {
 
         db_loaded.remove_value(key.to_string());
         //assert_eq!(db_loaded.count_keys(), 1);
-        storage_data_disk(&db_loaded, &db_name);
+        storage_data_disk(&db_loaded, &db_name, false);
 
         let dbs = create_test_dbs();
         load_all_dbs_from_disk(&dbs);
@@ -1129,7 +1195,7 @@ mod tests {
         let db_loaded_final = map.get(&db_name).unwrap();
 
         assert_eq!(db_loaded_final.count_keys(), 1);
-        storage_data_disk(&db, &db_name);
+        storage_data_disk(&db, &db_name, false);
 
         remove_database_file(&db_name);
         clean_op_log_metadata_files();
@@ -1150,10 +1216,10 @@ mod tests {
         let full_name = file_name_from_db_name(&db_name);
         let (keys_file_name, _values_file_name) =
             get_key_value_files_name_from_file_name(full_name);
-        storage_data_disk(&db, &db_name);
+        storage_data_disk(&db, &db_name, false);
         let key_file_size_before = get_file_size(&keys_file_name);
         //remove_database_file(&db_name);
-        storage_data_disk(&db, &db_name);
+        storage_data_disk(&db, &db_name, false);
         let key_file_after = get_file_size(&keys_file_name);
         assert_eq!(key_file_size_before, key_file_after);
 
@@ -1169,7 +1235,7 @@ mod tests {
         let full_name = file_name_from_db_name(&db_name);
         let (keys_file_name, _values_file_name) =
             get_key_value_files_name_from_file_name(full_name);
-        storage_data_disk(&db, &db_name);
+        storage_data_disk(&db, &db_name, false);
         let key_file_size_before = get_file_size(&keys_file_name);
         let key_1 = String::from("key_1");
         let value = db.get_value(key_1.clone()).unwrap();
@@ -1179,7 +1245,7 @@ mod tests {
         let value = db.get_value(key_1.clone()).unwrap();
         assert_eq!(value.state, ValueStatus::Updated);
 
-        storage_data_disk(&db, &db_name);
+        storage_data_disk(&db, &db_name, false);
         let key_file_after = get_file_size(&keys_file_name);
         assert_eq!(key_file_size_before, key_file_after);
 
@@ -1193,7 +1259,7 @@ mod tests {
         let (dbs, db_name, db) = create_db_with_10k_keys();
         clean_all_db_files(&db_name);
         let start = Instant::now();
-        let changed_keys = storage_data_disk(&db, &db_name);
+        let changed_keys = storage_data_disk(&db, &db_name, false);
         log::info!("TIme {:?}", start.elapsed());
         assert!(start.elapsed().as_millis() < 100);
         assert_eq!(changed_keys, 10000);
@@ -1218,9 +1284,8 @@ mod tests {
         assert_eq!(value_100.value, String::from("key_100"));
         assert_eq!(value_1000.value, String::from("key_1000"));
         let start_secount_storage = Instant::now();
-        let changed_keys = storage_data_disk(&loaded_db, &db_name);
+        let changed_keys = storage_data_disk(&loaded_db, &db_name, false);
         assert_eq!(changed_keys, 1);
-
 
         let time_in_ms = start_secount_storage.elapsed().as_millis();
         log::debug!("TIme to update {:?}ms", time_in_ms);
@@ -1231,13 +1296,15 @@ mod tests {
         remove_keys_file();
     }
 
-
     #[test]
     fn should_restore_all_keys_if_reclame_space_mode() {
         let (dbs, db_name, db) = create_db_with_10k_keys();
         clean_all_db_files(&db_name);
+        let full_name = file_name_from_db_name(&db_name);
+        let (_keys_file_name, values_file_name) =
+            get_key_value_files_name_from_file_name(full_name);
         let start = Instant::now();
-        let changed_keys = storage_data_disk(&db, &db_name);
+        let changed_keys = storage_data_disk(&db, &db_name, false);
         log::info!("TIme {:?}", start.elapsed());
         assert!(start.elapsed().as_millis() < 100);
         assert_eq!(changed_keys, 10000);
@@ -1261,18 +1328,22 @@ mod tests {
         assert_eq!(value_100.state, ValueStatus::Ok);
         assert_eq!(value_100.value, String::from("key_100"));
         assert_eq!(value_1000.value, String::from("key_1000"));
-        let start_secount_storage = Instant::now();
-        let changed_keys = storage_data_disk(&loaded_db, &db_name);
+
+        let file_size_before = get_file_size(&values_file_name);
+
+        let changed_keys = storage_data_disk(&loaded_db, &db_name, false);
         assert_eq!(changed_keys, 1);
-        let changed_keys = storage_data_disk(&loaded_db, &db_name);
+        let file_size_after = get_file_size(&values_file_name);
+        assert!(file_size_before < file_size_after);
+
+        let changed_keys = storage_data_disk(&loaded_db, &db_name, false);
         assert_eq!(changed_keys, 0);
-        let changed_keys = storage_data_disk(&loaded_db, &db_name);
+
+        let changed_keys = storage_data_disk(&loaded_db, &db_name, true);
         assert_eq!(changed_keys, 10000);
+        let file_size_last = get_file_size(&values_file_name);
 
-
-        let time_in_ms = start_secount_storage.elapsed().as_millis();
-        log::debug!("TIme to update {:?}ms", time_in_ms);
-        assert!(time_in_ms < 2);
+        assert!(file_size_last < file_size_after);
 
         remove_database_file(&db_name);
         clean_op_log_metadata_files();
