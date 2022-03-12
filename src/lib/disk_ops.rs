@@ -19,7 +19,7 @@ use std::time::Instant;
 use crate::bo::*;
 
 const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
-const OLD_FILE_NAME: &'static str = "-nun.data";
+const BASE_FILE_NAME: &'static str = "-nun.data";
 const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
 const META_FILE_NAME: &'static str = "-nun.madadata";
 
@@ -112,7 +112,7 @@ pub fn load_db_metadata_from_disk_or_empty(name: String, dbs: &Arc<Databases>) -
 fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::DirEntry>) {
     if let Ok(entry) = entry {
         let full_name = entry.file_name().into_string().unwrap();
-        if full_name.ends_with(OLD_FILE_NAME) {
+        if full_name.ends_with(BASE_FILE_NAME) {
             log::warn!(
                 "Will migrate the database {} before moving ahead!",
                 full_name
@@ -227,7 +227,7 @@ pub fn file_name_from_db_name(db_name: &String) -> String {
         "{dir}/{db_name}{sufix}",
         dir = get_dir_name(),
         db_name = db_name,
-        sufix = OLD_FILE_NAME
+        sufix = BASE_FILE_NAME
     )
 }
 
@@ -257,7 +257,7 @@ pub fn meta_file_name_from_db_name(db_name: String) -> String {
 }
 
 pub fn db_name_from_file_name(full_name: &String) -> String {
-    let partial_name = full_name.replace(OLD_FILE_NAME, "");
+    let partial_name = full_name.replace(BASE_FILE_NAME, "");
     let splited_name: Vec<&str> = partial_name.split("/").collect();
     let db_name = splited_name.last().unwrap();
     return db_name.to_string();
@@ -265,9 +265,10 @@ pub fn db_name_from_file_name(full_name: &String) -> String {
 
 fn get_key_file_append_mode(db_name: &String, reclame_space: bool) -> BufWriter<File> {
     let file_name = format!("{}.keys", file_name_from_db_name(&db_name));
-    let backup_file = format!("{}.old", file_name);
 
     if reclame_space && Path::new(&file_name).exists() {
+        let backup_file = format!("{}.old", file_name);
+        // Rename becuase remove may not be sync
         fs::rename(&file_name, &backup_file)
             .expect("Could not rename the data file to reclame space");
         fs::remove_file(&backup_file).expect("Could not delete the backup file to reclame  space");
@@ -297,8 +298,9 @@ fn get_key_write_mode(db_name: &String) -> (File, u64) {
 
 fn get_values_file_append_mode(db_name: &String, reclame_space: bool) -> (BufWriter<File>, u64) {
     let file_name = format!("{}.values", file_name_from_db_name(&db_name));
-    let backup_file = format!("{}.old", file_name);
     if reclame_space && Path::new(&file_name).exists() {
+        let backup_file = format!("{}.old", file_name);
+        // Rename becuase remove may not be sync
         fs::rename(&file_name, &backup_file)
             .expect("Could not rename the data file to reclame space");
         fs::remove_file(&backup_file).expect("Could not delete the backup file to reclame  space");
@@ -377,7 +379,6 @@ fn storage_data_disk(db: &Database, db_name: &String, reclame_space: bool) -> u3
                 value_addr = value_addr + record_size;
             }
 
-            // Diff in place update if not reclame_space
             ValueStatus::Deleted => {
                 if !reclame_space {
                     changed_keys = changed_keys + 1;
@@ -409,7 +410,7 @@ fn write_new_key_value(values_file: &mut BufWriter<File>, value: &Value, key: &S
     // Append value file
     let record_size = write_value(values_file, value, ValueStatus::Ok);
     log::debug!(
-        "reclame_space write key: {}, addr: {} value_addr: {} ",
+        "Write key: {}, addr: {} value_addr: {} ",
         key,
         next_key_addr,
         value_addr
@@ -831,9 +832,11 @@ fn get_key_value_files_name_from_file_name(file_name: String) -> (String, String
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
+
+    const OLD_FILE_NAME: &'static str = BASE_FILE_NAME;
+
 
     fn remove_database_file(db_name: &String) {
         remove_invalidate_oplog_file();
@@ -1038,7 +1041,7 @@ mod tests {
     }
 
     #[test]
-    fn shold_migrate_the_file_of_database_is_old() {
+    fn shold_migrate_the_file_of_database_if_old_one_exists() {
         let dbs = create_test_dbs();
         let db_name = String::from("test-db");
         let mut hash = HashMap::new();
@@ -1138,7 +1141,7 @@ mod tests {
     }
 
     #[test]
-    fn shold_load_remove_keys_from_disk_if_keys_excluded() {
+    fn shold_remove_keys_from_disk_if_keys_were_excluded() {
         let dbs = create_test_dbs();
         let db_name = String::from("test-db");
         clean_all_db_files(&db_name);
@@ -1237,7 +1240,7 @@ mod tests {
     }
 
     #[test]
-    fn should_restore_should_be_fast() {
+    fn restore_should_be_fast() {
         let (dbs, db_name, db) = create_db_with_10k_keys();
         clean_all_db_files(&db_name);
         let start = Instant::now();
@@ -1279,7 +1282,7 @@ mod tests {
     }
 
     #[test]
-    fn should_restore_all_keys_if_reclame_space_mode() {
+    fn should_store_all_keys_if_reclame_space_mode() {
         let (dbs, db_name, db) = create_db_with_10k_keys();
         clean_all_db_files(&db_name);
         let full_name = file_name_from_db_name(&db_name);
