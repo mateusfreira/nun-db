@@ -102,6 +102,16 @@ fn start_db(
         }
     });
 
+    let tcp_address_to_thread = String::from(tcp_address.clone());
+    let dbs_tcp = dbs.clone();
+    /*
+     * This thread has to be the first one to start to avoid race conditions if the primary tries
+     * to ping it too fast
+     */
+    let tcp_thread = thread::spawn(move || {
+        lib::network::tcp_ops::start_tcp_client(dbs_tcp, &tcp_address_to_thread)
+    });
+
     let db_replication_start = dbs.clone();
     let tcp_address_to_relication = Arc::new(tcp_address.to_string());
     let replication_thread_creator = async {
@@ -151,10 +161,6 @@ fn start_db(
     let _http_thread =
         thread::spawn(|| lib::network::http_ops::start_http_client(db_http, http_address));
 
-    let tcp_address = String::from(tcp_address.clone());
-    let dbs_tcp = dbs.clone();
-    let tcp_thread =
-        thread::spawn(move || lib::network::tcp_ops::start_tcp_client(dbs_tcp, &tcp_address));
     let join_all_promises = async {
         join!(replication_thread_creator, replication_thread);
     };

@@ -343,14 +343,30 @@ fn storage_data_disk(db: &Database, db_name: &String, reclame_space: bool) -> u3
                     panic!("Values Ok should never get here")
                 } else {
                     changed_keys = changed_keys + 1;
-                    let (record_size, key_size) = write_new_key_value(&mut values_file, &value, &key, next_key_addr, value_addr, &mut keys_file, db);
+                    let (record_size, key_size) = write_new_key_value(
+                        &mut values_file,
+                        &value,
+                        &key,
+                        next_key_addr,
+                        value_addr,
+                        &mut keys_file,
+                        db,
+                    );
                     value_addr = value_addr + record_size;
                     next_key_addr = next_key_addr + key_size;
                 }
             }
             ValueStatus::New => {
                 changed_keys = changed_keys + 1;
-                let (record_size, key_size) = write_new_key_value(&mut values_file, &value, &key, next_key_addr, value_addr, &mut keys_file, db);
+                let (record_size, key_size) = write_new_key_value(
+                    &mut values_file,
+                    &value,
+                    &key,
+                    next_key_addr,
+                    value_addr,
+                    &mut keys_file,
+                    db,
+                );
                 value_addr = value_addr + record_size;
                 next_key_addr = next_key_addr + key_size;
             }
@@ -406,7 +422,15 @@ fn storage_data_disk(db: &Database, db_name: &String, reclame_space: bool) -> u3
     changed_keys
 }
 
-fn write_new_key_value(values_file: &mut BufWriter<File>, value: &Value, key: &String, next_key_addr: u64, value_addr: u64, keys_file: &mut BufWriter<File>, db: &Database) -> (u64, u64) {
+fn write_new_key_value(
+    values_file: &mut BufWriter<File>,
+    value: &Value,
+    key: &String,
+    next_key_addr: u64,
+    value_addr: u64,
+    keys_file: &mut BufWriter<File>,
+    db: &Database,
+) -> (u64, u64) {
     // Append value file
     let record_size = write_value(values_file, value, ValueStatus::Ok);
     log::debug!(
@@ -836,7 +860,6 @@ mod tests {
     use futures::channel::mpsc::{channel, Receiver, Sender};
 
     const OLD_FILE_NAME: &'static str = BASE_FILE_NAME;
-
 
     fn remove_database_file(db_name: &String) {
         remove_invalidate_oplog_file();

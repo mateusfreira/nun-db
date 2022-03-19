@@ -385,7 +385,7 @@ impl Database {
                 self.set_value_version(
                     &key,
                     &String::from("<Empty>"),
-                    value.version + 1,// Do I need this???
+                    value.version + 1, // Do I need this???
                     ValueStatus::Deleted,
                     value.value_disk_addr,
                     value.key_disk_addr,
