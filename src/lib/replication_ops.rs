@@ -47,18 +47,21 @@ pub fn replicate_request(
                 replicate_web(replication_sender, format!("create-db {} {}", name, token));
                 Response::Ok {}
             }
-            Request::Snapshot {} => {
+            Request::Snapshot { reclaim_space } => {
                 log::debug!("Will replicate a snapshot to the database {}", db_name);
                 replicate_web(
                     replication_sender,
-                    format!("replicate-snapshot {}", db_name),
+                    format!("replicate-snapshot {} {}", db_name, reclaim_space),
                 );
                 Response::Ok {}
             }
 
-            Request::ReplicateSnapshot { db } => {
+            Request::ReplicateSnapshot { db, reclaim_space } => {
                 log::debug!("Will replicate a snapshot to the database {}", db);
-                replicate_web(replication_sender, format!("replicate-snapshot {}", db));
+                replicate_web(
+                    replication_sender,
+                    format!("replicate-snapshot {} {}", db, reclaim_space),
+                );
                 Response::Ok {}
             }
 
@@ -234,7 +237,10 @@ pub async fn start_replication_thread(
                         log::debug!("Will write CreateDb");
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::CreateDb)
                     }
-                    Request::ReplicateSnapshot { db } => {
+                    Request::ReplicateSnapshot {
+                        db,
+                        reclaim_space: _reclaim_space,
+                    } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = 2; //has to be different
                         log::debug!("Will write ReplicateSnapshot");
@@ -423,14 +429,14 @@ fn add_sencoundary_to_secoundary(
 }
 
 /**
- * This function goal is to start the theread to connecto to the other cluster members
+ * This function goal is to start the thread to connect to the other cluster members
  *
  * The command send to the replication_start_receiver are like
  *
  * commads e.g:
  * secoundary some_sever:1412
  * primary some_sever:1412
- * <kind> <name:port>
+ * <kind> <name port>
  *
  */
 
@@ -1155,7 +1161,9 @@ mod tests {
     #[test]
     fn should_replicate_if_the_command_is_a_snapshot_and_node_is_primary() {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
-        let request = Request::Snapshot {};
+        let request = Request::Snapshot {
+            reclaim_space: false,
+        };
 
         let resp_get = Response::Ok {};
 
@@ -1166,7 +1174,10 @@ mod tests {
         };
         assert!(result, "should have returned an Ok response!");
         let receiver_replicate_result = receiver.try_next().unwrap().unwrap();
-        assert_eq!(receiver_replicate_result, "replicate-snapshot some_db_name");
+        assert_eq!(
+            receiver_replicate_result,
+            "replicate-snapshot some_db_name false"
+        );
     }
     #[test]
     fn should_replicate_if_the_command_is_a_create_db_and_node_is_primary() {

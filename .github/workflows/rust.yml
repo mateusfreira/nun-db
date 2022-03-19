@@ -1,20 +1,30 @@
 name: Rust
-
-on: [push,pull_request]
-
+on:
+  push:
+    branches:
+      - master
+  pull_request:
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v1
+    - uses: actions/cache@v1
+      with:
+        path: ~/.cargo/registry
+        key: '${{ runner.os }}-cargo-registry-${{ hashFiles(''**/Cargo.lock'') }}'
+    - uses: actions/cache@v1
+      with:
+        path: ~/.cargo/git
+        key: '${{ runner.os }}-cargo-index-${{ hashFiles(''**/Cargo.lock'') }}'
+    - uses: actions/cache@v1
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}V
     - name: Build
-
+      if: ${{ !env.ACT }}
       run: cargo build --verbose
     - name: Run tests
       env:
-        TIME_TO_START: 10
+        TIME_TO_START: 5
       run: mkdir dbs&&cargo test -- --test-threads=1 # threads=1 to avoid the problem with the in disk tests
-      # - name: Test replication mult server
-      # run: ./tests/test-replication-dbs.sh

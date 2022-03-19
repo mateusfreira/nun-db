@@ -14,13 +14,25 @@ impl Request {
             }
             Some("unwatch-all") => Ok(Request::UnWatchAll {}),
             Some("keys") => Ok(Request::Keys {}),
-            Some("snapshot") => Ok(Request::Snapshot {}),
+            Some("snapshot") => {
+                let reclaim_space = command.next().unwrap_or("false");
+                Ok(Request::Snapshot {
+                    reclaim_space: reclaim_space == "true",
+                })
+            }
             Some("replicate-snapshot") => {
                 let db_name = match command.next() {
                     Some(db_name) => db_name.replace("\n", ""),
                     None => return Err(format!("replicate-snapshot must contain a db name")),
                 };
-                Ok(Request::ReplicateSnapshot { db: db_name })
+                let reclaim_space = match command.next() {
+                    Some(reclaim_space) => reclaim_space.replace("\n", "") == "true",
+                    None => false,
+                };
+                Ok(Request::ReplicateSnapshot {
+                    db: db_name,
+                    reclaim_space,
+                })
             }
             Some("replicate-since") => {
                 let nome_name = match command.next() {
@@ -639,10 +651,38 @@ mod tests {
     }
 
     #[test]
+    fn should_parse_replicaion_snapshot_with_reclaim_space() -> Result<(), String> {
+        match Request::parse("replicate-snapshot vue true") {
+            Ok(Request::ReplicateSnapshot { db, reclaim_space }) => {
+                if db == "vue" && reclaim_space {
+                    Ok(())
+                } else {
+                    Err(String::from("db should vue key should be jose value 1"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_snapshot() -> Result<(), String> {
+        match Request::parse("snapshot") {
+            Ok(Request::Snapshot { reclaim_space }) => {
+                if !reclaim_space {
+                    Ok(())
+                } else {
+                    Err(String::from("Should not reclaim_space by default"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
     fn should_parse_replicaion_snapshot() -> Result<(), String> {
         match Request::parse("replicate-snapshot vue") {
-            Ok(Request::ReplicateSnapshot { db }) => {
-                if db == "vue" {
+            Ok(Request::ReplicateSnapshot { db, reclaim_space }) => {
+                if db == "vue" && !reclaim_space {
                     Ok(())
                 } else {
                     Err(String::from("db should vue key should be jose value 1"))

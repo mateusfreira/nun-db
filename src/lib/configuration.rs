@@ -10,8 +10,6 @@ lazy_static! {
     pub static ref NUN_TCP_ADDR: String = optional_env_var("NUN_TCP_ADDR", "0.0.0.0:3014");
     pub static ref NUN_REPLICATE_ADDR: String = optional_env_var("NUN_REPLICATE_ADDR", "");
     pub static ref NUN_LOG_LEVEL: String = optional_env_var("NUN_LOG_LEVEL", "Info"); //(Off, Error, Warn, Info, Debug, Trace)
-    pub static ref NUN_LOG_DIR: String = optional_env_var("NUN_LOG_DIR", "/tmp/nun_db_log");
-    pub static ref NUN_LOG_TO_FILE: String = optional_env_var("NUN_LOG_TO_FILE", "true"); //true or false
 }
 
 fn optional_env_var(name: &str, default: &str) -> String {
@@ -42,10 +40,7 @@ mod tests {
     #[test]
     fn run_mode_should_get_empty_but_debug_mode_got_value() {
         #[cfg(debug_assertions)]
-        assert_eq!(
-            expect_env_var("NUN_USER", "mateus", false),
-            "mateus".to_string()
-        );
+        assert_eq!(expect_env_var("NUN_USER", "nun", false), "nun".to_string());
 
         #[cfg(not(debug_assertions))]
         assert_eq!(expect_env_var("NUN_USER", "", false), "".to_string())

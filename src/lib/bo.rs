@@ -105,6 +105,41 @@ impl fmt::Display for ClusterRole {
     }
 }
 
+#[derive(Clone, PartialEq, Copy, Debug)]
+pub enum ValueStatus {
+    /// Value is ok memory == disk values
+    Ok = 0,
+    /// Value value needs to be deleted in the disk
+    Deleted = 1,
+    /// Value is updated on memory not yet stored in disk
+    Updated = 2,
+    /// Value is new it is not present on disk yet
+    New = 3,
+}
+
+impl From<i32> for ValueStatus {
+    fn from(val: i32) -> Self {
+        use self::ValueStatus::*;
+        match val {
+            1 => Deleted,
+            2 => Updated,
+            3 => New,
+            _ => Ok,
+        }
+    }
+}
+
+impl ValueStatus {
+    pub fn to_le_bytes(&self) -> [u8; 4] {
+        match self {
+            ValueStatus::Ok => (0 as i32).to_le_bytes(),
+            ValueStatus::Deleted => (1 as i32).to_le_bytes(),
+            ValueStatus::Updated => (2 as i32).to_le_bytes(),
+            ValueStatus::New => (3 as i32).to_le_bytes(),
+        }
+    }
+}
+
 pub struct ClusterState {
     pub members: Mutex<HashMap<String, ClusterMember>>,
 }
@@ -127,11 +162,20 @@ impl DatabaseMataData {
 pub struct Value {
     pub value: String,
     pub version: i32,
+    pub state: ValueStatus,
+    pub value_disk_addr: u64,
+    pub key_disk_addr: u64,
 }
 
 impl From<String> for Value {
     fn from(value: String) -> Value {
-        Value { value, version: 1 }
+        Value {
+            value,
+            version: 1,
+            state: ValueStatus::New,
+            value_disk_addr: 0,
+            key_disk_addr: 0,
+        }
     }
 }
 
@@ -194,7 +238,7 @@ pub struct Databases {
     pub pending_opps: std::sync::RwLock<HashMap<u64, ReplicationMessage>>,
     pub keys_map: std::sync::RwLock<HashMap<String, u64>>,
     pub id_keys_map: std::sync::RwLock<HashMap<u64, String>>,
-    pub to_snapshot: RwLock<Vec<String>>,
+    pub to_snapshot: RwLock<Vec<(String, bool)>>, // (database_name, reclaim_space)
     pub cluster_state: Mutex<ClusterState>,
     pub replication_supervisor_sender: Sender<String>,
     pub replication_sender: Sender<String>,
@@ -207,6 +251,7 @@ pub struct Databases {
 }
 
 impl Database {
+    #[cfg(test)]
     pub fn to_string_hash(&self) -> HashMap<String, String> {
         let data = self.map.read().expect("Error getting the db.map.read");
         let mut value_data: HashMap<String, String> = HashMap::new();
@@ -215,12 +260,33 @@ impl Database {
         }
         value_data
     }
+
+    #[cfg(test)]
+    pub fn count_keys(&self) -> usize {
+        let data = self.map.read().expect("Error getting the db.map.read");
+        data.len()
+    }
     pub fn connections_count(&self) -> usize {
         let connections = self
             .connections
             .read()
             .expect("Error getting the db.connections.lock to decrement");
         return connections.load(Ordering::Relaxed);
+    }
+    pub fn create_db_from_value_hash(
+        name: String,
+        value_data: HashMap<String, Value>,
+        metadata: DatabaseMataData,
+    ) -> Database {
+        return Database {
+            map: RwLock::new(value_data),
+            name,
+            watchers: Watchers {
+                map: RwLock::new(HashMap::new()),
+            },
+            connections: RwLock::new(AtomicUsize::new(0)),
+            metadata,
+        };
     }
 
     pub fn create_db_from_hash(
@@ -233,15 +299,7 @@ impl Database {
         for (key, value) in &data {
             value_data.insert(key.to_string(), Value::from(value.to_string()));
         }
-        return Database {
-            map: RwLock::new(value_data),
-            name,
-            watchers: Watchers {
-                map: RwLock::new(HashMap::new()),
-            },
-            connections: RwLock::new(AtomicUsize::new(0)),
-            metadata,
-        };
+        Database::create_db_from_value_hash(name, value_data, metadata)
     }
 
     pub fn dec_connections(&self) {
@@ -321,8 +379,19 @@ impl Database {
 
     pub fn remove_value(&self, key: String) -> Response {
         let mut watchers = self.watchers.map.write().unwrap();
-        let mut db = self.map.write().unwrap();
-        db.remove(&key.to_string());
+        {
+            if let Some(value) = self.get_value(key.clone()) {
+                // value.
+                self.set_value_version(
+                    &key,
+                    &String::from("<Empty>"),
+                    value.version + 1,// Do I need this???
+                    ValueStatus::Deleted,
+                    value.value_disk_addr,
+                    value.key_disk_addr,
+                );
+            }
+        } // Release the lock
         match watchers.get_mut(&key) {
             Some(senders) => {
                 for sender in senders {
@@ -346,13 +415,24 @@ impl Database {
             Some(Value {
                 value: value.value.to_string(),
                 version: value.version,
+                state: value.state,
+                value_disk_addr: value.value_disk_addr,
+                key_disk_addr: value.key_disk_addr,
             })
         } else {
             None
         }
     }
 
-    fn set_value_version(&self, key: &String, value: &String, new_version: i32) {
+    fn set_value_version(
+        &self,
+        key: &String,
+        value: &String,
+        new_version: i32,
+        state: ValueStatus,
+        value_disk_addr: u64,
+        key_disk_addr: u64,
+    ) {
         {
             let mut db = self.map.write().unwrap();
             db.insert(
@@ -360,9 +440,29 @@ impl Database {
                 Value {
                     value: value.clone(),
                     version: new_version,
+                    state,
+                    value_disk_addr, // will change on the store
+                    key_disk_addr,   // will change on the store
                 },
             );
         } // release the db
+    }
+
+    pub fn set_value_as_ok(
+        &self,
+        key: &String,
+        value: &Value,
+        value_disk_addr: u64,
+        key_disk_addr: u64,
+    ) {
+        self.set_value_version(
+            key,
+            &value.value,
+            value.version,
+            ValueStatus::Ok,
+            value_disk_addr,
+            key_disk_addr,
+        );
     }
 
     pub fn set_value(&self, key: String, value: String, version: i32) -> Response {
@@ -379,10 +479,22 @@ impl Database {
                 new_version,
                 version
             );
-            self.set_value_version(&key, &value, new_version)
+            let state = if old_version.state == ValueStatus::New {
+                ValueStatus::New
+            } else {
+                ValueStatus::Updated
+            };
+            self.set_value_version(
+                &key,
+                &value,
+                new_version,
+                state,
+                old_version.value_disk_addr,
+                old_version.key_disk_addr,
+            )
         } else {
             //new key
-            self.set_value_version(&key, &value, 1)
+            self.set_value_version(&key, &value, 1, ValueStatus::New, 0, 0) // not in disk yet
         }
         self.notify_watchers(key.clone(), value.clone());
 
@@ -737,9 +849,12 @@ pub enum Request {
         token: String,
         name: String,
     },
-    Snapshot {},
+    Snapshot {
+        reclaim_space: bool,
+    },
     ReplicateSnapshot {
         db: String,
+        reclaim_space: bool,
     },
     Leave {
         name: String,
