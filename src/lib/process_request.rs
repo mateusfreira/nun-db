@@ -342,14 +342,17 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         }),
 
         Request::Keys {} => apply_to_database(&dbs, &client, &|db| {
-            let keys: Vec<String> = db
-                .map
-                .read()
-                .unwrap()
-                .keys()
-                .filter(|key| !key.starts_with("$$")) // filter the secret keys
-                .map(|key| format!("{}", key))
-                .collect();
+            let mut keys: Vec<String> = {
+                db.map
+                    .read()
+                    .unwrap()
+                    .iter()
+                    .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
+                    .filter(|(key, _v)| !key.starts_with("$$")) // filter the secret keys
+                    .map(|(key, _v)| format!("{}", key))
+                    .collect()
+            };
+            keys.sort();
             let keys = keys.iter().fold(String::from(""), |current, acc| {
                 format!("{},{}", current, acc)
             });
@@ -505,6 +508,24 @@ mod tests {
         process_request("auth user token", &dbs, &mut client);
         assert_eq!(client.auth.load(Ordering::SeqCst), true);
         assert_received(&mut receiver, "valid auth\n");
+    }
+
+    #[test]
+    fn should_return_only_not_deleted_keys() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,$connections,name,name1\n");
+        process_request("remove name1 jose", &dbs, &mut client);
+        process_request("keys", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,$connections,name\n");
     }
 
     #[test]
