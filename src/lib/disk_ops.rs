@@ -1263,6 +1263,28 @@ mod tests {
     }
 
     #[test]
+    fn remove_keys_should_work() {
+        let (dbs, db_name, db) = create_empty_db();
+        db.set_value("Jose".to_string(), "value".to_string(), 1);
+        db.set_value("Keyhshshshsh1".to_string(), "value".to_string(), 1);
+        let _ = db.remove_value(String::from("Keyhshshshsh1"));
+        clean_all_db_files(&db_name);
+        let _ = storage_data_disk(&db, &db_name, false);
+
+        let db_file_name = file_name_from_db_name(&db_name);
+        let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
+
+        let value = loaded_db.get_value(String::from("Keyhshshshsh1"));
+        assert_eq!(value, None);
+
+        let _ = loaded_db.remove_value(String::from("Keyhshshshsh1"));
+        let _ = storage_data_disk(&loaded_db, &db_name, false);
+        //remove_database_file(&db_name);
+        //clean_op_log_metadata_files();
+        //remove_keys_file();
+    }
+
+    #[test]
     fn restore_should_be_fast() {
         let (dbs, db_name, db) = create_db_with_10k_keys();
         clean_all_db_files(&db_name);
@@ -1356,6 +1378,15 @@ mod tests {
         remove_database_file(&db_name);
         clean_op_log_metadata_files();
         remove_keys_file();
+    }
+
+    fn create_empty_db() -> (Arc<Databases>, String, Database) {
+        let dbs = create_test_dbs();
+        let db_name = String::from("test-db");
+        let hash = HashMap::new();
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        dbs.is_oplog_valid.store(false, Ordering::Relaxed);
+        (dbs, db_name, db)
     }
 
     fn create_db_with_10k_keys() -> (Arc<Databases>, String, Database) {

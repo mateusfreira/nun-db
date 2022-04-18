@@ -381,15 +381,21 @@ impl Database {
         let mut watchers = self.watchers.map.write().unwrap();
         {
             if let Some(value) = self.get_value(key.clone()) {
-                // value.
-                self.set_value_version(
-                    &key,
-                    &String::from("<Empty>"),
-                    value.version + 1, // Do I need this???
-                    ValueStatus::Deleted,
-                    value.value_disk_addr,
-                    value.key_disk_addr,
-                );
+                // If deleted before the key is in disk remove direct from memory
+                if value.state == ValueStatus::New {
+                    let mut db = self.map.write().unwrap();
+                    db.remove(&key);
+                } else {
+                    // value.
+                    self.set_value_version(
+                        &key,
+                        &String::from("<Empty>"),
+                        value.version + 1,
+                        ValueStatus::Deleted,
+                        value.value_disk_addr,
+                        value.key_disk_addr,
+                    );
+                }
             }
         } // Release the lock
         match watchers.get_mut(&key) {
