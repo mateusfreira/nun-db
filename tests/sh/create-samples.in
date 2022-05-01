@@ -1,0 +1,4 @@
+auth mateus mateus
+create-db sample-test sample-pwd
+use-db sample-test sample-pwd
+snapshot
