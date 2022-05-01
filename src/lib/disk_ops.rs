@@ -1279,9 +1279,9 @@ mod tests {
 
         let _ = loaded_db.remove_value(String::from("Keyhshshshsh1"));
         let _ = storage_data_disk(&loaded_db, &db_name, false);
-        //remove_database_file(&db_name);
-        //clean_op_log_metadata_files();
-        //remove_keys_file();
+        remove_database_file(&db_name);
+        clean_op_log_metadata_files();
+        remove_keys_file();
     }
 
     #[test]
