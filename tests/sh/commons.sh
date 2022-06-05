@@ -134,4 +134,10 @@ then
 	RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$primaryHttpAddress" exec "auth mateus mateus; create-db analitcs-blog analitcs-blog-2903uyi9ewrj; use-db analitcs-blog analitcs-blog-2903uyi9ewrj; snapshot;";
 fi
 
+
+if [ $command = "set-on-secounday" ] || [ $command = "set-all" ]  || [ $command = "all" ]
+then
+  RUST_BACKTRACE=1 ./target/debug/nun-db -p $password -u $user --host "http://$secoundary1HttpAddress" exec "use-db test test-pwd; set name from-the-test";
+fi
+
 exit 0
