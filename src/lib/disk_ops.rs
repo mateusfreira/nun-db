@@ -774,13 +774,18 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
 }
 
 pub fn get_invalidate_file_write_mode() -> BufWriter<File> {
-    match  OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(get_invalidate_file_name()) {
-        Ok(f) => BufWriter::with_capacity(1, f,),
+    match OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(get_invalidate_file_name())
+    {
+        Ok(f) => BufWriter::with_capacity(1, f),
         Err(e) => {
-            log::error!("Could not open the file {}, Error: {}", get_invalidate_file_name(), e);
+            log::error!(
+                "Could not open the file {}, Error: {}",
+                get_invalidate_file_name(),
+                e
+            );
             panic!("Could not open the file {}", get_invalidate_file_name());
         }
     }

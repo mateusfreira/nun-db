@@ -25,8 +25,8 @@ pub fn get_replicate_remove_message(db_name: String, key: String) -> String {
     return format!("replicate-remove {} {}", db_name, key);
 }
 
-pub fn get_replicate_message(db_name: String, key: String, value: String) -> String {
-    return format!("replicate {} {} {}", db_name, key, value);
+pub fn get_replicate_message(db_name: String, key: String, value: String, version: i32) -> String {
+    return format!("replicate {} {} {} {}", db_name, key, version, value);
 }
 
 pub fn get_replicate_increment_message(db_name: String, key: String, inc: String) -> String {
@@ -68,21 +68,26 @@ pub fn replicate_request(
             Request::Set {
                 value,
                 key,
-                version: _,
+                version,
             } => {
                 log::debug!("Will replicate the set of the key {} to {} ", key, value);
                 replicate_web(
                     replication_sender,
-                    get_replicate_message(db_name.to_string(), key, value),
+                    get_replicate_message(db_name.to_string(), key, value, version),
                 );
                 Response::Ok {}
             }
 
-            Request::ReplicateSet { db, value, key } => {
+            Request::ReplicateSet {
+                db,
+                value,
+                key,
+                version,
+            } => {
                 log::debug!("Will replicate the set of the key {} to {} ", key, value);
                 replicate_web(
                     replication_sender,
-                    get_replicate_message(db.to_string(), key, value),
+                    get_replicate_message(db.to_string(), key, value, version),
                 );
                 Response::Ok {}
             }
@@ -246,7 +251,12 @@ pub async fn start_replication_thread(
                         log::debug!("Will write ReplicateSnapshot");
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot)
                     }
-                    Request::ReplicateSet { db, key, value: _ } => {
+                    Request::ReplicateSet {
+                        db,
+                        key,
+                        value: _,
+                        version: _,
+                    } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
                         write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update)
@@ -1107,7 +1117,7 @@ mod tests {
         };
         assert!(result, "should have returned an ok response!");
         let replicate_command = receiver.try_next().unwrap().unwrap();
-        assert_eq!(replicate_command, "replicate some any_key any_value")
+        assert_eq!(replicate_command, "replicate some any_key -1 any_value")
     }
 
     #[test]
