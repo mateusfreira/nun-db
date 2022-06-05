@@ -358,13 +358,23 @@ impl Request {
                 };
                 return match command.next() {
                     Some(command_value) => {
-                        let mut command = command_value.splitn(2, " ");
+                        let mut command = command_value.splitn(3, " ");
                         let name = match command.next() {
                             Some(key) => String::from(key).replace("\n", ""),
                             None => {
                                 log::debug!("ReplicateSet needs name");
                                 "".to_string()
                             }
+                        };
+
+                        let version = match command.next() {
+                            Some(value) => {
+                                match i32::from_str_radix(&value.replace("\n", ""), 10) {
+                                    Ok(n) => n,
+                                    _ => -1,
+                                }
+                            }
+                            None => -1,
                         };
 
                         let value = match command.next() {
@@ -378,6 +388,7 @@ impl Request {
                             db: db.to_string(),
                             key: name.to_string(),
                             value: value.to_string(),
+                            version,
                         })
                     }
                     None => {
@@ -638,9 +649,14 @@ mod tests {
 
     #[test]
     fn should_parse_replicaion() -> Result<(), String> {
-        match Request::parse("replicate vue jose 1") {
-            Ok(Request::ReplicateSet { db, key, value }) => {
-                if db == "vue" && key == "jose" && value == "1" {
+        match Request::parse("replicate vue jose 3 1") {
+            Ok(Request::ReplicateSet {
+                db,
+                key,
+                value,
+                version,
+            }) => {
+                if db == "vue" && key == "jose" && value == "1" && version == 3 {
                     Ok(())
                 } else {
                     Err(String::from("db should vue key should be jose value 1"))

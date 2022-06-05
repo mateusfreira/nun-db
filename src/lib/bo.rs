@@ -673,10 +673,11 @@ impl Databases {
         } else {
             let message_to_replicate = {
                 self.pending_opps
-                    .read()
+                    .write()
                     .unwrap()
                     .get(&op_log_id)
                     .unwrap()
+                    .replicated()
                     .message_to_replicate()
             }; // To limit the scope of the read lock
             message_to_replicate
@@ -835,6 +836,7 @@ pub enum Request {
         db: String,
         key: String,
         value: String,
+        version: i32,
     },
     Watch {
         key: String,
@@ -936,8 +938,9 @@ impl ReplicationMessage {
         self.ack_count.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn replicated(&self) {
+    pub fn replicated(&self) -> &ReplicationMessage {
         self.replicate_count.fetch_add(1, Ordering::Relaxed);
+        return self;
     }
 
     pub fn is_full_acknowledged(&self) -> bool {

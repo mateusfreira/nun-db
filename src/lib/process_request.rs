@@ -84,7 +84,12 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             } else {
                 let db_name_state = _db.name.clone();
                 send_message_to_primary(
-                    get_replicate_message(db_name_state.to_string(), key.clone(), value.clone()),
+                    get_replicate_message(
+                        db_name_state.to_string(),
+                        key.clone(),
+                        value.clone(),
+                        version,
+                    ),
                     dbs,
                 );
                 Response::Ok {}
@@ -109,10 +114,11 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             db: name,
             key,
             value,
+            version,
         } => apply_if_auth(&client.auth, &|| {
             let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
             let respose: Response = match dbs.get(&name.to_string()) {
-                Some(db) => set_key_value(key.clone(), value.clone(), -1, db),
+                Some(db) => set_key_value(key.clone(), value.clone(), version, db),
                 _ => {
                     log::debug!("Not a valid database name");
                     Response::Error {
