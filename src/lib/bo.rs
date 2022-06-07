@@ -684,7 +684,7 @@ impl Databases {
         }
     }
 
-    pub fn acknowledge_pending_opp(&self, opp_id: u64, server_name: String) {
+    pub fn acknowledge_pending_opp(&self, opp_id: u64, server_name: String) -> bool {
         let mut pending_opps = self.pending_opps.write().unwrap();
         match pending_opps.get_mut(&opp_id) {
             Some(replicated_opp) => {
@@ -707,11 +707,13 @@ impl Databases {
                         pending_opps.keys().len()
                     );
                 }
+                true
             }
             None => {
                 log::warn!("Acknowledging invalid opp {}", opp_id);
+                false
             }
-        };
+        }
     }
 
     pub fn get_oplog_state(&self) -> String {
@@ -957,6 +959,22 @@ mod tests {
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
 
+    fn get_empty_dbs() -> Databases {
+        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender1, _): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
+        Databases::new(
+            String::from(""),
+            String::from(""),
+            String::from(""),
+            sender,
+            sender1,
+            keys_map,
+            1 as u128,
+            true,
+        )
+    }
+
     #[test]
     fn connection_count_should_start_at_0() {
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
@@ -1015,19 +1033,7 @@ mod tests {
 
     #[test]
     fn add_database_should_add_a_database() {
-        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
-        let (sender1, _): (Sender<String>, Receiver<String>) = channel(100);
-        let keys_map = HashMap::new();
-        let dbs = Databases::new(
-            String::from(""),
-            String::from(""),
-            String::from(""),
-            sender,
-            sender1,
-            keys_map,
-            1 as u128,
-            true,
-        );
+        let dbs = get_empty_dbs();
         assert_eq!(dbs.map.read().expect("error to lock").keys().len(), 1); //Admin db
 
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
@@ -1038,22 +1044,54 @@ mod tests {
 
     #[test]
     fn should_return_op_log_size() {
-        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
-        let (sender1, _): (Sender<String>, Receiver<String>) = channel(100);
-        let keys_map = HashMap::new();
-        let dbs = Databases::new(
-            String::from(""),
-            String::from(""),
-            String::from(""),
-            sender,
-            sender1,
-            keys_map,
-            1 as u128,
-            true,
-        );
+        let dbs = get_empty_dbs();
         assert_eq!(
             dbs.get_oplog_state(),
             "pending_ops: 0, op_log_file_size: 0, op_log_count: 0"
         );
+    }
+
+    #[test]
+    fn should_count_the_number_of_replications() {
+        let dbs = get_empty_dbs();
+        let id = Databases::next_op_log_id();
+
+        let message_to_replicate = dbs.register_pending_opp(id, "replicate test 1 test test".to_string());
+        assert_eq!(message_to_replicate, format!("rp {} replicate test 1 test test", id));
+
+        let op_lod_state = dbs.get_oplog_state();
+        assert_eq!(op_lod_state, format!("pending_ops: 1, op_log_file_size: 0, op_log_count: 0"));
+
+        // Same message register as pending counts as single pendding ops
+        let message_to_replicate = dbs.register_pending_opp(id, "replicate test 1 test test".to_string());
+        assert_eq!(message_to_replicate, format!("rp {} replicate test 1 test test", id));
+
+        let op_lod_state = dbs.get_oplog_state();
+        assert_eq!(op_lod_state, format!("pending_ops: 1, op_log_file_size: 0, op_log_count: 0"));
+
+
+        let id2 = Databases::next_op_log_id();
+        let message_to_replicate = dbs.register_pending_opp(id2, "replicate test 2 test test".to_string());
+        assert_eq!(message_to_replicate, format!("rp {} replicate test 2 test test", id2));
+
+        let op_lod_state = dbs.get_oplog_state();
+        assert_eq!(op_lod_state, format!("pending_ops: 2, op_log_file_size: 0, op_log_count: 0"));
+
+        dbs.acknowledge_pending_opp(id, "some_other_server".to_string());
+        let op_lod_state = dbs.get_oplog_state();
+        assert_eq!(op_lod_state, format!("pending_ops: 2, op_log_file_size: 0, op_log_count: 0"), "pending_ops should still 2, message was replicated twice");
+
+        dbs.acknowledge_pending_opp(id, "some_other_server".to_string());
+        let op_lod_state = dbs.get_oplog_state();
+        assert_eq!(op_lod_state, format!("pending_ops: 1, op_log_file_size: 0, op_log_count: 0"), "pending_ops should reduce to 1, message was replicated twice and acknowledged twice");
+
+        assert_eq!(dbs.acknowledge_pending_opp(id2, "some_other_server".to_string()), true, "Should return true acknowledged");
+
+        let op_lod_state = dbs.get_oplog_state();
+        assert_eq!(op_lod_state, format!("pending_ops: 0, op_log_file_size: 0, op_log_count: 0"), "pending_ops should reduce to 0, message was replicated once and acknowledged once");
+        assert_eq!(dbs.acknowledge_pending_opp(id2, "some_other_server".to_string()), false, "Should return false if not acknowledged");
+
+        let op_lod_state = dbs.get_oplog_state();
+        assert_eq!(op_lod_state, format!("pending_ops: 0, op_log_file_size: 0, op_log_count: 0"), "pending_ops should stay 0, message already fully acknowledged");
     }
 }

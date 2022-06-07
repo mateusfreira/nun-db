@@ -615,7 +615,7 @@ pub fn get_log_file_read_mode() -> File {
                     .create(true)
                     .open(get_op_log_file_name())
                     .unwrap();
-            } // For createing the op log file, I don't return it here to avoind read processes holding the file in write more for too long
+            } // For creating the op log file, I don't return it here to avoid read processes holding the file in write more for too long
             OpenOptions::new()
                 .read(true)
                 .open(get_op_log_file_name())
