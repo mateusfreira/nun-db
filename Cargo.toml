@@ -6,7 +6,7 @@ authors = [ "Mateus Freira <mateus.freira@gmail.com>" ]
 edition = "2018"
 
 [dependencies]
-tokio = "0.1.13"
+tokio = "1.19.2"
 futures = "0.3.1"
 ws = "*"
 env_logger = "*"
