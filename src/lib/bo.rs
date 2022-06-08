@@ -659,9 +659,9 @@ impl Databases {
      * Registers the message as pending from replication and return the message_to_replicate.
      * The method ensures that the message are registered only once
      * @todo this method has 2 locks for the pending_opps to make it safe ideally no lock would be
-     * needed but for now they are needed.
+     * needed but for now they are.
      */
-    pub fn register_pending_opp(&self, op_log_id: u64, message: String) -> String {
+    pub fn register_pending_opp(&self, op_log_id: u64, message: String, server_name: &String) -> String {
         let exists = { self.pending_opps.read().unwrap().contains_key(&op_log_id) }; //To limit the scope of the read lock
         if !exists {
             let replication_message = ReplicationMessage::new(op_log_id, message.clone());
@@ -684,7 +684,7 @@ impl Databases {
         }
     }
 
-    pub fn acknowledge_pending_opp(&self, opp_id: u64, server_name: String) -> bool {
+    pub fn acknowledge_pending_opp(&self, opp_id: u64, server_name: &String) -> bool {
         let mut pending_opps = self.pending_opps.write().unwrap();
         match pending_opps.get_mut(&opp_id) {
             Some(replicated_opp) => {
@@ -924,6 +924,7 @@ pub struct ReplicationMessage {
     pub ack_count: AtomicUsize,
     pub replicate_count: AtomicUsize,
     pub start_time: Instant,
+    pub replications: HashMap<String, bool>,// Key ServerName value ack or not
 }
 impl ReplicationMessage {
     pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
@@ -933,6 +934,7 @@ impl ReplicationMessage {
             ack_count: AtomicUsize::new(0),
             replicate_count: AtomicUsize::new(0),
             start_time: Instant::now(),
+            replications: HashMap::new(),
         }
     }
 
@@ -1055,15 +1057,17 @@ mod tests {
     fn should_count_the_number_of_replications() {
         let dbs = get_empty_dbs();
         let id = Databases::next_op_log_id();
+        let server_1_name = String::from("server_1");
+        let server_2_name = String::from("server_2");
 
-        let message_to_replicate = dbs.register_pending_opp(id, "replicate test 1 test test".to_string());
+        let message_to_replicate = dbs.register_pending_opp(id, "replicate test 1 test test".to_string(), &server_1_name);
         assert_eq!(message_to_replicate, format!("rp {} replicate test 1 test test", id));
 
         let op_lod_state = dbs.get_oplog_state();
         assert_eq!(op_lod_state, format!("pending_ops: 1, op_log_file_size: 0, op_log_count: 0"));
 
-        // Same message register as pending counts as single pendding ops
-        let message_to_replicate = dbs.register_pending_opp(id, "replicate test 1 test test".to_string());
+        // Same message register as pending counts as single pendding ops for a diferent server
+        let message_to_replicate = dbs.register_pending_opp(id, "replicate test 1 test test".to_string(), &server_2_name);
         assert_eq!(message_to_replicate, format!("rp {} replicate test 1 test test", id));
 
         let op_lod_state = dbs.get_oplog_state();
@@ -1071,25 +1075,32 @@ mod tests {
 
 
         let id2 = Databases::next_op_log_id();
-        let message_to_replicate = dbs.register_pending_opp(id2, "replicate test 2 test test".to_string());
+        let message_to_replicate = dbs.register_pending_opp(id2, "replicate test 2 test test".to_string(), &server_1_name);
         assert_eq!(message_to_replicate, format!("rp {} replicate test 2 test test", id2));
 
         let op_lod_state = dbs.get_oplog_state();
         assert_eq!(op_lod_state, format!("pending_ops: 2, op_log_file_size: 0, op_log_count: 0"));
 
-        dbs.acknowledge_pending_opp(id, "some_other_server".to_string());
+        dbs.acknowledge_pending_opp(id, &server_1_name);
         let op_lod_state = dbs.get_oplog_state();
         assert_eq!(op_lod_state, format!("pending_ops: 2, op_log_file_size: 0, op_log_count: 0"), "pending_ops should still 2, message was replicated twice");
 
-        dbs.acknowledge_pending_opp(id, "some_other_server".to_string());
+        assert_eq!(dbs.acknowledge_pending_opp(id, &server_1_name), false, "Should not ack message from a server aleady ack");
+        let op_lod_state = dbs.get_oplog_state();
+        assert_eq!(op_lod_state, format!("pending_ops: 2, op_log_file_size: 0, op_log_count: 0"), "pending_ops should still 2, message was replicated twice");
+        let op_lod_state = dbs.get_oplog_state();
+        assert_eq!(op_lod_state, format!("pending_ops: 2, op_log_file_size: 0, op_log_count: 0"), "pending_ops should still 2, message was replicated twice");
+
+
+        dbs.acknowledge_pending_opp(id, &server_2_name);
         let op_lod_state = dbs.get_oplog_state();
         assert_eq!(op_lod_state, format!("pending_ops: 1, op_log_file_size: 0, op_log_count: 0"), "pending_ops should reduce to 1, message was replicated twice and acknowledged twice");
 
-        assert_eq!(dbs.acknowledge_pending_opp(id2, "some_other_server".to_string()), true, "Should return true acknowledged");
+        assert_eq!(dbs.acknowledge_pending_opp(id2, &server_1_name), true, "Should return true acknowledged");
 
         let op_lod_state = dbs.get_oplog_state();
         assert_eq!(op_lod_state, format!("pending_ops: 0, op_log_file_size: 0, op_log_count: 0"), "pending_ops should reduce to 0, message was replicated once and acknowledged once");
-        assert_eq!(dbs.acknowledge_pending_opp(id2, "some_other_server".to_string()), false, "Should return false if not acknowledged");
+        assert_eq!(dbs.acknowledge_pending_opp(id2, &server_2_name), false, "Should return false if not acknowledged");
 
         let op_lod_state = dbs.get_oplog_state();
         assert_eq!(op_lod_state, format!("pending_ops: 0, op_log_file_size: 0, op_log_count: 0"), "pending_ops should stay 0, message already fully acknowledged");

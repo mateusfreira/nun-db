@@ -380,7 +380,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             opp_id,
             server_name,
         } => apply_if_auth(&client.auth, &|| {
-            dbs.acknowledge_pending_opp(opp_id, server_name.clone());
+            dbs.acknowledge_pending_opp(opp_id, &server_name);
             Response::Ok {}
         }),
         Request::ReplicateRequest {
