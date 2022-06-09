@@ -666,7 +666,7 @@ impl Databases {
         if !exists {
             let replication_message = ReplicationMessage::new(op_log_id, message.clone());
             let message_to_replicate = replication_message.message_to_replicate();
-            replication_message.replicated();
+            replication_message.replicated(server_name);
             let mut pending_opps = self.pending_opps.write().unwrap();
             pending_opps.insert(replication_message.opp_id, replication_message);
             message_to_replicate
@@ -677,7 +677,7 @@ impl Databases {
                     .unwrap()
                     .get(&op_log_id)
                     .unwrap()
-                    .replicated()
+                    .replicated(server_name)
                     .message_to_replicate()
             }; // To limit the scope of the read lock
             message_to_replicate
@@ -688,26 +688,28 @@ impl Databases {
         let mut pending_opps = self.pending_opps.write().unwrap();
         match pending_opps.get_mut(&opp_id) {
             Some(replicated_opp) => {
-                replicated_opp.ack();
-                let elapsed = replicated_opp.start_time.elapsed();
-                self.update_replication_time_moving_avg(elapsed.as_millis());
-                log::debug!(
-                    "Acknowledged opp {} from {} in {:?}",
-                    opp_id,
-                    server_name,
-                    elapsed
-                );
-                if replicated_opp.is_full_acknowledged() {
-                    pending_opps.remove(&opp_id);
+                let is_replicated = replicated_opp.ack(server_name);
+                if is_replicated {
+                    let elapsed = replicated_opp.start_time.elapsed();
+                    self.update_replication_time_moving_avg(elapsed.as_millis());
                     log::debug!(
-                        "All replications Acknowledged removing opp {} from {} in {:?}, {} pending",
+                        "Acknowledged opp {} from {} in {:?}",
                         opp_id,
                         server_name,
-                        elapsed,
-                        pending_opps.keys().len()
+                        elapsed
                     );
+                    if replicated_opp.is_full_acknowledged() {
+                        pending_opps.remove(&opp_id);
+                        log::debug!(
+                            "All replications Acknowledged removing opp {} from {} in {:?}, {} pending",
+                            opp_id,
+                            server_name,
+                            elapsed,
+                            pending_opps.keys().len()
+                        );
+                    }
                 }
-                true
+                is_replicated
             }
             None => {
                 log::warn!("Acknowledging invalid opp {}", opp_id);
@@ -924,7 +926,7 @@ pub struct ReplicationMessage {
     pub ack_count: AtomicUsize,
     pub replicate_count: AtomicUsize,
     pub start_time: Instant,
-    pub replications: HashMap<String, bool>,// Key ServerName value ack or not
+    pub replications: Mutex<HashMap<String, bool>>,// Key ServerName value ack or not
 }
 impl ReplicationMessage {
     pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
@@ -934,16 +936,33 @@ impl ReplicationMessage {
             ack_count: AtomicUsize::new(0),
             replicate_count: AtomicUsize::new(0),
             start_time: Instant::now(),
-            replications: HashMap::new(),
+            replications: Mutex::new(HashMap::new()), 
         }
     }
 
-    pub fn ack(&self) {
-        self.ack_count.fetch_add(1, Ordering::Relaxed);
+    pub fn ack(&self, server_name: &String) -> bool {
+        let not_full_ack: bool =  { 
+            let relations = self.replications.lock().unwrap();
+            //let exists = exists.clone();
+            match relations.get(server_name) {
+                None => false,
+                Some(fully_ack)=> {
+                    if !fully_ack {
+                        self.ack_count.fetch_add(1, Ordering::Relaxed);
+                        true
+                    } else {
+                        log::warn!("trying to ack {} but not pedding from the server {}", self.opp_id, server_name);
+                        false
+                    }
+                },
+            }
+        };
+        not_full_ack
     }
 
-    pub fn replicated(&self) -> &ReplicationMessage {
+    pub fn replicated(&self, server_name: &String) -> &ReplicationMessage {
         self.replicate_count.fetch_add(1, Ordering::Relaxed);
+        self.replications.lock().unwrap().insert(server_name.to_string(), false);
         return self;
     }
 
