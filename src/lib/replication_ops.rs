@@ -170,7 +170,8 @@ fn replicate_message_to_secoundary(op_log_id: u64, message: String, dbs: &Arc<Da
     for (name, member) in state.members.lock().unwrap().iter() {
         match member.role {
             ClusterRole::Secoundary => {
-                let message_to_replicate = dbs.register_pending_opp(op_log_id, message.clone(), name);
+                let message_to_replicate =
+                    dbs.register_pending_opp(op_log_id, message.clone(), name);
                 replicate_if_some(&member.sender, &message_to_replicate, &member.name)
             }
             ClusterRole::Primary => (),
