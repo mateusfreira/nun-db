@@ -740,11 +740,13 @@ impl Databases {
         messages
             .into_iter()
             .map(|p_m|
-                format!("message: \"{message}\", opp_id: {opp_id}, ack_count: {ack_count}, replicate_count: {replicate_count} ",
+                format!("message: \"{message}\", opp_id: {opp_id}, ack_count: {ack_count}, replicate_count: {replicate_count}, replications: {replications}",
                 opp_id = p_m.opp_id,
                 message = p_m.message.to_string(),
                 ack_count = p_m.ack_count.load(Ordering::Relaxed),
                 replicate_count = p_m.replicate_count.load(Ordering::Relaxed),
+                //replications = "",
+                replications = p_m.replications.lock().unwrap().into_iter().flat_map(|(replication, done)|format!("{}, {}", replication, done))
                 )
             )
             .collect()
