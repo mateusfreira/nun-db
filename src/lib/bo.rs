@@ -740,12 +740,10 @@ impl Databases {
         messages
             .into_iter()
             .map(|p_m|{
-                let replications = {
+                {
                    let replications =  p_m.replications.lock().unwrap();
                    let replications_keys = replications.keys();
-                   replications_keys.into_iter().reduce(|r, c|&String::from(format!("{}, {}", r, c))).unwrap_or(&String::from("")).to_string()
-                };
-
+                   let replications = replications_keys.into_iter().fold(String::from(""),|r:String, c:&String|String::from(format!("{}, {}", r.to_owned(), c.to_owned())));
                 return format!("message: \"{message}\", opp_id: {opp_id}, ack_count: {ack_count}, replicate_count: {replicate_count}, replications: {replications}",
                 opp_id = p_m.opp_id,
                 message = p_m.message.to_string(),
@@ -753,6 +751,7 @@ impl Databases {
                 replicate_count = p_m.replicate_count.load(Ordering::Relaxed),
                 replications = replications
                 )
+                }
             }).collect()
     }
 }
