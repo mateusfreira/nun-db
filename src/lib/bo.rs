@@ -739,17 +739,21 @@ impl Databases {
         let messages = pending_opps.values();
         messages
             .into_iter()
-            .map(|p_m|
-                format!("message: \"{message}\", opp_id: {opp_id}, ack_count: {ack_count}, replicate_count: {replicate_count}, replications: {replications}",
+            .map(|p_m|{
+                let replications = {
+                   let replications =  p_m.replications.lock().unwrap();
+                   let replications_keys = replications.keys();
+                   replications_keys.into_iter().reduce(|r, c|&String::from(format!("{}, {}", r, c))).unwrap_or(&String::from("")).to_string()
+                };
+
+                return format!("message: \"{message}\", opp_id: {opp_id}, ack_count: {ack_count}, replicate_count: {replicate_count}, replications: {replications}",
                 opp_id = p_m.opp_id,
                 message = p_m.message.to_string(),
                 ack_count = p_m.ack_count.load(Ordering::Relaxed),
                 replicate_count = p_m.replicate_count.load(Ordering::Relaxed),
-                //replications = "",
-                replications = p_m.replications.lock().unwrap().into_iter().flat_map(|(replication, done)|format!("{}, {}", replication, done))
+                replications = replications
                 )
-            )
-            .collect()
+            }).collect()
     }
 }
 
