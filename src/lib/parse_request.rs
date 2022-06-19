@@ -14,6 +14,7 @@ impl Request {
             }
             Some("unwatch-all") => Ok(Request::UnWatchAll {}),
             Some("keys") => Ok(Request::Keys {}),
+            Some("ls") => Ok(Request::Keys {}),
             Some("snapshot") => {
                 let reclaim_space = command.next().unwrap_or("false");
                 Ok(Request::Snapshot {
@@ -285,6 +286,26 @@ impl Request {
                     password: pwd.to_string().replace("\n", ""),
                 })
             }
+            Some("use") => {
+                let name = match command.next() {
+                    Some(name) => name,
+                    None => {
+                        log::debug!("UseDb needs to provide an db name");
+                        ""
+                    }
+                };
+                let token = match command.next() {
+                    Some(key) => String::from(key).replace("\n", ""),
+                    None => {
+                        log::debug!("UseDb needs and token");
+                        "".to_string()
+                    }
+                };
+                Ok(Request::UseDb {
+                    name: name.to_string(),
+                    token: token.to_string(),
+                })
+            }
             Some("use-db") => {
                 let name = match command.next() {
                     Some(name) => name,
@@ -477,6 +498,20 @@ mod tests {
     #[test]
     fn should_parse_use_db() -> Result<(), String> {
         match Request::parse("use-db foo some-key") {
+            Ok(Request::UseDb { token, name }) => {
+                if name == "foo" && token == "some-key" {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from("get foo sould be parsed to Get command")),
+        }
+    }
+
+    #[test]
+    fn should_parse_use() -> Result<(), String> {
+        match Request::parse("use foo some-key") {
             Ok(Request::UseDb { token, name }) => {
                 if name == "foo" && token == "some-key" {
                     Ok(())
@@ -848,6 +883,14 @@ mod tests {
     #[test]
     fn should_parse_keys() -> Result<(), String> {
         match Request::parse("keys") {
+            Ok(Request::Keys {}) => Ok(()),
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_keys_as_ls_command() -> Result<(), String> {
+        match Request::parse("ls") {
             Ok(Request::Keys {}) => Ok(()),
             _ => Err(String::from("wrong command parsed")),
         }
