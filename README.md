@@ -152,6 +152,29 @@ Talk to me @mateusfreira I will help you get it to the scale you need.
 - [ ] Require db auth
 - [ ] Replicate? How? ()
 
+e.g:
+```
+auth $user $pwd
+```
+
+### UseDb
+#### Context
+- [ ] Require admin auth
+- [ ] Require db auth
+- [ ] Replicate? How? ()
+
+e.g:
+```
+use-db $db-name $db-pwd
+```
+#### Alias
+`use`
+
+e.g:
+```
+use $db-name $db-pwd
+```
+
 ### Get
 #### Context
 - [ ] Require admin auth
@@ -222,10 +245,16 @@ snapshot true
 - [ ] Replicate? How? 
 
 ### Keys
+Return the list of keys for the database.
 #### Context
 - [ ] Require admin auth
 - [x] Require db auth
 - [ ] Replicate? How? 
+
+e.gs: `keys`
+#### Alias
+`ls`
+
 
 ### SetPrimary
 #### Context
