@@ -1,0 +1,133 @@
+version: "3.9"  # optional since v1.27.0
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.17
+    environment:
+      COLLECTOR_ZIPKIN_HTTP_PORT: 9411
+    ports:
+      - "5775:5775/udp"
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+      - "5778:5778"
+      - "16686:16686"
+      - "14268:14268"
+      - "9411:9411"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jaeger.rule=Host(`jaeger.docker.localhost`)"
+      - "traefik.http.routers.jaeger.entrypoints=web"
+      - "traefik.http.routers.jaeger.service=jaeger"
+      - "traefik.http.services.jaeger.loadbalancer.server.port=16686"
+  traefik:
+    image: "traefik:v2.7"
+    container_name: "traefik"
+    depends_on:
+      - nun-db-1
+      - nun-db-2
+      - nun-db-3
+      - jaeger
+    command:
+      #- "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--tracing.servicename=tracing"
+      - "--tracing.jaeger.localagenthostport=jaeger:6831"
+      - "--tracing.jaeger.samplingparam=1.0"
+      - "--tracing.jaeger.samplingserverurl=http://jaeger:5778/sampling"
+      - "--tracing.jaeger.samplingtype=const"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+  nun-db-1:
+    image: mateusfreira/nun-db
+    environment:
+      - NUN_DBS_DIR=/nun_data
+      - NUN_WS_ADDR=0.0.0.0:3058
+      - NUN_HTTP_ADDR=0.0.0.0:9092
+      - NUN_TCP_ADDR=nun-db-1:3017
+      - NUN_USER=mateus
+      - NUN_REPLICASET=nun-db-1:3017,nun-db-2:3018,nun-db-3:3017
+      - NUN_PWD=mateus
+    command:
+      - "sh"
+      - "-c"
+      - "nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET"
+    ports:
+      - "3058:3058" # ws
+      - "9092:9092" # http
+      - "3017:3017" # socket
+    volumes:
+        - /tmp/data/nun_db/:/nun_data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nun-db-1.rule=Host(`nun-db-1.localhost`)"
+      - "traefik.http.routers.nun-db-1.entrypoints=web"
+      - "traefik.http.services.nun-db-1.loadbalancer.server.port=9092"
+
+      - "traefik.tcp.routers.nun-db-1.rule=HostSNI(`nun-db-1.localhost`)"
+      - "traefik.tcp.services.nun-db-1.loadbalancer.server.port=3017"
+  nun-db-2:
+    image: mateusfreira/nun-db
+    depends_on:
+      - nun-db-1
+    environment:
+      - NUN_DBS_DIR=/nun_data
+      - NUN_WS_ADDR=0.0.0.0:3059
+      - NUN_HTTP_ADDR=0.0.0.0:9093
+      - NUN_TCP_ADDR=nun-db-2:3018
+      - NUN_USER=mateus
+      - NUN_PWD=mateus
+      - NUN_REPLICASET=nun-db-1:3017,nun-db-2:3018,nun-db-3:3017
+    command:
+      - "sh"
+      - "-c"
+      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET"
+    ports:
+      - "3059:3059" # ws
+      - "9093:9093" # http
+      - "3018:3018" # socket
+    volumes:
+        - /tmp/data/nun_db1/:/nun_data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nun-db-2.rule=Host(`nun-db-2.localhost`)"
+      - "traefik.http.routers.nun-db-2.entrypoints=web"
+      - "traefik.http.services.nun-db-2.loadbalancer.server.port=9093"
+
+      - "traefik.tcp.routers.nun-db-2.rule=HostSNI(`nun-db-2.localhost`)"
+      - "traefik.tcp.services.nun-db-2.loadbalancer.server.port=3018"
+  nun-db-3:
+    image: mateusfreira/nun-db
+    depends_on:
+      - nun-db-1
+      - nun-db-2
+    environment:
+      - NUN_DBS_DIR=/nun_data
+      - NUN_WS_ADDR=0.0.0.0:3060
+      - NUN_HTTP_ADDR=0.0.0.0:9094
+      - NUN_TCP_ADDR=nun-db-3:3019
+      - NUN_USER=mateus
+      - NUN_PWD=mateus
+      - NUN_REPLICASET=nun-db-1:3017,nun-db-2:3018,nun-db-3:3017
+    command:
+      - "sh"
+      - "-c"
+      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET"
+    ports:
+      - "3060:3060" # ws
+      - "9094:9094" # http
+      - "3019:3019" # socket
+    volumes:
+        - /tmp/data/nun_db2/:/nun_data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nun-db-3.rule=Host(`nun-db-3.localhost`)"
+      - "traefik.http.routers.nun-db-3.entrypoints=web"
+      - "traefik.http.services.nun-db-3.loadbalancer.server.port=9094"
+
+      - "traefik.tcp.routers.nun-db-3.rule=HostSNI(`nun-db-3.localhost`)"
+      - "traefik.tcp.services.nun-db-3.loadbalancer.server.port=3019"
