@@ -667,25 +667,16 @@ impl Databases {
         message: String,
         server_name: &String,
     ) -> String {
-        let exists = { self.pending_opps.read().unwrap().contains_key(&op_log_id) }; //To limit the scope of the read lock
-        if !exists {
-            let replication_message = ReplicationMessage::new(op_log_id, message.clone());
-            let message_to_replicate = replication_message.message_to_replicate();
-            replication_message.replicated(server_name);
-            let mut pending_opps = self.pending_opps.write().unwrap();
-            pending_opps.insert(replication_message.opp_id, replication_message);
-            message_to_replicate
-        } else {
-            let message_to_replicate = {
-                self.pending_opps
-                    .write()
-                    .unwrap()
-                    .get(&op_log_id)
-                    .unwrap()
-                    .replicated(server_name)
-                    .message_to_replicate()
-            }; // To limit the scope of the read lock
-            message_to_replicate
+        let mut pending_opps = self.pending_opps.write().unwrap();
+        match pending_opps.get(&op_log_id) {
+            Some(pendding_opp) => pendding_opp.replicated(server_name).message_to_replicate(),
+            None => {
+                let replication_message = ReplicationMessage::new(op_log_id, message.clone());
+                let message_to_replicate = replication_message.message_to_replicate();
+                replication_message.replicated(server_name);
+                pending_opps.insert(replication_message.opp_id, replication_message);
+                message_to_replicate
+            }
         }
     }
 
