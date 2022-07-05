@@ -359,7 +359,7 @@ The debug command holds admin queries for Nun-db, like, for example, checking th
 
 e.gs
 ```
-debug pending_ops
+debug pending-ops
 #result
 pending_ops #list-of-pending-ops#
 ```
