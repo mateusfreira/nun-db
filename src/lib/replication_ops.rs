@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::net::TcpStream;
 use std::thread;
+use std::time;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
@@ -181,6 +182,8 @@ fn replicate_message_to_secoundary(op_log_id: u64, message: String, dbs: &Arc<Da
 }
 
 pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
+    let ten_millis = time::Duration::from_millis(100);
+    thread::sleep(ten_millis);
     log::debug!("Got the message {} to send to primary", message);
     let state = dbs.cluster_state.lock().unwrap();
     for (_name, member) in state.members.lock().unwrap().iter() {

@@ -79,9 +79,8 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             value,
             version,
         } => apply_to_database(&dbs, &client, &|_db| {
-            if dbs.is_primary() {
-                set_key_value(key.clone(), value.clone(), version, _db)
-            } else {
+            let respose = set_key_value(key.clone(), value.clone(), version, _db);
+            if !dbs.is_primary() {
                 let db_name_state = _db.name.clone();
                 send_message_to_primary(
                     get_replicate_message(
@@ -92,8 +91,8 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                     ),
                     dbs,
                 );
-                Response::Ok {}
             }
+            respose
         }),
 
         Request::ReplicateRemove { db: name, key } => apply_if_auth(&client.auth, &|| {
@@ -388,7 +387,15 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             opp_id,
         } => {
             send_message_to_primary(format!("ack {} {}", opp_id, dbs.tcp_address), dbs); // Todo validate auth
-            process_request(&request_str, &dbs, client)
+            match process_request(&request_str, &dbs, client) {
+                Response::Error { msg } => {
+                    // try to resulve the conflict here...
+                    // strategies of resolution, Any, Oldest change, ArbitraryClient
+                    log::warn!("Error to process message {}, error: {}", opp_id, msg);
+                    Response::Error { msg }
+                },
+                r => r
+            }
         }
         /*
          * This command should only return get opperations

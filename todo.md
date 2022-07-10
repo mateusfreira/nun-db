@@ -1,5 +1,5 @@
 - [x] Get Keys
-- [ ] Data Replication
+- [x] Data Replication
      - Lazy Centralized Protocols using algorithm Single Master with limited Transparency 
      - Write only on master, reads from anywhere (One point writes mutiple points reads)
      * Main goal Delivery content change in the front ent at the time it changes (fast)
@@ -52,7 +52,7 @@
 - [ ] Clean unused dataset 
 - [ ] Add example https://mateusfreira.github.io/nun-db-js/examples/data-analysis/
 - [ ] Implement leader less replication
-    - [ ] LeaderlessReplication.md
+    - [ ] [LeaderlessReplication.md]
 ```
 nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-db data-analysis-demo $key; keys" |  tr "," "\n" | grep -v -E "1624735236495_ds|1624735710952_ds"
 ```
