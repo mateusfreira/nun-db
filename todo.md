@@ -49,7 +49,7 @@
 - [x] Reduce the size of the docker image
 - [ ] Implement read only user.
 - [ ] Implement key value security
-- [ ] Clean unused dataset 
+- [x] Clean unused dataset
 - [ ] Add example https://mateusfreira.github.io/nun-db-js/examples/data-analysis/
 - [ ] Implement leader less replication
     - [ ] [LeaderlessReplication.md]

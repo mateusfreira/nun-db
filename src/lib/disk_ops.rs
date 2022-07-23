@@ -1023,7 +1023,7 @@ mod tests {
         db.set_value(key.clone(), value_updated.clone(), 2);
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value_new.version, 2);
+        assert_eq!(key_value_new.version, 3);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk(&db, &db_name, false);
@@ -1031,7 +1031,7 @@ mod tests {
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value.value, value_updated);
-        assert_eq!(key_value.version, 2);
+        assert_eq!(key_value.version, 3);
 
         let key1_value = loaded_db.get_value(key1.to_string()).unwrap();
         assert_eq!(key1_value.value, value1);
@@ -1046,14 +1046,14 @@ mod tests {
 
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value.value, final_value);
-        assert_eq!(key_value.version, 3);
+        assert_eq!(key_value.version, 4);
 
         let key1_value = loaded_db.get_value(key1.to_string()).unwrap();
         assert_eq!(key1_value.value, value1);
         assert_eq!(key1_value.version, 1);
 
         let final_value = String::from("final_value1");
-        loaded_db.set_value(key.clone(), final_value.clone(), 3);
+        loaded_db.set_value(key.clone(), final_value.clone(), 4);
 
         // To test in place update
         storage_data_disk(&loaded_db, &db_name, false);
@@ -1061,7 +1061,7 @@ mod tests {
 
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value.value, final_value);
-        assert_eq!(key_value.version, 4);
+        assert_eq!(key_value.version, 5);
 
         let key1_value = loaded_db.get_value(key1.to_string()).unwrap();
         assert_eq!(key1_value.value, value1);
@@ -1088,7 +1088,7 @@ mod tests {
         db.set_value(key.clone(), value_updated.clone(), 2);
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value_new.version, 2);
+        assert_eq!(key_value_new.version, 3);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk_old(&db, db_name.clone()); //Store as old
@@ -1121,7 +1121,7 @@ mod tests {
         db.set_value(key.clone(), value_updated.clone(), 2);
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value_new.version, 2);
+        assert_eq!(key_value_new.version, 3);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk_old(&db, db_name.clone()); //Store as old
@@ -1155,7 +1155,7 @@ mod tests {
         db.set_value(key.clone(), value_updated.clone(), 2);
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value_new.version, 2);
+        assert_eq!(key_value_new.version, 3);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk(&db, &db_name, false);
@@ -1189,7 +1189,7 @@ mod tests {
         db.set_value(key.clone(), value_updated.clone(), 2);
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value_new.version, 2);
+        assert_eq!(key_value_new.version, 3);
         assert_eq!(db.count_keys(), 2);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);

@@ -390,11 +390,11 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             match process_request(&request_str, &dbs, client) {
                 Response::Error { msg } => {
                     // try to resulve the conflict here...
-                    // strategies of resolution, Any, Oldest change, ArbitraryClient
+                    // strategies of resolution, Any, Oldest change, ArbiterClient
                     log::warn!("Error to process message {}, error: {}", opp_id, msg);
                     Response::Error { msg }
-                },
-                r => r
+                }
+                r => r,
             }
         }
         /*

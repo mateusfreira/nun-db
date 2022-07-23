@@ -2,10 +2,11 @@
 pub mod helpers {
 
     use assert_cmd::prelude::*; // Add methods on commands
+    use predicates::prelude::*;
     use std::env;
     use std::process::Child;
     use std::process::Command;
-    use std::{thread, time};
+    use std::{thread, time}; // Used for writing assertions
 
     pub const USER_NAME: &'static str = "mateus";
     pub const PWD: &'static str = "mateus";
@@ -113,6 +114,16 @@ pub mod helpers {
 
     pub fn start_3_replicas() -> (Child, Child, Child) {
         (start_primary(), start_secoundary(), start_secoundary_2())
+    }
+
+    pub fn create_test_db() {
+        nundb_exec(
+            &PRIMARY_HTTP_URI.to_string(),
+            &String::from("create-db test test-pwd; use-db test test-pwd;"),
+        )
+        .success()
+        .stdout(predicate::str::contains("empty"));
+        wait_seconds(3); //Wait 3s to the replication
     }
 
     pub fn kill_replicas(

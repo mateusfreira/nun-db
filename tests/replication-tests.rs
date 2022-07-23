@@ -3,7 +3,7 @@ pub mod helpers;
 mod tests {
     use crate::helpers::*;
     use predicates::prelude::*; // Used for writing assertions
-    use std::thread; 
+    use std::thread;
 
     #[test]
     fn should_replicate_as_expected() -> Result<(), Box<dyn std::error::Error>> {
@@ -125,6 +125,43 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains("value-version 1 mateus"));
+        helpers::kill_replicas(replicas_processes)?;
+        Ok(())
+    }
+
+    #[test]
+    fn should_not_replicate_processing_from_the_sending_replica(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        helpers::clean_env();
+        let replicas_processes = helpers::start_3_replicas();
+        helpers::create_test_db();
+
+        let secound_thread = thread::spawn(move || {
+            helpers::nundb_exec(
+                &helpers::SECOUNDAR_HTTP_URI.to_string(),
+                &String::from("use-db test test-pwd;set-safe name 0 mateus; get-safe name"),
+            )
+            .success()
+            .stdout(predicate::str::contains("value-version 1 mateus"));
+        });
+
+        let secound2_thread = thread::spawn(move || {
+            helpers::nundb_exec(
+                &helpers::SECOUNDAR2_HTTP_URI.to_string(),
+                &String::from("use-db test test-pwd;set-safe name 2 maria; get-safe name"),
+            )
+            .success()
+            .stdout(predicate::str::contains("value-version 3 maria"));
+        });
+        secound_thread.join().unwrap();
+        secound2_thread.join().unwrap();
+
+        helpers::nundb_exec(
+            &helpers::SECOUNDAR2_HTTP_URI.to_string(),
+            &String::from("use-db test test-pwd;get-safe name"),
+        )
+        .success()
+        .stdout(predicate::str::contains("value-version 3 maria"));
         helpers::kill_replicas(replicas_processes)?;
         Ok(())
     }

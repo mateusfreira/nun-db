@@ -15,6 +15,7 @@ use crate::disk_ops::*;
 
 pub const TOKEN_KEY: &'static str = "$$token";
 pub const ADMIN_DB: &'static str = "$admin";
+const INVALID_VERSION_ERROR: &'static str = "Invalid version!";
 
 pub struct Client {
     pub auth: Arc<AtomicBool>,
@@ -473,12 +474,17 @@ impl Database {
 
     pub fn set_value(&self, key: String, value: String, version: i32) -> Response {
         if let Some(old_version) = self.get_value(key.clone()) {
-            if version != -1 && version < old_version.version {
+            let new_version = if version == -1 {
+                old_version.version + 1
+            } else {
+                version + 1
+            };
+
+            if new_version <= old_version.version {
                 return Response::Error {
-                    msg: String::from("Invalid version!"),
+                    msg: String::from(INVALID_VERSION_ERROR),
                 };
             }
-            let new_version = old_version.version + 1;
             log::debug!(
                 "Updating existing value Old version: {}, New version: {}, PassedVersion : {}",
                 old_version.version,
@@ -500,7 +506,7 @@ impl Database {
             )
         } else {
             //new key
-            self.set_value_version(&key, &value, 1, ValueStatus::New, 0, 0) // not in disk yet
+            self.set_value_version(&key, &value, version + 1, ValueStatus::New, 0, 0) // not in disk yet
         }
         self.notify_watchers(key.clone(), value.clone());
 
@@ -1067,6 +1073,49 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn set_should_set_the_latest_version() {
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let key = String::from("new");
+        db.set_value(key.clone(), String::from("1"), 1);
+        db.set_value(key.clone(), String::from("23"), 23);
+        let value = db.get_value(key);
+        assert_eq!(value.unwrap().version, 24);
+    }
+
+    #[test]
+    fn set_should_set_the_latest_version_on_creation() {
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let key = String::from("new");
+        db.set_value(key.clone(), String::from("1"), 23);
+        let value = db.get_value(key);
+        assert_eq!(value.unwrap().version, 24);
+    }
+
+    #[test]
+    fn set_should_return_error_if_invalid_version_passed() {
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let key = String::from("new");
+        db.set_value(key.clone(), String::from("1"), 23);
+        let r = db.set_value(key.clone(), String::from("2"), 22);
+        assert_eq!(r, Response::Error { msg: String::from(INVALID_VERSION_ERROR)  });
+    }
+
+    #[test]
+    fn set_with_negative_value_should_increment_last_version() {
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let key = String::from("new");
+        db.set_value(key.clone(), String::from("1"), 23);
+        let value = db.get_value(key.clone());
+        assert_eq!(value.unwrap().version, 24);
+        db.set_value(key.clone(), String::from("2"), -1);
+        let value = db.get_value(key);
+        assert_eq!(value.unwrap().version, 25);
+    }
+
+
+
 
     #[test]
     fn add_database_should_add_a_database() {

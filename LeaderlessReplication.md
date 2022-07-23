@@ -74,3 +74,7 @@ Time line...
 +--------+       +--------+        +---+        +------+                                                 
 
 ```
+
+
+# Todo
+- [ ]  Replica set sending the set does not need to process the replication!!! (works because if rejects the new version but it is unnecessary  travel)
