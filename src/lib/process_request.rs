@@ -166,7 +166,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             let respose: Response = match dbs.get(&name.to_string()) {
                 Some(db) => {
                     if is_valid_token(&token, db) {
-                        let _ = mem::replace(&mut *db_name_state, name.clone());
+                        let _ = std::mem::replace(&mut *db_name_state, name.clone());
                         db.inc_connections(); //Increment the number of connections
                         set_connection_counter(db);
                         Response::Ok {}

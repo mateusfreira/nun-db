@@ -2,7 +2,9 @@ use crate::bo::*;
 
 impl Database {
     pub fn resolve(self, conflitct_error: Response) -> Response {
-        Response::Error { msg: String::from("Todo") }
+        Response::Error {
+            msg: String::from("Todo"),
+        }
     }
 }
 
@@ -31,16 +33,16 @@ mod tests {
     #[test]
     fn should_resolve_conflict() {
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        db.set_value(String::from("some"), String::from("some1"), 0);
 
         let e = Response::VersionError {
-                    msg: String::from(""),
-                    old_version: 1,
-                    version: 0,
-                    old_value: String::from("jose"),
-                    new_value: String::from("maria"),
-                    db: db.name.clone(),
+            msg: String::from("some"),
+            old_version: 1,
+            version: 0,
+            old_value: String::from("jose"),
+            new_value: String::from("maria"),
+            db: db.name.clone(),
         };
         assert_eq!(db.resolve(e), Response::Ok {});
     }
-
 }

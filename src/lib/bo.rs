@@ -511,7 +511,8 @@ impl Database {
             )
         } else {
             //new key
-            self.set_value_version(&key, &value, version + 1, ValueStatus::New, 0, 0) // not in disk yet
+            self.set_value_version(&key, &value, version + 1, ValueStatus::New, 0, 0)
+            // not in disk yet
         }
         self.notify_watchers(key.clone(), value.clone());
 
@@ -923,11 +924,19 @@ pub enum Request {
 
 #[derive(PartialEq, Debug)]
 pub enum Response {
-    Value { key: String, value: String },
+    Value {
+        key: String,
+        value: String,
+    },
     Ok {},
-    Set { key: String, value: String },
-    Error { msg: String },
-    VersionError { 
+    Set {
+        key: String,
+        value: String,
+    },
+    Error {
+        msg: String,
+    },
+    VersionError {
         msg: String,
         old_version: i32,
         version: i32,
@@ -1112,7 +1121,12 @@ mod tests {
         let key = String::from("new");
         db.set_value(key.clone(), String::from("1"), 23);
         let r = db.set_value(key.clone(), String::from("2"), 22);
-        assert_eq!(r, Response::Error { msg: String::from(INVALID_VERSION_ERROR)  });
+        assert_eq!(
+            r,
+            Response::Error {
+                msg: String::from(INVALID_VERSION_ERROR)
+            }
+        );
     }
 
     #[test]
@@ -1126,9 +1140,6 @@ mod tests {
         let value = db.get_value(key);
         assert_eq!(value.unwrap().version, 25);
     }
-
-
-
 
     #[test]
     fn add_database_should_add_a_database() {

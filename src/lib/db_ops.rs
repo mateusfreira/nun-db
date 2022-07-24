@@ -303,9 +303,9 @@ mod tests {
         let hash = HashMap::new();
         let db =
             Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
-        set_key_value(key.clone(), value.clone(), -1, &db);// Version up to 0
-        set_key_value(key.clone(), value.clone(), -1, &db);// Version up to 1
-        set_key_value(key.clone(), value.clone(), -1, &db);// Version up to 2
+        set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 0
+        set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 1
+        set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 2
         match set_key_value(key.clone(), value_new.clone(), 1, &db) {
             Response::Error { msg } => {
                 assert_eq!(msg, "Invalid version!");
