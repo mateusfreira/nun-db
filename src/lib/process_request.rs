@@ -7,7 +7,7 @@ use crate::db_ops::*;
 use crate::election_ops::*;
 use crate::replication_ops::*;
 use crate::security::*;
-use crate::consensus_ops::*;
+//use crate::consensus_ops::*;
 use log;
 
 fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Client) -> Response {
@@ -388,12 +388,6 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         } => {
             send_message_to_primary(format!("ack {} {}", opp_id, dbs.tcp_address), dbs); // Todo validate auth
             match process_request(&request_str, &dbs, client) {
-                Response::VersionError { request, msg } => {
-                    resolve(request, &dbs);
-                    // try to resolve the conflict here...
-                    // strategies of resolution, Any, Oldest change, ArbiterClient
-                    Response::Error { msg }
-                },
                 Response::Error { msg } => {
                     log::warn!("Error to process message {}, error: {}", opp_id, msg);
                     Response::Error { msg }
