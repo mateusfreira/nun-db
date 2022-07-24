@@ -35,7 +35,7 @@ mod tests {
     fn should_set_if_set_safe_is_valid() -> Result<(), Box<dyn std::error::Error>> {
         let mut db_process = helpers::start_primary();
         helpers::nundb_exec_primary("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; set-safe name 2 maria;get-safe name")
-            .stdout(predicate::str::contains("value-version 2 maria"));
+            .stdout(predicate::str::contains("value-version 3 maria"));
 
         db_process.kill()?;
         Ok(())

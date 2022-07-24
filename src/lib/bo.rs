@@ -481,8 +481,13 @@ impl Database {
             };
 
             if new_version <= old_version.version {
-                return Response::Error {
+                return Response::VersionError {
                     msg: String::from(INVALID_VERSION_ERROR),
+                    old_version: old_version.version,
+                    version,
+                    old_value: old_version.value.clone(),
+                    new_value: value.clone(),
+                    db: self.name.clone(),
                 };
             }
             log::debug!(
@@ -811,7 +816,7 @@ impl OpLogRecord {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     Get {
         key: String,
@@ -922,6 +927,14 @@ pub enum Response {
     Ok {},
     Set { key: String, value: String },
     Error { msg: String },
+    VersionError { 
+        msg: String,
+        old_version: i32,
+        version: i32,
+        old_value: String,
+        new_value: String,
+        db: String,
+    },
 }
 
 pub struct ReplicationMessage {

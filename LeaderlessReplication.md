@@ -77,4 +77,6 @@ Time line...
 
 
 # Todo
-- [ ]  Replica set sending the set does not need to process the replication!!! (works because if rejects the new version but it is unnecessary  travel)
+- [ ] Replica set sending the set does not need to process the replication!!! (works because if rejects the new version but it is unnecessary  travel)
+- [ ] Measure clock difference from replica-sets (Is it needed?) to implement oldest change wins
+- [ ] 
