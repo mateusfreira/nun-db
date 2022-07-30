@@ -307,7 +307,15 @@ mod tests {
         set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 1
         set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 2
         match set_key_value(key.clone(), value_new.clone(), 1, &db) {
-            Response::Error { msg } => {
+            Response::VersionError {
+                msg,
+                old_version: _,
+                version: _,
+                old_value: _,
+                new_value: _,
+                key: _,
+                db: _,
+            } => {
                 assert_eq!(msg, "Invalid version!");
             }
             _ => {

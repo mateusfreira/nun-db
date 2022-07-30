@@ -484,6 +484,7 @@ impl Database {
                 return Response::VersionError {
                     msg: String::from(INVALID_VERSION_ERROR),
                     old_version: old_version.version,
+                    key: key.clone(),
                     version,
                     old_value: old_version.value.clone(),
                     new_value: value.clone(),
@@ -938,6 +939,7 @@ pub enum Response {
     },
     VersionError {
         msg: String,
+        key: String,
         old_version: i32,
         version: i32,
         old_value: String,
@@ -1123,8 +1125,13 @@ mod tests {
         let r = db.set_value(key.clone(), String::from("2"), 22);
         assert_eq!(
             r,
-            Response::Error {
-                msg: String::from(INVALID_VERSION_ERROR)
+            Response::VersionError {
+                msg: String::from("Invalid version!"),
+                old_version: 24,
+                version: 22,
+                old_value: String::from("1"),
+                new_value: String::from("2"),
+                db: String::from("some")
             }
         );
     }
