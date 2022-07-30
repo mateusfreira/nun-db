@@ -141,6 +141,31 @@ impl ValueStatus {
     }
 }
 
+#[derive(Clone, PartialEq, Copy, Debug)]
+pub enum ConsensuStrategy {
+    Arbiter = 2,
+    Newer = 1
+}
+
+impl From<i32> for ConsensuStrategy {
+    fn from(val: i32) -> Self {
+        use self::ConsensuStrategy::*;
+        match val {
+            2 => Arbiter,
+            _ => Newer,
+        }
+    }
+}
+
+impl ConsensuStrategy {
+    pub fn to_le_bytes(&self) -> [u8; 4] {
+        match self {
+            ConsensuStrategy::Newer => (1 as i32).to_le_bytes(),
+            ConsensuStrategy::Arbiter => (2 as i32).to_le_bytes(),
+        }
+    }
+}
+
 pub struct ClusterState {
     pub members: Mutex<HashMap<String, ClusterMember>>,
 }
@@ -151,11 +176,12 @@ pub struct SelectedDatabase {
 
 pub struct DatabaseMataData {
     pub id: usize,
+    pub consensus_strategy: ConsensuStrategy,
 }
 
 impl DatabaseMataData {
     pub fn new(id: usize) -> DatabaseMataData {
-        return DatabaseMataData { id };
+        return DatabaseMataData { id, consensus_strategy: ConsensuStrategy::Newer };
     }
 }
 
@@ -1129,6 +1155,7 @@ mod tests {
                 msg: String::from("Invalid version!"),
                 old_version: 24,
                 version: 22,
+                key,
                 old_value: String::from("1"),
                 new_value: String::from("2"),
                 db: String::from("some")
