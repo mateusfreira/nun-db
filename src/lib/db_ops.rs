@@ -174,7 +174,7 @@ pub fn set_connection_counter(db: &Database) -> Response {
 }
 
 pub fn set_key_value(key: String, value: String, version: i32, db: &Database) -> Response {
-    db.set_value(key.to_string(), value.to_string(), version)
+    db.set_value(Change::new(key.to_string(), value.to_string(), version))
 }
 
 pub fn unwatch_key(key: &String, sender: &Sender<String>, db: &Database) -> Response {

@@ -14,7 +14,7 @@ impl Database {
                 db,
             } => match self.metadata.consensus_strategy {
                 ConsensuStrategy::Newer => {
-                    self.set_value(key.clone(), new_value.clone(), old_version)
+                    self.set_value(Change::new(key.clone(), new_value.clone(), old_version))
                 }
                 ConsensuStrategy::Arbiter => Response::Error {
                     msg: String::from("Todo"),
@@ -51,8 +51,8 @@ mod tests {
     fn should_resolve_conflict() {
         let key = String::from("some");
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
-        db.set_value(key.clone(), String::from("some1"), 0);
-        let e = db.set_value(String::from("some"), String::from("some2"), 0);
+        db.set_value(Change::new(key.clone(), String::from("some1"), 0));
+        let e = db.set_value(Change::new(String::from("some"), String::from("some2"), 0));
         assert_eq!(
             e,
             Response::VersionError {
