@@ -193,6 +193,7 @@ fn create_db_from_file_name(file_name: &String, dbs: &Arc<Databases>) -> (Databa
                     state: ValueStatus::Ok,
                     value_disk_addr: value_addr,
                     key_disk_addr,
+                    opp_id: Databases::next_op_log_id(),
                 },
             );
         } else {
@@ -385,11 +386,23 @@ fn storage_data_disk(db: &Database, db_name: &String, reclame_space: bool) -> u3
                         value_addr,
                         value.key_disk_addr,
                     );
-                    db.set_value_as_ok(&key, &value, value_addr, value.key_disk_addr);
+                    db.set_value_as_ok(
+                        &key,
+                        &value,
+                        value_addr,
+                        value.key_disk_addr,
+                        Databases::next_op_log_id(),
+                    );
                     // Append key file
                 } else {
                     let key_size = write_key(&mut keys_file, &key, &value, value_addr);
-                    db.set_value_as_ok(&key, &value, value_addr, next_key_addr);
+                    db.set_value_as_ok(
+                        &key,
+                        &value,
+                        value_addr,
+                        next_key_addr,
+                        Databases::next_op_log_id(),
+                    );
                     next_key_addr = next_key_addr + key_size;
                 }
                 value_addr = value_addr + record_size;
@@ -441,7 +454,13 @@ fn write_new_key_value(
     );
     // Append key file
     let key_size = write_key(keys_file, key, value, value_addr);
-    db.set_value_as_ok(key, value, value_addr, next_key_addr);
+    db.set_value_as_ok(
+        key,
+        value,
+        value_addr,
+        next_key_addr,
+        Databases::next_op_log_id(),
+    );
     (record_size, key_size)
 }
 

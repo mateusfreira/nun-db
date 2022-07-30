@@ -188,7 +188,7 @@ impl DatabaseMataData {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Change {
     pub value: String,
     pub version: i32,
@@ -211,6 +211,7 @@ impl Change {
 pub struct Value {
     pub value: String,
     pub version: i32,
+    pub opp_id: u64,
     pub state: ValueStatus,
     pub value_disk_addr: u64,
     pub key_disk_addr: u64,
@@ -221,6 +222,7 @@ impl From<String> for Value {
         Value {
             value,
             version: 1,
+            opp_id: Databases::next_op_log_id(),
             state: ValueStatus::New,
             value_disk_addr: 0,
             key_disk_addr: 0,
@@ -443,6 +445,7 @@ impl Database {
                         ValueStatus::Deleted,
                         value.value_disk_addr,
                         value.key_disk_addr,
+                        value.opp_id,
                     );
                 }
             }
@@ -473,6 +476,7 @@ impl Database {
                 state: value.state,
                 value_disk_addr: value.value_disk_addr,
                 key_disk_addr: value.key_disk_addr,
+                opp_id: value.opp_id,
             })
         } else {
             None
@@ -487,6 +491,7 @@ impl Database {
         state: ValueStatus,
         value_disk_addr: u64,
         key_disk_addr: u64,
+        opp_id: u64,
     ) {
         {
             let mut db = self.map.write().unwrap();
@@ -498,6 +503,7 @@ impl Database {
                     state,
                     value_disk_addr, // will change on the store
                     key_disk_addr,   // will change on the store
+                    opp_id,
                 },
             );
         } // release the db
@@ -509,6 +515,7 @@ impl Database {
         value: &Value,
         value_disk_addr: u64,
         key_disk_addr: u64,
+        opp_id: u64,
     ) {
         self.set_value_version(
             key,
@@ -517,6 +524,7 @@ impl Database {
             ValueStatus::Ok,
             value_disk_addr,
             key_disk_addr,
+            opp_id,
         );
     }
 
@@ -534,8 +542,8 @@ impl Database {
                     old_version: old_version.version,
                     key: change.key.clone(),
                     version: change.version,
-                    old_value: old_version.value.clone(),
-                    new_value: change.value.clone(),
+                    old_value: old_version.clone(),
+                    new_value: change.clone(),
                     db: self.name.clone(),
                 };
             }
@@ -557,6 +565,7 @@ impl Database {
                 state,
                 old_version.value_disk_addr,
                 old_version.key_disk_addr,
+                change.opp_id,
             )
         } else {
             //new key
@@ -567,6 +576,7 @@ impl Database {
                 ValueStatus::New,
                 0,
                 0,
+                change.opp_id,
             )
             // not in disk yet
         }
@@ -995,8 +1005,8 @@ pub enum Response {
         key: String,
         old_version: i32,
         version: i32,
-        old_value: String,
-        new_value: String,
+        old_value: Value,
+        new_value: Change,
         db: String,
     },
 }
@@ -1174,8 +1184,10 @@ mod tests {
     fn set_should_return_error_if_invalid_version_passed() {
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
         let key = String::from("new");
-        db.set_value(Change::new(key.clone(), String::from("1"), 23));
-        let r = db.set_value(Change::new(key.clone(), String::from("2"), 22));
+        let change1 = Change::new(key.clone(), String::from("1"), 23);
+        db.set_value(change1.clone());
+        let change2 = Change::new(key.clone(), String::from("2"), 22);
+        let r = db.set_value(change2.clone());
         assert_eq!(
             r,
             Response::VersionError {
@@ -1183,8 +1195,15 @@ mod tests {
                 old_version: 24,
                 version: 22,
                 key,
-                old_value: String::from("1"),
-                new_value: String::from("2"),
+                old_value: Value {
+                    value: String::from("1"),
+                    version: 22,
+                    opp_id: change1.opp_id,
+                    state: ValueStatus::New,
+                    value_disk_addr: 0,
+                    key_disk_addr: 0
+                },
+                new_value: change2,
                 db: String::from("some")
             }
         );
