@@ -5,7 +5,7 @@ impl Database {
     pub fn resolve(&self, conflitct_error: Response) -> Response {
         match conflitct_error {
             Response::VersionError {
-                msg,
+                msg:_,
                 key,
                 old_version,
                 version,
@@ -62,6 +62,39 @@ mod tests {
                 key: key.clone(),
                 old_value: String::from("some1"),
                 new_value: String::from("some2"),
+                db: String::from("some")
+            }
+        );
+        assert_eq!(
+            db.resolve(e),
+            Response::Set {
+                key: String::from("some"),
+                value: String::from("some2")
+            }
+        );
+        assert_eq!(
+            db.get_value(key.clone()).unwrap().value,
+            String::from("some2")
+        );
+    }
+
+    #[test]
+    fn should_resolve_conflict_with_newer() {
+        let key = String::from("some");
+        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let change1 = Change::new(key.clone(), String::from("some1"), 0);// m1
+        let change2 = Change::new(String::from("some"), String::from("some2"), 0);//m2
+        db.set_value(change2);
+        let e = db.set_value(change1);
+        assert_eq!(
+            e,
+            Response::VersionError {
+                msg: String::from("Invalid version!"),
+                old_version: 1,
+                version: 0,
+                key: key.clone(),
+                old_value: String::from("some2"),
+                new_value: String::from("some1"),
                 db: String::from("some")
             }
         );
