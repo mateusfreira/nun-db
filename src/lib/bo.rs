@@ -528,7 +528,7 @@ impl Database {
         );
     }
 
-    pub fn set_value(&self, change: Change) -> Response {
+    pub fn set_value(&self, change: &Change) -> Response {
         if let Some(old_version) = self.get_value(change.key.clone()) {
             let new_version = if change.version == -1 {
                 old_version.version + 1
@@ -543,7 +543,7 @@ impl Database {
                     key: change.key.clone(),
                     version: change.version,
                     old_value: old_version.clone(),
-                    new_value: change.clone(),
+                    change: change.clone(),
                     db: self.name.clone(),
                 };
             }
@@ -626,7 +626,7 @@ impl Databases {
                 dbs.insert(name.to_string(), database);
                 dbs.get(&String::from(ADMIN_DB))
                     .unwrap()
-                    .set_value(Change::new(name.to_string(), String::from("{}"), -1));
+                    .set_value(&Change::new(name.to_string(), String::from("{}"), -1));
                 Response::Ok {}
             }
             _ => Response::Error {
@@ -696,7 +696,7 @@ impl Databases {
 
         let admin_db_name = String::from(ADMIN_DB);
         let admin_db = Database::new(admin_db_name.to_string(), DatabaseMataData::new(0)); // id 0 adnmin db
-        admin_db.set_value(Change::new(String::from(TOKEN_KEY), pwd.to_string(), -1));
+        admin_db.set_value(&Change::new(String::from(TOKEN_KEY), pwd.to_string(), -1));
         dbs.add_database(&admin_db_name.to_string(), admin_db);
 
         dbs
@@ -1006,7 +1006,7 @@ pub enum Response {
         old_version: i32,
         version: i32,
         old_value: Value,
-        new_value: Change,
+        change: Change,
         db: String,
     },
 }
@@ -1165,8 +1165,8 @@ mod tests {
     fn set_should_set_the_latest_version() {
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
         let key = String::from("new");
-        db.set_value(Change::new(key.clone(), String::from("1"), 1));
-        db.set_value(Change::new(key.clone(), String::from("23"), 23));
+        db.set_value(&Change::new(key.clone(), String::from("1"), 1));
+        db.set_value(&Change::new(key.clone(), String::from("23"), 23));
         let value = db.get_value(key);
         assert_eq!(value.unwrap().version, 24);
     }
@@ -1175,7 +1175,7 @@ mod tests {
     fn set_should_set_the_latest_version_on_creation() {
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
         let key = String::from("new");
-        db.set_value(Change::new(key.clone(), String::from("1"), 23));
+        db.set_value(&Change::new(key.clone(), String::from("1"), 23));
         let value = db.get_value(key);
         assert_eq!(value.unwrap().version, 24);
     }
@@ -1185,9 +1185,9 @@ mod tests {
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
         let key = String::from("new");
         let change1 = Change::new(key.clone(), String::from("1"), 23);
-        db.set_value(change1.clone());
+        db.set_value(&change1);
         let change2 = Change::new(key.clone(), String::from("2"), 22);
-        let r = db.set_value(change2.clone());
+        let r = db.set_value(&change2);
         assert_eq!(
             r,
             Response::VersionError {
@@ -1203,7 +1203,7 @@ mod tests {
                     value_disk_addr: 0,
                     key_disk_addr: 0
                 },
-                new_value: change2,
+                change: change2,
                 db: String::from("some")
             }
         );
@@ -1213,10 +1213,10 @@ mod tests {
     fn set_with_negative_value_should_increment_last_version() {
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
         let key = String::from("new");
-        db.set_value(Change::new(key.clone(), String::from("1"), 23));
+        db.set_value(&Change::new(key.clone(), String::from("1"), 23));
         let value = db.get_value(key.clone());
         assert_eq!(value.unwrap().version, 24);
-        db.set_value(Change::new(key.clone(), String::from("2"), -1));
+        db.set_value(&Change::new(key.clone(), String::from("2"), -1));
         let value = db.get_value(key);
         assert_eq!(value.unwrap().version, 25);
     }

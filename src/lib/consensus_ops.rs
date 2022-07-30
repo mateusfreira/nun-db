@@ -10,15 +10,15 @@ impl Database {
                 old_version,
                 version,
                 old_value,
-                new_value,
+                change,
                 db,
             } => match self.metadata.consensus_strategy {
                 ConsensuStrategy::Newer => {
-                    if new_value.opp_id > old_value.opp_id  {
+                    if change.opp_id > old_value.opp_id  {
                         // New value is older
-                        self.set_value(Change::new(
+                        self.set_value(&Change::new(
                             key.clone(),
-                            new_value.value.clone(),
+                            change.value.clone(),
                             old_version,
                         ))
                     } else {
@@ -64,9 +64,9 @@ mod tests {
         let key = String::from("some");
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
         let change1 = Change::new(key.clone(), String::from("some1"), 0);
-        db.set_value(change1.clone());
+        db.set_value(&change1);
         let change2 = Change::new(String::from("some"), String::from("some2"), 0);
-        let e = db.set_value(change2.clone());
+        let e = db.set_value(&change2);
         assert_eq!(
             e,
             Response::VersionError {
@@ -82,7 +82,7 @@ mod tests {
                     value_disk_addr: 0,
                     key_disk_addr: 0
                 },
-                new_value: change2,
+                change: change2,
                 db: String::from("some")
             }
         );
@@ -105,8 +105,8 @@ mod tests {
         let db = Database::new(String::from("some"), DatabaseMataData::new(1));
         let change1 = Change::new(key.clone(), String::from("some1"), 0); // m1
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
-        db.set_value(change2);
-        let e = db.set_value(change1.clone());
+        db.set_value(&change2);
+        let e = db.set_value(&change1);
         assert_eq!(
             e,
             Response::VersionError {
@@ -122,7 +122,7 @@ mod tests {
                     value_disk_addr: 0,
                     key_disk_addr: 0
                 },
-                new_value: change1,
+                change: change1,
                 db: String::from("some")
             }
         );

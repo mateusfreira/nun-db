@@ -1039,7 +1039,7 @@ mod tests {
         hash.insert(key1.clone(), value1.clone());
 
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-        db.set_value(Change::new(key.clone(), value_updated.clone(), 2));
+        db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value_new.version, 3);
@@ -1057,7 +1057,7 @@ mod tests {
         assert_eq!(key1_value.version, 1);
 
         let final_value = String::from("final_value");
-        loaded_db.set_value(Change::new(key.clone(), final_value.clone(), 3));
+        loaded_db.set_value(&Change::new(key.clone(), final_value.clone(), 3));
 
         // To test in place update
         storage_data_disk(&loaded_db, &db_name, false);
@@ -1072,7 +1072,7 @@ mod tests {
         assert_eq!(key1_value.version, 1);
 
         let final_value = String::from("final_value1");
-        loaded_db.set_value(Change::new(key.clone(), final_value.clone(), 4));
+        loaded_db.set_value(&Change::new(key.clone(), final_value.clone(), 4));
 
         // To test in place update
         storage_data_disk(&loaded_db, &db_name, false);
@@ -1104,7 +1104,7 @@ mod tests {
         hash.insert(key1.clone(), value1.clone());
 
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-        db.set_value(Change::new(key.clone(), value_updated.clone(), 2));
+        db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value_new.version, 3);
@@ -1137,7 +1137,7 @@ mod tests {
         hash.insert(key1.clone(), value1.clone());
 
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-        db.set_value(Change::new(key.clone(), value_updated.clone(), 2));
+        db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value_new.version, 3);
@@ -1171,7 +1171,7 @@ mod tests {
         hash.insert(key1.clone(), value1.clone());
 
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-        db.set_value(Change::new(key.clone(), value_updated.clone(), 2));
+        db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value_new.version, 3);
@@ -1205,7 +1205,7 @@ mod tests {
         hash.insert(key1.clone(), value1.clone());
 
         let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-        db.set_value(Change::new(key.clone(), value_updated.clone(), 2));
+        db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value_new.version, 3);
@@ -1274,7 +1274,7 @@ mod tests {
         let key_1 = String::from("key_1");
         let value = db.get_value(key_1.clone()).unwrap();
         assert_eq!(value.state, ValueStatus::Ok);
-        db.set_value(Change::new(key_1.clone(), String::from("NewValue"), 2));
+        db.set_value(&Change::new(key_1.clone(), String::from("NewValue"), 2));
 
         let value = db.get_value(key_1.clone()).unwrap();
         assert_eq!(value.state, ValueStatus::Updated);
@@ -1291,8 +1291,8 @@ mod tests {
     #[test]
     fn remove_keys_should_work() {
         let (dbs, db_name, db) = create_empty_db();
-        db.set_value(Change::new("Jose".to_string(), "value".to_string(), 1));
-        db.set_value(Change::new(
+        db.set_value(&Change::new("Jose".to_string(), "value".to_string(), 1));
+        db.set_value(&Change::new(
             "Keyhshshshsh1".to_string(),
             "value".to_string(),
             1,
@@ -1334,7 +1334,7 @@ mod tests {
         let value = loaded_db.get_value(String::from("key_1")).unwrap();
         assert_eq!(value.state, ValueStatus::Ok);
 
-        loaded_db.set_value(Change::new(
+        loaded_db.set_value(&Change::new(
             String::from("key_1"),
             String::from("New-value"),
             2,
@@ -1383,7 +1383,7 @@ mod tests {
         let value = loaded_db.get_value(String::from("key_1")).unwrap();
         assert_eq!(value.state, ValueStatus::Ok);
 
-        loaded_db.set_value(Change::new(
+        loaded_db.set_value(&Change::new(
             String::from("key_1"),
             String::from("New-value"),
             2,
