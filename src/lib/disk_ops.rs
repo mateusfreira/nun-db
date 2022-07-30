@@ -38,6 +38,7 @@ const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP
 const VERSION_SIZE: usize = 4;
 const ADDR_SIZE: usize = 8;
 const U64_SIZE: usize = 8;
+const U32_SIZE: usize = 4;
 
 const VERSION_DELETED: i32 = -1;
 
@@ -102,10 +103,13 @@ pub fn load_db_metadata_from_disk_or_empty(name: String, dbs: &Arc<Databases>) -
         let mut buffer = [0; U64_SIZE];
         file.read(&mut buffer).unwrap();
         let id: usize = usize::from_le_bytes(buffer);
+        let mut buffer = [0; U32_SIZE];
+        file.read(&mut buffer).unwrap();
+        let consensus_strategy: i32 = i32::from_le_bytes(buffer);
 
-        DatabaseMataData::new(id)
+        DatabaseMataData::new(id, ConsensuStrategy::from(consensus_strategy))
     } else {
-        DatabaseMataData::new(dbs.map.read().unwrap().len())
+        DatabaseMataData::new(dbs.map.read().unwrap().len(), ConsensuStrategy::Newer)
     }
 }
 
@@ -540,8 +544,10 @@ fn write_metadata_file(db_name: &String, db: &Database) {
         .write(true)
         .open(meta_file_name_from_db_name(db_name.to_string()))
         .unwrap();
-    meta_file.write(&db.metadata.id.to_le_bytes()).unwrap();
     //8 bytes
+    meta_file.write(&db.metadata.id.to_le_bytes()).unwrap();
+    //4 bytes
+    meta_file.write(&db.metadata.consensus_strategy.to_le_bytes()).unwrap();
 }
 
 // calls storage_data_disk each $SNAPSHOT_TIME seconds
@@ -1009,7 +1015,7 @@ mod tests {
         let mut hash = HashMap::new();
         hash.insert(String::from("some"), String::from("value"));
         hash.insert(String::from("some1"), String::from("value1"));
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0, ConsensuStrategy::Arbiter));
         storage_data_disk_old(&db, db_name.clone());
         let db_file_name = file_name_from_db_name(&db_name);
         let loaded_db = create_db_from_file_name_old(&db_file_name, &dbs);
@@ -1017,6 +1023,11 @@ mod tests {
         assert_eq!(
             loaded_db.get_value(String::from("some1")).unwrap().value,
             String::from("value1")
+        );
+
+        assert_eq!(
+            loaded_db.metadata.consensus_strategy,
+            ConsensuStrategy::Arbiter,
         );
         remove_database_file(&db_name);
     }
@@ -1038,7 +1049,7 @@ mod tests {
         hash.insert(key.clone(), value.clone());
         hash.insert(key1.clone(), value1.clone());
 
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
@@ -1048,6 +1059,9 @@ mod tests {
         storage_data_disk(&db, &db_name, false);
 
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
+        assert_eq!(loaded_db.metadata.id, db.metadata.id);
+        assert_eq!(loaded_db.metadata.consensus_strategy, db.metadata.consensus_strategy);
+
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value.value, value_updated);
         assert_eq!(key_value.version, 3);
@@ -1103,7 +1117,7 @@ mod tests {
         hash.insert(key.clone(), value.clone());
         hash.insert(key1.clone(), value1.clone());
 
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
@@ -1136,7 +1150,7 @@ mod tests {
         hash.insert(key.clone(), value.clone());
         hash.insert(key1.clone(), value1.clone());
 
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
@@ -1170,7 +1184,7 @@ mod tests {
         hash.insert(key.clone(), value.clone());
         hash.insert(key1.clone(), value1.clone());
 
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
@@ -1204,7 +1218,7 @@ mod tests {
         hash.insert(key.clone(), value.clone());
         hash.insert(key1.clone(), value1.clone());
 
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
@@ -1422,7 +1436,7 @@ mod tests {
         let dbs = create_test_dbs();
         let db_name = String::from("test-db");
         let hash = HashMap::new();
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         (dbs, db_name, db)
     }
@@ -1434,7 +1448,7 @@ mod tests {
         for i in 0..10000 {
             hash.insert(format!("key_{}", i), format!("key_{}", i));
         }
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         (dbs, db_name, db)
     }

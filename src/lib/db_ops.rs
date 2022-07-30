@@ -218,7 +218,7 @@ pub fn create_temp_db(name: String, dbs: &Arc<Databases>) -> Arc<Database> {
     return Arc::new(Database::create_db_from_hash(
         name,
         initial_db,
-        DatabaseMataData::new(dbs.map.read().expect("could not get lock").len()),
+        DatabaseMataData::new(dbs.map.read().expect("could not get lock").len(), ConsensuStrategy::Newer),
     ));
 }
 
@@ -276,7 +276,7 @@ mod tests {
         let value = String::from("This is the value");
         let hash = HashMap::new();
         let db =
-            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0,ConsensuStrategy::Newer));
         set_key_value(key.clone(), value.clone(), -1, &db);
 
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -302,7 +302,7 @@ mod tests {
         let value_new = String::from("This is the new value");
         let hash = HashMap::new();
         let db =
-            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 0
         set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 1
         set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 2
@@ -331,7 +331,7 @@ mod tests {
         let value_new = String::from("This is the new value");
         let hash = HashMap::new();
         let db =
-            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         set_key_value(key.clone(), value.clone(), 1, &db);
         set_key_value(key.clone(), value_new.clone(), 2, &db);
 
@@ -351,7 +351,7 @@ mod tests {
         let value = String::from("This is the value");
         let hash = HashMap::new();
         let db =
-            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         set_key_value(key.clone(), value.clone(), -1, &db);
 
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -369,7 +369,7 @@ mod tests {
         let key = String::from("key");
         let hash = HashMap::new();
         let db =
-            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         watch_key(&key, &sender, &db);
         let senders = get_senders(&key, &db.watchers);
@@ -385,7 +385,7 @@ mod tests {
         let key1 = String::from("key1");
         let hash = HashMap::new();
         let db =
-            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         let (sender, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         watch_key(&key, &sender, &db);
         watch_key(&key1, &sender, &db);
@@ -409,7 +409,7 @@ mod tests {
         let token_invalid = String::from("invalid");
         let hash = HashMap::new();
         let db =
-            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0));
+            Database::create_db_from_hash(String::from("test"), hash, DatabaseMataData::new(0, ConsensuStrategy::Newer));
         set_key_value(TOKEN_KEY.to_string(), token.clone(), -1, &db);
 
         assert_eq!(is_valid_token(&token, &db), true);
