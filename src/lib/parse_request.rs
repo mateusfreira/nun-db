@@ -484,6 +484,61 @@ impl Request {
                     command: debug_command,
                 })
             }
+            Some("arbiter") => Ok(Request::Arbiter {}),
+
+            Some("resolve") => {
+                let opp_id = match command.next() {
+                    Some(opp_id) => match opp_id.parse::<u64>() {
+                        Ok(opp_id) => opp_id,
+                        Err(_) => return Err(format!("opp id must be u64")),
+                    },
+                    None => {
+                        return Err(format!("opp id mandatory"))
+                    }
+                };
+                let mut rest = match command.next() {
+                    Some(rest) => rest.splitn(4, " "),
+                    None => {
+                        log::debug!("resolve missing params");
+                        return Err(String::from(
+                            "resoved must be followed by db_name, key version and value",
+                        ));
+                    }
+                };
+
+
+                let db_name = match rest.next() {
+                    Some(db_name) => db_name.replace("\n", ""),
+                    None => return Err(String::from("db_name must be provided")),
+                };
+
+
+                let key = match rest.next() {
+                    Some(key) => key.replace("\n", ""),
+                    None => return Err(String::from("key must be provided")),
+                };
+
+                let version = match rest.next() {
+                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+                        Ok(n) => n,
+                        _ => -1,
+                    },
+                    None => -1,
+                };
+
+                let value = match rest.next() {
+                    Some(value) => value.replace("\n", ""),
+                    None => return Err(String::from("set-safe must be followed by a key")),
+                };
+
+                Ok(Request::Resolve {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                    version,
+                    db_name,
+                    opp_id,
+                })
+            }
             Some(cmd) => Err(format!("unknown command: {}", cmd)),
             _ => Err(format!("no command sent")),
         };
@@ -973,6 +1028,56 @@ mod tests {
                 }
             }
             _ => Err(String::from("Should not have parsed!!")),
+        }
+    }
+
+    #[test]
+    fn should_parse_regier_as_arbiter_command() -> Result<(), String> {
+        match Request::parse("arbiter") {
+            Ok(Request::Arbiter {}) => Ok(()),
+            _ => Err(String::from("Invalid parsing")),
+        }
+    }
+
+    #[test]
+    fn should_parse_resolve_conflit_with_error() -> Result<(), String> {
+        match Request::parse("resolve a db_name some 2 some1") {
+            Err(m) => {
+                if m != "Invalid opp_id" {
+                    Err(String::from("Invalid opp_id"))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(String::from("Invalid parsing")),
+        }
+    }
+
+    #[test]
+    fn should_parse_resolve_conflit() -> Result<(), String> {
+        match Request::parse("resolve 1 db_name some 2 some1") {
+            Ok(Request::Resolve {
+                opp_id,
+                db_name,
+                key,
+                value,
+                version,
+            }) => {
+                if opp_id != 1 {
+                    Err(String::from("Invalid opp_id"))
+                } else if db_name != "db_name" {
+                    Err(String::from("Invalid db_name"))
+                } else if key != "some" {
+                    Err(String::from("Invalid key"))
+                } else if value != "some1" {
+                    Err(String::from("Invalid value"))
+                } else if version != 2 {
+                    Err(String::from("Invalid version"))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(String::from("Invalid parsing")),
         }
     }
 }

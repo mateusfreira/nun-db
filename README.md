@@ -369,7 +369,7 @@ pending_ops #list-of-pending-ops#
 
 All special keys will have a `$` symbol in the first letter of the name.
 
-### $connections 
+### $connections
 
 Count the number of connections to a databse.
 
@@ -377,3 +377,6 @@ Count the number of connections to a databse.
 ```
 $connections
 ```
+
+### $$conflicts
+* Key used to register client as arbiter for conflict resolution

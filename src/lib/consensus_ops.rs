@@ -33,7 +33,15 @@ impl Database {
                         }
                     } else {
                         // Need thread error to send
-                        self.send_message_to_arbiter_client(String::from(format!("resolve {opp_id} {db} {old_version} {key} {old_value} {value}", opp_id = change.opp_id,db = db, old_version = old_version, key = key, old_value = old_value, value = change.value)));
+                        self.send_message_to_arbiter_client(String::from(format!(
+                            "resolve {opp_id} {db} {old_version} {key} {old_value} {value}",
+                            opp_id = change.opp_id,
+                            db = db,
+                            old_version = old_version,
+                            key = key,
+                            old_value = old_value,
+                            value = change.value
+                        )));
                         Response::Error {
                             msg: String::from("Todo"),
                         }
@@ -70,7 +78,6 @@ impl Database {
     pub fn resolve_conflit(&self, change: Change) -> Response {
         self.set_value(&change)
     }
-
 }
 
 #[cfg(test)]
@@ -207,7 +214,10 @@ mod tests {
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),
-            String::from(format!("resolve {} db_name 1 some some2 some1", change1.opp_id)) // Not sure what to put here yet
+            String::from(format!(
+                "resolve {} db_name 1 some some2 some1",
+                change1.opp_id
+            )) // Not sure what to put here yet
         );
         db.resolve_conflit(Change::new(String::from("some"), String::from("some1"), 2));
         //process_request(&format!("resolved {} db_name some some1", change1.opp_id), &dbs, &mut client);

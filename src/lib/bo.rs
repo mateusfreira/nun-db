@@ -1001,6 +1001,14 @@ pub enum Request {
     Debug {
         command: String,
     },
+    Arbiter {},
+    Resolve {
+        opp_id: u64,
+        db_name: String,
+        key: String,
+        value: String,
+        version: i32,
+    },
 }
 
 #[derive(PartialEq, Debug)]
