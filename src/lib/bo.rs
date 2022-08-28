@@ -15,6 +15,7 @@ use crate::disk_ops::*;
 
 pub const TOKEN_KEY: &'static str = "$$token";
 pub const ADMIN_DB: &'static str = "$admin";
+
 const INVALID_VERSION_ERROR: &'static str = "Invalid version!";
 
 pub struct Client {
@@ -160,7 +161,6 @@ impl From<i32> for ConsensuStrategy {
 
 impl ConsensuStrategy {
     pub fn to_le_bytes(&self) -> [u8; 4] {
-
         print!("Val in ConsensuStrategy to_le_bytes {:#?}", self);
         match self {
             ConsensuStrategy::Newer => (1 as i32).to_le_bytes(),
@@ -512,6 +512,17 @@ impl Database {
         } // release the db
     }
 
+    pub fn watch_key(&self, key: &String, sender: &Sender<String>) -> Response {
+        let mut watchers = self.watchers.map.write().unwrap();
+        let mut senders: Vec<Sender<String>> = match watchers.get(key) {
+            Some(watchers_vec) => watchers_vec.clone(),
+            _ => Vec::new(),
+        };
+        senders.push(sender.clone());
+        watchers.insert(key.clone(), senders);
+        Response::Ok {}
+    }
+
     pub fn set_value_as_ok(
         &self,
         key: &String,
@@ -619,17 +630,18 @@ impl Databases {
         );
     }
 
-    pub fn add_database(&self, name: &String, database: Database) -> Response {
-        log::debug!("add_database {}", name.to_string());
+    pub fn add_database(&self, database: Database) -> Response {
+        let db_name = database.name.to_string();
+        log::debug!("add_database {}", db_name);
         let mut dbs = self.map.write().unwrap();
-        match dbs.get(name) {
+        match dbs.get(&database.name.to_string()) {
             None => {
                 let mut id_name_db_map = self.id_name_db_map.write().unwrap();
-                id_name_db_map.insert(database.metadata.id as u64, name.to_string());
-                dbs.insert(name.to_string(), database);
+                id_name_db_map.insert(database.metadata.id as u64, database.name.to_string());
+                dbs.insert(db_name.to_string(), database);
                 dbs.get(&String::from(ADMIN_DB))
                     .unwrap()
-                    .set_value(&Change::new(name.to_string(), String::from("{}"), -1));
+                    .set_value(&Change::new(db_name.to_string(), String::from("{}"), -1));
                 Response::Ok {}
             }
             _ => Response::Error {
@@ -698,10 +710,12 @@ impl Databases {
         };
 
         let admin_db_name = String::from(ADMIN_DB);
-        let admin_db = Database::new(admin_db_name.to_string(), DatabaseMataData::new(0, ConsensuStrategy::Newer)); // id 0 adnmin db
+        let admin_db = Database::new(
+            admin_db_name.to_string(),
+            DatabaseMataData::new(0, ConsensuStrategy::Newer),
+        ); // id 0 adnmin db
         admin_db.set_value(&Change::new(String::from(TOKEN_KEY), pwd.to_string(), -1));
-        dbs.add_database(&admin_db_name.to_string(), admin_db);
-
+        dbs.add_database(admin_db);
         dbs
     }
 
@@ -1110,13 +1124,19 @@ mod tests {
 
     #[test]
     fn connection_count_should_start_at_0() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1, ConsensuStrategy::Newer));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         assert_eq!(db.connections_count(), 0);
     }
 
     #[test]
     fn connection_count_should_increment() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1, ConsensuStrategy::Newer));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         assert_eq!(db.connections_count(), 0);
 
         db.inc_connections();
@@ -1126,7 +1146,10 @@ mod tests {
 
     #[test]
     fn connection_count_should_decrement() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1, ConsensuStrategy::Newer));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         assert_eq!(db.connections_count(), 0);
 
         db.inc_connections();
@@ -1138,7 +1161,10 @@ mod tests {
 
     #[test]
     fn inc_should_increment_empty_key() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1, ConsensuStrategy::Newer));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         let key = String::from("new");
         db.inc_value(key.clone(), 1);
         {
@@ -1166,7 +1192,10 @@ mod tests {
 
     #[test]
     fn set_should_set_the_latest_version() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1, ConsensuStrategy::Newer));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         let key = String::from("new");
         db.set_value(&Change::new(key.clone(), String::from("1"), 1));
         db.set_value(&Change::new(key.clone(), String::from("23"), 23));
@@ -1176,7 +1205,10 @@ mod tests {
 
     #[test]
     fn set_should_set_the_latest_version_on_creation() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1, ConsensuStrategy::Newer));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         let key = String::from("new");
         db.set_value(&Change::new(key.clone(), String::from("1"), 23));
         let value = db.get_value(key);
@@ -1185,7 +1217,10 @@ mod tests {
 
     #[test]
     fn set_should_return_error_if_invalid_version_passed() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1, ConsensuStrategy::Newer));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         let key = String::from("new");
         let change1 = Change::new(key.clone(), String::from("1"), 23);
         db.set_value(&change1);
@@ -1214,7 +1249,10 @@ mod tests {
 
     #[test]
     fn set_with_negative_value_should_increment_last_version() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1, ConsensuStrategy::Newer));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         let key = String::from("new");
         db.set_value(&Change::new(key.clone(), String::from("1"), 23));
         let value = db.get_value(key.clone());
@@ -1229,9 +1267,12 @@ mod tests {
         let dbs = get_empty_dbs();
         assert_eq!(dbs.map.read().expect("error to lock").keys().len(), 1); //Admin db
 
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1, ConsensuStrategy::Newer));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
 
-        dbs.add_database(&String::from("jose"), db);
+        dbs.add_database(db);
         assert_eq!(dbs.map.read().expect("error to lock").keys().len(), 2); // Admin db and the db
     }
 
