@@ -146,6 +146,7 @@ impl ValueStatus {
 pub enum ConsensuStrategy {
     Arbiter = 2,
     Newer = 1,
+    None = 0
 }
 
 impl From<i32> for ConsensuStrategy {
@@ -154,7 +155,8 @@ impl From<i32> for ConsensuStrategy {
         use self::ConsensuStrategy::*;
         match val {
             2 => Arbiter,
-            _ => Newer,
+            1 => Newer,
+            _ => None,
         }
     }
 }
@@ -163,6 +165,7 @@ impl ConsensuStrategy {
     pub fn to_le_bytes(&self) -> [u8; 4] {
         print!("Val in ConsensuStrategy to_le_bytes {:#?}", self);
         match self {
+            ConsensuStrategy::None => (0 as i32).to_le_bytes(),
             ConsensuStrategy::Newer => (1 as i32).to_le_bytes(),
             ConsensuStrategy::Arbiter => (2 as i32).to_le_bytes(),
         }
@@ -551,7 +554,7 @@ impl Database {
             };
 
             if new_version <= old_version.version {
-                return Response::VersionError {
+                return self.resolve(Response::VersionError {
                     msg: String::from(INVALID_VERSION_ERROR),
                     old_version: old_version.version,
                     key: change.key.clone(),
@@ -559,7 +562,7 @@ impl Database {
                     old_value: old_version.clone(),
                     change: change.clone(),
                     db: self.name.clone(),
-                };
+                });
             }
             log::debug!(
                 "Updating existing value Old version: {}, New version: {}, PassedVersion : {}",
@@ -1227,7 +1230,7 @@ mod tests {
     fn set_should_return_error_if_invalid_version_passed() {
         let db = Database::new(
             String::from("some"),
-            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+            DatabaseMataData::new(1, ConsensuStrategy::None),
         );
         let key = String::from("new");
         let change1 = Change::new(key.clone(), String::from("1"), 23);

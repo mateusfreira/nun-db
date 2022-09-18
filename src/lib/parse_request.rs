@@ -490,7 +490,7 @@ impl Request {
                 let opp_id = match command.next() {
                     Some(opp_id) => match opp_id.parse::<u64>() {
                         Ok(opp_id) => opp_id,
-                        Err(_) => return Err(format!("opp id must be u64")),
+                        Err(_) => return Err(format!("Invalid opp_id")),
                     },
                     None => {
                         return Err(format!("opp id mandatory"))

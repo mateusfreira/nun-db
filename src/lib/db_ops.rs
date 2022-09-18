@@ -303,7 +303,7 @@ mod tests {
         let db = Database::create_db_from_hash(
             String::from("test"),
             hash,
-            DatabaseMataData::new(0, ConsensuStrategy::Newer),
+            DatabaseMataData::new(0, ConsensuStrategy::None),
         );
         set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 0
         set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 1

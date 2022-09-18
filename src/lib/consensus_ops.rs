@@ -2,15 +2,18 @@ use crate::bo::*;
 
 pub const CONFLICTS_KEY: &'static str = "$$conflicts";
 
+fn get_conflict_watch_key(change: &Change) -> String {
+    String::from(format!("$$conflitct_{opp_id}",opp_id = change.opp_id))
+}
 impl Database {
     // Separate local conflitct with replication confilct
-    pub fn resolve(&self, conflitct_error: Response) -> Response {
+   pub fn resolve(&self, conflitct_error: Response) -> Response {
         match conflitct_error {
             Response::VersionError {
-                msg: _,
+                msg,
                 key,
                 old_version,
-                version: _,
+                version,
                 old_value,
                 change,
                 db,
@@ -29,10 +32,13 @@ impl Database {
                 ConsensuStrategy::Arbiter => {
                     if !self.has_arbiter_connected() {
                         Response::Error {
-                            msg: String::from("Arbiter client not connected!"),
+                            msg: String::from("An conflitct happend and there is no arbiter client not connected!"),
                         }
                     } else {
-                        // Need thread error to send
+                        // Need may fail to send
+                        // May fail to reply to the clietn
+                        // May disconect beffore getting a response
+                        // May be a good ideia to treat at the client
                         self.send_message_to_arbiter_client(String::from(format!(
                             "resolve {opp_id} {db} {old_version} {key} {old_value} {value}",
                             opp_id = change.opp_id,
@@ -42,9 +48,22 @@ impl Database {
                             old_value = old_value,
                             value = change.value
                         )));
+                        let conflitct_key = get_conflict_watch_key(&change); 
+                        self.set_value(&Change::new(conflitct_key.clone(), String::from(CONFLICTS_KEY), -1));
                         Response::Error {
-                            msg: String::from("Todo"),
+                            msg: String::from(format!("$$conflitct unresolved {}", conflitct_key.clone())),
                         }
+                    }
+                },
+                ConsensuStrategy::None => {
+                    Response::VersionError {
+                        msg,
+                        key,
+                        old_version,
+                        version,
+                        old_value,
+                        change,
+                        db,
                     }
                 }
             },
@@ -76,6 +95,8 @@ impl Database {
     }
 
     pub fn resolve_conflit(&self, change: Change) -> Response {
+        // Will update the clients waiting for that conflict resolution update
+        self.set_value(&Change::new(get_conflict_watch_key(&change), change.value.clone(), -1));
         self.set_value(&change)
     }
 }
@@ -94,36 +115,12 @@ mod tests {
         let change1 = Change::new(key.clone(), String::from("some1"), 0);
         db.set_value(&change1);
         let change2 = Change::new(String::from("some"), String::from("some2"), 0);
-        let e = db.set_value(&change2);
         assert_eq!(
-            e,
-            Response::VersionError {
-                msg: String::from("Invalid version!"),
-                old_version: 1,
-                version: 0,
-                key: key.clone(),
-                old_value: Value {
-                    value: String::from("some1"),
-                    version: 22,
-                    opp_id: change1.opp_id,
-                    state: ValueStatus::New,
-                    value_disk_addr: 0,
-                    key_disk_addr: 0
-                },
-                change: change2,
-                db: String::from("some")
-            }
-        );
-        assert_eq!(
-            db.resolve(e),
+            db.set_value(&change2),
             Response::Set {
                 key: String::from("some"),
                 value: String::from("some2")
             }
-        );
-        assert_eq!(
-            db.get_value(key.clone()).unwrap().value,
-            String::from("some2")
         );
     }
 
@@ -137,28 +134,8 @@ mod tests {
         let change1 = Change::new(key.clone(), String::from("some1"), 0); // m1
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
         db.set_value(&change2);
-        let e = db.set_value(&change1);
         assert_eq!(
-            e,
-            Response::VersionError {
-                msg: String::from("Invalid version!"),
-                old_version: 1,
-                version: 0,
-                key: key.clone(),
-                old_value: Value {
-                    value: String::from("some2"),
-                    version: 1,
-                    opp_id: change1.opp_id,
-                    state: ValueStatus::New,
-                    value_disk_addr: 0,
-                    key_disk_addr: 0
-                },
-                change: change1,
-                db: String::from("some")
-            }
-        );
-        assert_eq!(
-            db.resolve(e),
+            db.set_value(&change1),
             Response::Set {
                 key: String::from("some"),
                 value: String::from("some2")
@@ -181,30 +158,10 @@ mod tests {
         let change1 = Change::new(key.clone(), String::from("some1"), 0); // m1
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
         db.set_value(&change2);
-        let e = db.set_value(&change1);
         assert_eq!(
-            e,
-            Response::VersionError {
-                msg: String::from("Invalid version!"),
-                old_version: 1,
-                version: 0,
-                key: key.clone(),
-                old_value: Value {
-                    value: String::from("some2"),
-                    version: 1,
-                    opp_id: change1.opp_id,
-                    state: ValueStatus::New,
-                    value_disk_addr: 0,
-                    key_disk_addr: 0
-                },
-                change: change1.clone(),
-                db: String::from("db_name")
-            }
-        );
-        assert_eq!(
-            db.resolve(e),
+            db.set_value(&change1),
             Response::Error {
-                msg: String::from("Arbiter client not connected!")
+                msg: String::from("An conflitct happend and there is no arbiter client not connected!")
             }
         );
         let (client, mut receiver) = Client::new_empty_and_receiver();
