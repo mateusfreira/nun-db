@@ -647,6 +647,27 @@ mod tests {
         }
     }
 
+    
+
+    #[test]
+    fn should_parse_set_with_version_with_big_version() -> Result<(), String> {
+        match Request::parse("set-safe jose12389123849 1663536194 123\n") {
+            Ok(Request::Set {
+                key,
+                value,
+                version,
+            }) => {
+                if key == "jose12389123849" && value == "123" && version == 1663536194 {
+                    Ok(())
+                } else {
+                    Err(String::from(
+                        "the key should be foo and the value should be 1 and version 2",
+                    ))
+                }
+            }
+            _ => Err(String::from("get foo should be parsed to set command")),
+        }
+    }
     #[test]
     fn should_parse_set_with_version() -> Result<(), String> {
         match Request::parse("set-safe foo 2 1\n") {

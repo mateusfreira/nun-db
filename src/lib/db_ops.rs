@@ -213,7 +213,7 @@ pub fn create_temp_db(name: String, dbs: &Arc<Databases>) -> Arc<Database> {
         initial_db,
         DatabaseMataData::new(
             dbs.map.read().expect("could not get lock").len(),
-            ConsensuStrategy::Newer,
+            ConsensuStrategy::Arbiter,
         ),
     ));
 }

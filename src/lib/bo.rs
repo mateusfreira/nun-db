@@ -554,6 +554,12 @@ impl Database {
             };
 
             if new_version <= old_version.version {
+                log::debug!(
+                    "Version conflicted will try to resolve: {}, New version: {}, PassedVersion : {}",
+                    old_version.version,
+                    new_version,
+                    change.version,
+                );
                 return self.resolve(Response::VersionError {
                     msg: String::from(INVALID_VERSION_ERROR),
                     old_version: old_version.version,
