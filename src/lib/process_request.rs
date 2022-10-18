@@ -420,27 +420,17 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         Request::Arbiter {} => apply_to_database(&dbs, &client, &|db| db.register_arbiter(&client)),
         Request::Resolve {
             opp_id,
-            db_name,
+            db_name: _db_name,
             key,
             value,
             version,
-        } => apply_if_auth(&client.auth, &|| {
-            let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
-            let respose: Response = match dbs.get(&db_name.to_string()) {
-                Some(db) => db.resolve_conflit(Change {
+        } => apply_to_database(&dbs, &client, &|db| { 
+                db.resolve_conflit(Change {
                     key: key.clone(),
                     value: value.clone(),
                     version,
                     opp_id,
-                }),
-                _ => {
-                    log::debug!("Not a valid database name");
-                    Response::Error {
-                        msg: "Not a valid database name".to_string(),
-                    }
-                }
-            };
-            respose
+                })
         }),
     }
 }
