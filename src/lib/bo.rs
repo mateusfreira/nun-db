@@ -146,7 +146,7 @@ impl ValueStatus {
 pub enum ConsensuStrategy {
     Arbiter = 2,
     Newer = 1,
-    None = 0
+    None = 0,
 }
 
 impl From<i32> for ConsensuStrategy {

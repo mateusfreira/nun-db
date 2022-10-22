@@ -492,9 +492,7 @@ impl Request {
                         Ok(opp_id) => opp_id,
                         Err(_) => return Err(format!("Invalid opp_id")),
                     },
-                    None => {
-                        return Err(format!("opp id mandatory"))
-                    }
+                    None => return Err(format!("opp id mandatory")),
                 };
                 let mut rest = match command.next() {
                     Some(rest) => rest.splitn(4, " "),
@@ -506,12 +504,10 @@ impl Request {
                     }
                 };
 
-
                 let db_name = match rest.next() {
                     Some(db_name) => db_name.replace("\n", ""),
                     None => return Err(String::from("db_name must be provided")),
                 };
-
 
                 let key = match rest.next() {
                     Some(key) => key.replace("\n", ""),
@@ -646,8 +642,6 @@ mod tests {
             _ => Err(String::from("get foo should be parsed to Get command")),
         }
     }
-
-    
 
     #[test]
     fn should_parse_set_with_version_with_big_version() -> Result<(), String> {

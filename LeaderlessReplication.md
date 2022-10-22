@@ -79,3 +79,55 @@ Time line...
 # Todo
 - [ ] Replica set sending the set does not need to process the replication!!! (works because if rejects the new version but it is unnecessary  travel)
 - [ ] Measure clock difference from replica-sets (Is it needed?) to implement oldest change wins
+
+
+
+
+## 1. Process to resolve from arbiter to Secondary (Working as expected)
+```text
+                          +-----------------------+                                                                                                                                                 
++------------+ 1. resolve |                       |                                                                                                                                                          
+|   Arbiter  |------------|  Secoundary 1 server  |       +---------------+                                                                                                                         
++------------+            +---+----------------+--+       |               |                                                                                                                                   
+                              |                |      +---+ Primary server| -> resolve the conflict in the DB and memory                                                                                                                                    
+                   +---------------+           +------+   +---------+-----+                                                                                                                                   
+                   | Secoundary 2  |       2 resolve                |                                                                                                                                         
+                   |               +--------------------------------+                                                                                                                                         
+                   +---------------+          3 replicate set value version                                                                                                                                                                 
+                                              4 replicate set $$conflitc_{opp_id} version                                                                                                                                                                 
+                                                                                                                                                                                                              
+```
+1. Arbiter sends resolve the conflict pushes the change as a resolve command                                                                                                                                                                                                               
+1.1  If server is secondary sends the same message to primary [src/lib/process_request.rs:441]
+1.1  If server is primary resolve resolve it in memory [src/lib/process_request.rs:434]
+2. Secondary sends message to Primary to resolve
+2.1 replicates to other nodes as a set value [src/lib/replication_ops.rs:95]
+3. Primary sends replicate set value version to all nodes [src/lib/replication_ops.rs:107]
+4. Primary sends replicate set $$conflitc_{opp_id} to all nodes to resolve the conflict [src/lib/replication_ops.rs:111]
+
+## 2. Process to resolve from arbiter to Primary ( Simples case working as expected
+
+## 3. Change in 2 nodes at the same time and Arbiter is connected to the 3rd node (Not working)
+                                             +---------+ 1.2 replicate name 1 jose
+```text                                      |         |
+                          +------------------+----+    |                           +-----------+                                                                                                    
++------------+            |                       |    |                           |  Client 2 |                                                                                                                     
+|   Arbiter  |------------|  Secoundary 1 server  |    |  +---------------+        +----+------+                                                                                                    
++------------+            +---+----------------+--+    |  |               +-------------+                                                                                                                     
+                              |                        +--+ Primary server|     1. set-safe name 1 jose                                                                                                                                                     
+                   +---------------+   1.2 $conflict >    +---------+-----+                                                                                                                                   
+                   | Secoundary 2  |   2.1 replicate name 1 mary>   |            In memory 2.2 Conflict no arbiter error                                                                                                                              
+                   |               +--------------------------------+ 100ms                                                                                                                                        
+                   +---+-----------+  < 1.1 replicate name 1 jose                                                                                                                                                                                                      
+                       |              < 2.3 error $conflict 1 name mary jose
+                       |  
+                       |  
+                       |  
+                       |  
+                       |  
+                       |  2 set-safe name 1 mary                                                                                                                                                                                                                               
+          +----------+ |                                                                                                                                                                                                                                  
+          | Client 1 +-+                                                                                                                                                                                                                                          
+          +----------+                                                                                                                                                                                        
+```
+

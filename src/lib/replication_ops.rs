@@ -30,6 +30,19 @@ pub fn get_replicate_message(db_name: String, key: String, value: String, versio
     return format!("replicate {} {} {} {}", db_name, key, version, value);
 }
 
+pub fn get_resolve_message(
+    opp_id: u64,
+    db_name: String,
+    key: String,
+    value: String,
+    version: i32,
+) -> String {
+    return format!(
+        "resolve {} {} {} {} {}",
+        opp_id, db_name, key, version, value
+    );
+}
+
 pub fn get_replicate_increment_message(db_name: String, key: String, inc: String) -> String {
     return format!("replicate-increment {} {} {}", db_name, key, inc);
 }
@@ -75,6 +88,34 @@ pub fn replicate_request(
                 replicate_web(
                     replication_sender,
                     get_replicate_message(db_name.to_string(), key, value, version),
+                );
+                Response::Ok {}
+            }
+
+            Request::Resolve {
+                opp_id,
+                db_name,
+                key,
+                value,
+                version,
+            } => {
+                log::debug!(
+                    "Will replicate the resolve of the key {} to {} ",
+                    key,
+                    value
+                );
+                replicate_web(
+                    replication_sender,
+                    get_replicate_message(db_name.to_string(), key.clone(), value.clone(), version),
+                );
+                replicate_web(
+                    replication_sender,
+                    get_replicate_message(
+                        db_name.to_string(),
+                        format!("$$conflitct_{opp_id}", opp_id = opp_id),
+                        value.clone(),
+                        -1,
+                    ),
                 );
                 Response::Ok {}
             }

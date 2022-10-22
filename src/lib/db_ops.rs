@@ -10,12 +10,12 @@ use crate::disk_ops::*;
 
 pub const CONNECTIONS_KEY: &'static str = "$connections";
 
-pub fn apply_to_database(
+pub fn apply_to_database_name(
     dbs: &Arc<Databases>,
     client: &Client,
+    db_name: &String,
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
-    let db_name = client.selected_db_name();
     let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => opp(db),
@@ -34,6 +34,15 @@ pub fn apply_to_database(
         }
     };
     return result;
+}
+
+pub fn apply_to_database(
+    dbs: &Arc<Databases>,
+    client: &Client,
+    opp: &dyn Fn(&Database) -> Response,
+) -> Response {
+    let db_name = client.selected_db_name();
+    apply_to_database_name(dbs, client, &db_name, opp)
 }
 
 pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Response {

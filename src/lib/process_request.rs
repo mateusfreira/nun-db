@@ -34,6 +34,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 _db.inc_value(key.to_string(), inc);
             } else {
                 let db_name_state = _db.name.clone();
+                // This is wrong
                 send_message_to_primary(
                     get_replicate_increment_message(
                         db_name_state.to_string(),
@@ -420,18 +421,62 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         Request::Arbiter {} => apply_to_database(&dbs, &client, &|db| db.register_arbiter(&client)),
         Request::Resolve {
             opp_id,
-            db_name: _db_name,
+            db_name,
             key,
             value,
             version,
-        } => apply_to_database(&dbs, &client, &|db| { 
-                db.resolve_conflit(Change {
-                    key: key.clone(),
-                    value: value.clone(),
-                    version,
-                    opp_id,
-                })
-        }),
+        } => {
+            log::info!("Processing resolve for {} to {} ", key, value);
+            // Replica set or admin auth resolving
+            if client.auth.load(Ordering::SeqCst) {
+                apply_to_database_name(dbs, client, &db_name, &|db| {
+                    if dbs.is_primary() {
+                        db.resolve_conflit(Change {
+                            key: key.clone(),
+                            value: value.clone(),
+                            version,
+                            opp_id,
+                        })
+                    } else {
+                        send_message_to_primary(
+                            get_resolve_message(
+                                opp_id,
+                                db_name.to_string(),
+                                key.clone(),
+                                value.clone(),
+                                version,
+                            ),
+                            dbs,
+                        );
+                        Response::Ok {}
+                    }
+                });
+            } else {
+                apply_to_database(&dbs, &client, &|db| {
+                    if dbs.is_primary() {
+                        db.resolve_conflit(Change {
+                            key: key.clone(),
+                            value: value.clone(),
+                            version,
+                            opp_id,
+                        })
+                    } else {
+                        send_message_to_primary(
+                            get_resolve_message(
+                                opp_id,
+                                db_name.to_string(),
+                                key.clone(),
+                                value.clone(),
+                                version,
+                            ),
+                            dbs,
+                        );
+                        Response::Ok {}
+                    }
+                });
+            };
+            return Response::Ok {};
+        }
     }
 }
 

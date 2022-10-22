@@ -2,12 +2,12 @@ use crate::bo::*;
 
 pub const CONFLICTS_KEY: &'static str = "$$conflicts";
 
-fn get_conflict_watch_key(change: &Change) -> String {
-    String::from(format!("$$conflitct_{opp_id}",opp_id = change.opp_id))
+pub fn get_conflict_watch_key(change: &Change) -> String {
+    String::from(format!("$$conflitct_{opp_id}", opp_id = change.opp_id))
 }
 impl Database {
     // Separate local conflitct with replication confilct
-   pub fn resolve(&self, conflitct_error: Response) -> Response {
+    pub fn resolve(&self, conflitct_error: Response) -> Response {
         match conflitct_error {
             Response::VersionError {
                 msg,
@@ -19,6 +19,7 @@ impl Database {
                 db,
             } => match self.metadata.consensus_strategy {
                 ConsensuStrategy::Newer => {
+                    log::info!("Will resolve the conflitct in the key {} using Newer", key);
                     if change.opp_id > old_value.opp_id {
                         // New value is older
                         self.set_value(&Change::new(key.clone(), change.value.clone(), old_version))
@@ -30,11 +31,17 @@ impl Database {
                     }
                 }
                 ConsensuStrategy::Arbiter => {
+                    log::info!(
+                        "Will resolve the conflitct in the key {} using Arbiter",
+                        key
+                    );
                     if !self.has_arbiter_connected() {
+                        log::info!("Has no arbiter");
                         Response::Error {
                             msg: String::from("An conflitct happend and there is no arbiter client not connected!"),
                         }
                     } else {
+                        log::info!("Sending conflict to the arbiter {}", key);
                         // Need may fail to send
                         // May fail to reply to the clietn
                         // May disconect beffore getting a response
@@ -48,24 +55,29 @@ impl Database {
                             old_value = old_value,
                             value = change.value
                         )));
-                        let conflitct_key = get_conflict_watch_key(&change); 
-                        self.set_value(&Change::new(conflitct_key.clone(), String::from(CONFLICTS_KEY), -1));
+                        let conflitct_key = get_conflict_watch_key(&change);
+                        self.set_value(&Change::new(
+                            conflitct_key.clone(),
+                            String::from(CONFLICTS_KEY),
+                            -1,
+                        ));
                         Response::Error {
-                            msg: String::from(format!("$$conflitct unresolved {}", conflitct_key.clone())),
+                            msg: String::from(format!(
+                                "$$conflitct unresolved {}",
+                                conflitct_key.clone()
+                            )),
                         }
                     }
-                },
-                ConsensuStrategy::None => {
-                    Response::VersionError {
-                        msg,
-                        key,
-                        old_version,
-                        version,
-                        old_value,
-                        change,
-                        db,
-                    }
                 }
+                ConsensuStrategy::None => Response::VersionError {
+                    msg,
+                    key,
+                    old_version,
+                    version,
+                    old_value,
+                    change,
+                    db,
+                },
             },
             r => r,
         }
@@ -96,7 +108,11 @@ impl Database {
 
     pub fn resolve_conflit(&self, change: Change) -> Response {
         // Will update the clients waiting for that conflict resolution update
-        self.set_value(&Change::new(get_conflict_watch_key(&change), change.value.clone(), -1));
+        self.set_value(&Change::new(
+            get_conflict_watch_key(&change),
+            change.value.clone(),
+            -1,
+        ));
         self.set_value(&change)
     }
 }
@@ -161,7 +177,9 @@ mod tests {
         assert_eq!(
             db.set_value(&change1),
             Response::Error {
-                msg: String::from("An conflitct happend and there is no arbiter client not connected!")
+                msg: String::from(
+                    "An conflitct happend and there is no arbiter client not connected!"
+                )
             }
         );
         let (client, mut receiver) = Client::new_empty_and_receiver();
