@@ -364,6 +364,23 @@ debug pending-ops
 pending_ops #list-of-pending-ops#
 ```
 
+### Arbiter
+#### Context
+- [ ] Require admin auth
+- [x] Require db auth
+- [ ] Replicate? How? ()
+- [ ] Register Oplog? How? (no)
+
+With the arbiter command one client register it self as an arbiter for conflicts, this client must be connected to the primary database.
+Internally this command is equivalent to watching the key $conflict.
+
+e.gs
+```
+arbiter
+#result
+ok|error
+```
+
 
 ## Special keys
 

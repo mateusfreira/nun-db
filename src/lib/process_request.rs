@@ -418,7 +418,13 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             };
             Response::Ok {}
         }),
-        Request::Arbiter {} => apply_to_database(&dbs, &client, &|db| db.register_arbiter(&client)),
+        Request::Arbiter {} => {
+            if dbs.is_primary() {
+                apply_to_database(&dbs, &client, &|db| db.register_arbiter(&client))
+            } else {
+                Response::Error { msg: String::from("Arbiter can only be connected to the primary!") }
+            }
+        },
         Request::Resolve {
             opp_id,
             db_name,

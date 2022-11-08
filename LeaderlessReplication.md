@@ -131,3 +131,7 @@ Time line...
           +----------+                                                                                                                                                                                        
 ```
 
+### Options to solve.
+3.1 - Do not allow the arbiter to connect to secondary. Cons: May introduce complexity, Need to notify client if primary changes.
+3.2 - "Ask" in the network who has one arbiter connected, if no server has one. Cons: Hard to conciliate the messages if no arbiter is connected anyware.
+3.3 - 
