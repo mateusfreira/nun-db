@@ -414,6 +414,36 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                         _ => (),
                     }
                 }
+                "pendding-conflitcts" => {
+                    apply_to_database(&dbs, &client, &|db| {
+                        let keys: Vec<String> = {
+                            db.map
+                                .read()
+                                .unwrap()
+                                .iter()
+                                .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
+                                .filter(|(key, _v)| key.starts_with("$$conflitcts"))
+                                .map(|(key, _v)| format!("{}", key))
+                                .collect()
+                        };
+                        let keys = keys.iter().fold(String::from(""), |current, acc| {
+                            format!("{},{}", current, acc)
+                        });
+                        log::info!("Peding conflitcts on the server {}", keys);
+                        match client
+                            .sender
+                            .clone()
+                            .try_send(format_args!("conflitcts-list {}\n", keys).to_string())
+                        {
+                            Err(e) => {
+                                log::warn!("Request::pending-ops sender.send Error: {}", e);
+                            }
+                            _ => (),
+                        };
+                        Response::Ok {}
+                    });
+                }
+
                 _ => log::info!("Invalid debug command"),
             };
             Response::Ok {}
@@ -422,9 +452,11 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             if dbs.is_primary() {
                 apply_to_database(&dbs, &client, &|db| db.register_arbiter(&client))
             } else {
-                Response::Error { msg: String::from("Arbiter can only be connected to the primary!") }
+                Response::Error {
+                    msg: String::from("Arbiter can only be connected to the primary!"),
+                }
             }
-        },
+        }
         Request::Resolve {
             opp_id,
             db_name,

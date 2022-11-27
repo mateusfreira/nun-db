@@ -546,6 +546,7 @@ impl Database {
     }
 
     pub fn set_value(&self, change: &Change) -> Response {
+
         if let Some(old_version) = self.get_value(change.key.clone()) {
             let new_version = if change.version == -1 {
                 old_version.version + 1

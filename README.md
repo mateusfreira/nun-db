@@ -360,8 +360,12 @@ The debug command holds admin queries for Nun-db, like, for example, checking th
 e.gs
 ```
 debug pending-ops
-#result
-pending_ops #list-of-pending-ops#
+# result
+pending-ops #list-of-pending-ops#
+
+debug pending-conflicts
+# result (Must be connected to a database with use *** ***)
+pending-conflicts #list-of-pending-conflicts#
 ```
 
 ### Arbiter
