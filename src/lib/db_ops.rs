@@ -10,6 +10,7 @@ use crate::disk_ops::*;
 
 pub const CONNECTIONS_KEY: &'static str = "$connections";
 
+
 pub fn apply_to_database_name(
     dbs: &Arc<Databases>,
     client: &Client,
@@ -268,6 +269,18 @@ pub fn get_senders(key: &String, watchers: &Watchers) -> Vec<Sender<String>> {
 pub fn safe_shutdown(dbs: &Arc<Databases>) {
     snapshot_keys(&dbs); // This is more important than the not snapshot_dbs
     snapshot_all_pendding_dbs(&dbs);
+}
+
+pub fn starts_with(key: &String, pattern: &String) -> bool {
+    key.starts_with(pattern)
+}
+
+pub fn ends_with(key: &String, pattern: &String) -> bool {
+    key.ends_with(pattern)
+}
+
+pub fn contains(key: &String, pattern: &String) -> bool {
+    key.contains(pattern)
 }
 
 #[cfg(test)]

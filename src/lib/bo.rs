@@ -999,7 +999,7 @@ pub enum Request {
         id: u128,
     },
     ElectionActive {},
-    Keys {},
+    Keys { pattern: String },
     ReplicateRequest {
         request_str: String,
         opp_id: u64,

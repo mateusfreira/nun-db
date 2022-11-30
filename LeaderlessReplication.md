@@ -137,9 +137,12 @@ Time line...
 
 ## 4. Change in 2 nodes at the same time and no Arbiter is connected to the 3rd node (Not working)
 
- ### Options to solve.
+### Options to solve.
 4.1 Reject the set command if there is no arbiter!!
 4.1.1 What if the arbiter is connected in another instance??
 4.2 If there is no arbiter make it set direct to primary (Very bad with latency)
 4.3 *Make all values in Nun-db "eventual" consistent and notify the clients that there may be conflict with one of their keys*
 4.4 In case one db is "arbitered" there must be one arbiter connected.
+
+# Create conflict queue
+*

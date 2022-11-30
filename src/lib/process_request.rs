@@ -347,14 +347,22 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             }
         }),
 
-        Request::Keys {} => apply_to_database(&dbs, &client, &|db| {
+        Request::Keys { pattern } => apply_to_database(&dbs, &client, &|db| {
+            let query_function = if pattern.starts_with('*') {
+                starts_with
+            } else if pattern.ends_with('*') {
+                ends_with
+            } else {
+                contains
+            };
             let mut keys: Vec<String> = {
                 db.map
                     .read()
                     .unwrap()
                     .iter()
                     .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
-                    .filter(|(key, _v)| !key.starts_with("$$")) // filter the secret keys
+                    .filter(|(key, _v)| query_function(&key, &pattern))// !key.starts_with("$$")) // filter the secret keys
+                    .filter(|(key, _v)| !key.starts_with("$$")) // filter the secret keys, @todo
                     .map(|(key, _v)| format!("{}", key))
                     .collect()
             };
