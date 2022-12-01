@@ -10,7 +10,6 @@ use crate::disk_ops::*;
 
 pub const CONNECTIONS_KEY: &'static str = "$connections";
 
-
 pub fn apply_to_database_name(
     dbs: &Arc<Databases>,
     client: &Client,
@@ -271,12 +270,23 @@ pub fn safe_shutdown(dbs: &Arc<Databases>) {
     snapshot_all_pendding_dbs(&dbs);
 }
 
+pub fn get_function_by_pattern(pattern: &String) -> for<'r, 's> fn(&'r std::string::String, &'s std::string::String) -> bool {
+    let query_function = if pattern.ends_with('*') {
+        starts_with
+    } else if pattern.starts_with('*') {
+        ends_with
+    } else {
+        contains
+    };
+    query_function
+}
+
 pub fn starts_with(key: &String, pattern: &String) -> bool {
-    key.starts_with(pattern)
+    key.starts_with(&pattern.replace("*", ""))
 }
 
 pub fn ends_with(key: &String, pattern: &String) -> bool {
-    key.ends_with(pattern)
+    key.ends_with(&pattern.replace("*", ""))
 }
 
 pub fn contains(key: &String, pattern: &String) -> bool {

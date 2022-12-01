@@ -13,8 +13,14 @@ impl Request {
                 Ok(Request::Watch { key })
             }
             Some("unwatch-all") => Ok(Request::UnWatchAll {}),
-            Some("keys") => Ok(Request::Keys {}),
-            Some("ls") => Ok(Request::Keys {}),
+            Some("keys") => {
+                let pattern = match command.next() {
+                    Some(pattren) => pattren.replace("\n", ""),
+                    None => "".to_string(),
+                };
+                Ok(Request::Keys { pattern  })
+            },
+            Some("ls") => Ok(Request::Keys { pattern: "".to_string() }),
             Some("snapshot") => {
                 let reclaim_space = command.next().unwrap_or("false");
                 Ok(Request::Snapshot {
@@ -953,7 +959,21 @@ mod tests {
     #[test]
     fn should_parse_keys() -> Result<(), String> {
         match Request::parse("keys") {
-            Ok(Request::Keys {}) => Ok(()),
+            Ok(Request::Keys { pattern: _ }) => Ok(()),
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_query_pattern() -> Result<(), String> {
+        match Request::parse("keys jose*") {
+            Ok(Request::Keys { pattern  }) => {
+                if pattern == "jose*" {
+                  Ok(())
+                } else {
+                  Err(String::from("wrong pattern parsed"))
+                }
+            },
             _ => Err(String::from("wrong command parsed")),
         }
     }
@@ -961,7 +981,7 @@ mod tests {
     #[test]
     fn should_parse_keys_as_ls_command() -> Result<(), String> {
         match Request::parse("ls") {
-            Ok(Request::Keys {}) => Ok(()),
+            Ok(Request::Keys { pattern: _ }) => Ok(()),
             _ => Err(String::from("wrong command parsed")),
         }
     }

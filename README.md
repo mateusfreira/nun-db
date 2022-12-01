@@ -249,9 +249,18 @@ Return the list of keys for the database.
 #### Context
 - [ ] Require admin auth
 - [x] Require db auth
-- [ ] Replicate? How? 
+- [ ] Replicate? How?
 
-e.gs: `keys`
+e.gs: 
+* Return all keys
+`keys`
+* Return keys starting with name
+`keys name*`
+* Return keys ending with name
+`keys *name`
+* Return keys containing with name
+`keys name`
+
 #### Alias
 `ls`
 

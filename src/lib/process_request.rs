@@ -348,21 +348,15 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         }),
 
         Request::Keys { pattern } => apply_to_database(&dbs, &client, &|db| {
-            let query_function = if pattern.starts_with('*') {
-                starts_with
-            } else if pattern.ends_with('*') {
-                ends_with
-            } else {
-                contains
-            };
+            let query_function = get_function_by_pattern(&pattern);
             let mut keys: Vec<String> = {
                 db.map
                     .read()
                     .unwrap()
                     .iter()
                     .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
-                    .filter(|(key, _v)| query_function(&key, &pattern))// !key.starts_with("$$")) // filter the secret keys
-                    .filter(|(key, _v)| !key.starts_with("$$")) // filter the secret keys, @todo
+                    .filter(|(key, _v)| query_function(&key, &pattern))
+                    .filter(|(key, _v)| client.is_admin_auth() || !key.starts_with("$$")) // Admin list all filter the secret keys, @todo
                     .map(|(key, _v)| format!("{}", key))
                     .collect()
             };
@@ -635,6 +629,9 @@ mod tests {
         assert_received(&mut receiver, "valid auth\n");
         process_request("create-db test test-1", &dbs, &mut client);
         assert_received(&mut receiver, "create-db success\n");
+
+        // New client connected without admin auth
+        let (mut receiver, _, mut client) = create_default_args();
         process_request("use-db test test-1", &dbs, &mut client);
         process_request("set name jose", &dbs, &mut client);
         process_request("set name1 jose", &dbs, &mut client);
@@ -643,6 +640,84 @@ mod tests {
         process_request("remove name1 jose", &dbs, &mut client);
         process_request("keys", &dbs, &mut client);
         assert_received(&mut receiver, "keys ,$connections,name\n");
+    }
+
+    #[test]
+    fn should_return_secret_keys_if_admin_auth() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,$$token,$connections,name,name1\n");
+        process_request("remove name1 jose", &dbs, &mut client);
+        process_request("keys", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,$$token,$connections,name\n");
+    }
+
+    #[test]
+    fn should_return_keys_starting_with() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys name*", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,name,name1\n");
+    }
+
+    #[test]
+    fn should_return_keys_ending_with() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys *1", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,name1\n");
+    }
+
+    #[test]
+    fn should_return_keys_contains_with() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys a", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,name,name1\n");
+    }
+
+    #[test]
+    fn should_return_keys_contains_with_using_alias() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("ls a", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,name,name1\n");
     }
 
     #[test]

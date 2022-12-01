@@ -74,12 +74,13 @@ impl Handler for Server {
                         e
                     ),
                 }
-            },
+            }
             e => {
                 log::debug!(
                     "[{}] Server responded message  {:?} to {}",
                     thread_id::get(),
-                    e, message
+                    e,
+                    message
                 );
                 match self.client.sender.try_send(format!("ok \n")) {
                     Ok(_) => {}

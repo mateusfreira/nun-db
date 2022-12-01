@@ -34,6 +34,11 @@ impl Client {
             false
         }
     }
+
+    pub fn is_admin_auth(&self) -> bool {
+        self.auth.load(Ordering::SeqCst)
+    }
+
     pub fn left(&self, dbs: &Arc<Databases>) {
         let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
         let db_box = dbs.get(&self.selected_db_name());
@@ -546,7 +551,6 @@ impl Database {
     }
 
     pub fn set_value(&self, change: &Change) -> Response {
-
         if let Some(old_version) = self.get_value(change.key.clone()) {
             let new_version = if change.version == -1 {
                 old_version.version + 1
@@ -999,7 +1003,9 @@ pub enum Request {
         id: u128,
     },
     ElectionActive {},
-    Keys { pattern: String },
+    Keys {
+        pattern: String,
+    },
     ReplicateRequest {
         request_str: String,
         opp_id: u64,
