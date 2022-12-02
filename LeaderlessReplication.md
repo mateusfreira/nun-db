@@ -145,4 +145,4 @@ Time line...
 4.4 In case one db is "arbitered" there must be one arbiter connected.
 
 # Create conflict queue
-*
+- [ ] Use keys with conflict to keys * to get pending conflict queue.

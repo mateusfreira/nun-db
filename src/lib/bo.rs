@@ -408,6 +408,23 @@ impl Database {
         Response::Ok {}
     }
 
+    pub fn list_keys(&self, pattern: &String, list_system_keys: bool) -> Vec<String> {
+        let query_function = get_function_by_pattern(&pattern);
+        let mut keys: Vec<String> = {
+            self.map
+                .read()
+                .unwrap()
+                .iter()
+                .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
+                .filter(|(key, _v)| query_function(&key, &pattern))
+                .filter(|(key, _v)| list_system_keys || !key.starts_with("$$"))
+                .map(|(key, _v)| format!("{}", key))
+                .collect()
+        };
+        keys.sort();
+        keys
+    }
+
     pub fn new(name: String, metadata: DatabaseMataData) -> Database {
         return Database {
             metadata,

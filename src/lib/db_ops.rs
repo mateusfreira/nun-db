@@ -270,7 +270,9 @@ pub fn safe_shutdown(dbs: &Arc<Databases>) {
     snapshot_all_pendding_dbs(&dbs);
 }
 
-pub fn get_function_by_pattern(pattern: &String) -> for<'r, 's> fn(&'r std::string::String, &'s std::string::String) -> bool {
+pub fn get_function_by_pattern(
+    pattern: &String,
+) -> for<'r, 's> fn(&'r std::string::String, &'s std::string::String) -> bool {
     let query_function = if pattern.ends_with('*') {
         starts_with
     } else if pattern.starts_with('*') {

@@ -348,22 +348,12 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         }),
 
         Request::Keys { pattern } => apply_to_database(&dbs, &client, &|db| {
-            let query_function = get_function_by_pattern(&pattern);
-            let mut keys: Vec<String> = {
-                db.map
-                    .read()
-                    .unwrap()
-                    .iter()
-                    .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
-                    .filter(|(key, _v)| query_function(&key, &pattern))
-                    .filter(|(key, _v)| client.is_admin_auth() || !key.starts_with("$$")) // Admin list all filter the secret keys, @todo
-                    .map(|(key, _v)| format!("{}", key))
-                    .collect()
-            };
-            keys.sort();
-            let keys = keys.iter().fold(String::from(""), |current, acc| {
-                format!("{},{}", current, acc)
-            });
+            let keys = db
+                .list_keys(&pattern, client.is_admin_auth())
+                .iter()
+                .fold(String::from(""), |current, acc| {
+                    format!("{},{}", current, acc)
+                });
             match client
                 .sender
                 .clone()

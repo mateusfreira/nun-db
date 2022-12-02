@@ -18,9 +18,15 @@ impl Request {
                     Some(pattren) => pattren.replace("\n", ""),
                     None => "".to_string(),
                 };
-                Ok(Request::Keys { pattern  })
-            },
-            Some("ls") => Ok(Request::Keys { pattern: "".to_string() }),
+                Ok(Request::Keys { pattern })
+            }
+            Some("ls") => {
+                let pattern = match command.next() {
+                    Some(pattren) => pattren.replace("\n", ""),
+                    None => "".to_string(),
+                };
+                Ok(Request::Keys { pattern })
+            }
             Some("snapshot") => {
                 let reclaim_space = command.next().unwrap_or("false");
                 Ok(Request::Snapshot {
@@ -967,13 +973,13 @@ mod tests {
     #[test]
     fn should_parse_query_pattern() -> Result<(), String> {
         match Request::parse("keys jose*") {
-            Ok(Request::Keys { pattern  }) => {
+            Ok(Request::Keys { pattern }) => {
                 if pattern == "jose*" {
-                  Ok(())
+                    Ok(())
                 } else {
-                  Err(String::from("wrong pattern parsed"))
+                    Err(String::from("wrong pattern parsed"))
                 }
-            },
+            }
             _ => Err(String::from("wrong command parsed")),
         }
     }

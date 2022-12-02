@@ -3,7 +3,11 @@ use crate::bo::*;
 pub const CONFLICTS_KEY: &'static str = "$$conflicts";
 
 pub fn get_conflict_watch_key(change: &Change) -> String {
-    String::from(format!("$$conflitct_{opp_id}", opp_id = change.opp_id))
+    String::from(format!(
+        "{key}_{opp_id}",
+        opp_id = change.opp_id,
+        key = CONFLICTS_KEY
+    ))
 }
 impl Database {
     // Separate local conflitct with replication confilct
@@ -46,7 +50,7 @@ impl Database {
                         // May fail to reply to the clietn
                         // May disconect beffore getting a response
                         // May be a good ideia to treat at the client
-                        self.send_message_to_arbiter_client(String::from(format!(
+                        let resolve_message = format!(
                             "resolve {opp_id} {db} {old_version} {key} {old_value} {value}",
                             opp_id = change.opp_id,
                             db = db,
@@ -54,11 +58,12 @@ impl Database {
                             key = key,
                             old_value = old_value,
                             value = change.value
-                        )));
+                        ).to_string();
+                        self.send_message_to_arbiter_client(resolve_message.clone());
                         let conflitct_key = get_conflict_watch_key(&change);
                         self.set_value(&Change::new(
                             conflitct_key.clone(),
-                            String::from(CONFLICTS_KEY),
+                            resolve_message,
                             -1,
                         ));
                         Response::Error {
@@ -198,15 +203,19 @@ mod tests {
                 change1.opp_id
             )) // Not sure what to put here yet
         );
-        db.resolve_conflit(Change::new(String::from("some"), String::from("some1"), 2));
+        let resolve_change = Change::new(String::from("some"), String::from("some1"), 2);
+        db.resolve_conflit(resolve_change.clone());
         //process_request(&format!("resolved {} db_name some some1", change1.opp_id), &dbs, &mut client);
         assert_eq!(
             db.get_value(key.clone()).unwrap().value,
             String::from("some1")
         );
+        // Once the conflict is resolved it should change the value to resolved value
+        // clients will watch for that
+        // queue of conflicts will also use resolve vs resolved to check conflicts statuses
         assert_eq!(
-            db.get_value(key.clone()).unwrap().value,
-            String::from("some1")
+            db.get_value(get_conflict_watch_key(&resolve_change)).unwrap().value,
+            String::from("resolved some1")
         );
     }
 }
