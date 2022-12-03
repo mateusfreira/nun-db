@@ -13,6 +13,8 @@ use std::time::UNIX_EPOCH;
 use crate::db_ops::*;
 use crate::disk_ops::*;
 
+pub const IN_CONFLICT_RESOLUTION_KEY_VERSION:i32 = -2;
+
 pub const TOKEN_KEY: &'static str = "$$token";
 pub const ADMIN_DB: &'static str = "$admin";
 
@@ -571,11 +573,32 @@ impl Database {
         if let Some(old_version) = self.get_value(change.key.clone()) {
             let new_version = if change.version == -1 {
                 old_version.version + 1
+            } else if old_version.version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
+                old_version.version-1
             } else {
                 change.version + 1
             };
 
             if new_version <= old_version.version {
+                let state = if old_version.state == ValueStatus::New {
+                    ValueStatus::New
+                } else {
+                    ValueStatus::Updated
+                };
+                /*
+                 * Sets the version to IN_CONFLICT_RESOLUTION_KEY_VERSION meaning all new changes
+                 * to the same key must be also considered an conflict until the conflict is fully
+                 * solved
+                 */
+                self.set_value_version(
+                    &change.key,
+                    &old_version.value,
+                    IN_CONFLICT_RESOLUTION_KEY_VERSION,
+                    state,
+                    old_version.value_disk_addr,
+                    old_version.key_disk_addr,
+                    old_version.opp_id,
+                );
                 log::debug!(
                     "Version conflicted will try to resolve: {}, New version: {}, PassedVersion : {}",
                     old_version.version,

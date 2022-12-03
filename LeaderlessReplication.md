@@ -145,4 +145,6 @@ Time line...
 4.4 In case one db is "arbitered" there must be one arbiter connected.
 
 # Create conflict queue
-- [ ] Use keys with conflict to keys * to get pending conflict queue.
+- [x] Use keys with conflict to keys * to get pending conflict queue.
+- [ ] If try to set value to a key with pending conflict the set gets to the conflict queue
+- [ ] Database is shutdown while conflict is not solved yet
