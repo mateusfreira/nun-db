@@ -4,9 +4,10 @@ pub const CONFLICTS_KEY: &'static str = "$$conflicts";
 
 pub fn get_conflict_watch_key(change: &Change) -> String {
     String::from(format!(
-        "{key}_{opp_id}",
+        "{prefix}_{key}_{opp_id}",
         opp_id = change.opp_id,
-        key = CONFLICTS_KEY
+        key = change.key,
+        prefix = CONFLICTS_KEY
     ))
 }
 impl Database {
@@ -45,6 +46,25 @@ impl Database {
                             msg: String::from("An conflitct happend and there is no arbiter client not connected!"),
                         }
                     } else {
+                        /*
+                         * Return the old value or  the key of the pending conflict.
+                         * 1. @todo to make sure it is not resolved 
+                         * 2. @todo chaing multiple changes to test behavior to
+                         * 3. @todo coordenate chain in the server or in the client?
+                         */
+                        let old_value_or_conflict_key : String = if old_version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
+                            let pedding_conflict = self.list_keys(
+                                &String::from(format!(
+                                    "{prefix}_{key}",
+                                    key = change.key,
+                                    prefix = CONFLICTS_KEY
+                                )),
+                                true,
+                            );
+                          pedding_conflict[0].to_string()
+                        } else {
+                            old_value.to_string()
+                        };
                         log::info!("Sending conflict to the arbiter {}", key);
                         // Need may fail to send
                         // May fail to reply to the client
@@ -56,16 +76,13 @@ impl Database {
                             db = db,
                             old_version = old_version,
                             key = key,
-                            old_value = old_value,
+                            old_value = old_value_or_conflict_key,
                             value = change.value
-                        ).to_string();
+                        )
+                        .to_string();
                         self.send_message_to_arbiter_client(resolve_message.clone());
                         let conflitct_key = get_conflict_watch_key(&change);
-                        self.set_value(&Change::new(
-                            conflitct_key.clone(),
-                            resolve_message,
-                            -1,
-                        ));
+                        self.set_value(&Change::new(conflitct_key.clone(), resolve_message, -1));
                         Response::Error {
                             msg: String::from(format!(
                                 "$$conflitct unresolved {}",
@@ -213,7 +230,9 @@ mod tests {
         // clients will watch for that
         // queue of conflicts will also use resolve vs resolved to check conflicts statuses
         assert_eq!(
-            db.get_value(get_conflict_watch_key(&resolve_change)).unwrap().value,
+            db.get_value(get_conflict_watch_key(&resolve_change))
+                .unwrap()
+                .value,
             String::from("resolved some1")
         );
     }
@@ -240,7 +259,7 @@ mod tests {
         assert_eq!(
             v.unwrap(),
             String::from(format!(
-                "resolve {} db_name 1 some some2 some1",// Conflict 1
+                "resolve {} db_name 1 some some2 some1", // Conflict 1
                 change1.opp_id
             ))
         );
@@ -257,7 +276,7 @@ mod tests {
         assert_eq!(
             v.unwrap(),
             String::from(format!(
-                "resolve {} db_name -2 some new_value some3",// Conflict 2
+                "resolve {} db_name -2 some new_value some3", // Conflict 2
                 change1.opp_id
             )) // Not sure what to put here yet
         );
@@ -273,12 +292,16 @@ mod tests {
         // clients will watch for that
         // queue of conflicts will also use resolve vs resolved to check conflicts statuses
         assert_eq!(
-            db.get_value(get_conflict_watch_key(&resolve_change)).unwrap().value,
+            db.get_value(get_conflict_watch_key(&resolve_change))
+                .unwrap()
+                .value,
             String::from("resolved new_value")
         );
 
         assert_eq!(
-            db.get_value(get_conflict_watch_key(&resolve_change)).unwrap().value,
+            db.get_value(get_conflict_watch_key(&resolve_change))
+                .unwrap()
+                .value,
             String::from("resolved new_value2")
         );
     }

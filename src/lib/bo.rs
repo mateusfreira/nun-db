@@ -13,7 +13,7 @@ use std::time::UNIX_EPOCH;
 use crate::db_ops::*;
 use crate::disk_ops::*;
 
-pub const IN_CONFLICT_RESOLUTION_KEY_VERSION:i32 = -2;
+pub const IN_CONFLICT_RESOLUTION_KEY_VERSION: i32 = -2;
 
 pub const TOKEN_KEY: &'static str = "$$token";
 pub const ADMIN_DB: &'static str = "$admin";
@@ -574,7 +574,7 @@ impl Database {
             let new_version = if change.version == -1 {
                 old_version.version + 1
             } else if old_version.version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
-                old_version.version-1
+                old_version.version - 1
             } else {
                 change.version + 1
             };
