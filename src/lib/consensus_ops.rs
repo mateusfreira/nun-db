@@ -52,7 +52,7 @@ impl Database {
                          * 2. @todo chaing multiple changes to test behavior to
                          * 3. @todo coordenate chain in the server or in the client?
                          */
-                        let old_value_or_conflict_key : String = if old_version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
+                        let (old_value_or_conflict_key, change_version): (String, i32) = if old_version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
                             let pedding_conflict = self.list_keys(
                                 &String::from(format!(
                                     "{prefix}_{key}",
@@ -61,9 +61,9 @@ impl Database {
                                 )),
                                 true,
                             );
-                          pedding_conflict[0].to_string()
+                            (pedding_conflict[0].to_string(), version)
                         } else {
-                            old_value.to_string()
+                            (old_value.to_string(), old_version)
                         };
                         log::info!("Sending conflict to the arbiter {}", key);
                         // Need may fail to send
@@ -74,7 +74,7 @@ impl Database {
                             "resolve {opp_id} {db} {old_version} {key} {old_value} {value}",
                             opp_id = change.opp_id,
                             db = db,
-                            old_version = old_version,
+                            old_version = change_version,
                             key = key,
                             old_value = old_value_or_conflict_key,
                             value = change.value
@@ -133,20 +133,31 @@ impl Database {
     }
 
     pub fn resolve_conflit(&self, change: Change) -> Response {
+        log::debug!("resolving conflict change key: {} version : {}", change.key, change.version);
         // Will update the clients waiting for that conflict resolution update
         self.set_value(&Change::new(
             get_conflict_watch_key(&change),
             format!("resolved {}", change.value),
             -1,
         ));
-        self.set_value(&change)
+        self.set_value(&change.to_resolve_change())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use log::LevelFilter;
+    use env_logger::{Builder, Target};
 
+    fn init_logger() {
+        Builder::new()
+            .filter(None, LevelFilter::Debug)
+            .format_level(false)
+            .target(Target::Stdout)
+            .format_timestamp_nanos()
+            .init();
+    }
     #[test]
     fn should_resolve_conflict() {
         let key = String::from("some");
@@ -239,6 +250,7 @@ mod tests {
 
     #[test]
     fn should_put_new_set_as_conflitct_if_key_is_already_conflicted_if_using_arbiter() {
+        init_logger();
         let key = String::from("some");
         let db = Database::new(
             String::from("db_name"),
@@ -248,11 +260,11 @@ mod tests {
         let change1 = Change::new(key.clone(), String::from("some1"), 0); // m1
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
                                                                                    //
-        let change3 = Change::new(String::from("some"), String::from("some3"), 1); //m3
+        let change3 = Change::new(String::from("some"), String::from("some3"), 2); //m3
         db.set_value(&change2);
         let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&arbiter_client);
-        let e = db.set_value(&change1);
+        db.set_value(&change1);
         // This is a valid change coming to a key that has a pending conflict
         db.set_value(&change3);
         let v = receiver.try_next().unwrap();
@@ -265,7 +277,7 @@ mod tests {
         );
 
         let resolve_change = Change::new(String::from("some"), String::from("new_value"), 2);
-        db.resolve_conflit(resolve_change.clone());
+        let resolved = db.resolve_conflit(resolve_change.clone());
 
         /*
          * Change one and 2  conflicted resolved to new_value
@@ -276,13 +288,16 @@ mod tests {
         assert_eq!(
             v.unwrap(),
             String::from(format!(
-                "resolve {} db_name -2 some new_value some3", // Conflict 2
-                change1.opp_id
+                "resolve {} db_name 2 some {} some3", // Conflict 2
+                change3.opp_id,
+                get_conflict_watch_key(&change1),
+
             )) // Not sure what to put here yet
         );
 
-        let resolve_change_2 = Change::new(String::from("some"), String::from("new_value2"), 2);
-        db.resolve_conflit(resolve_change.clone());
+        let resolve_change_2 = Change::new(String::from("some"), String::from("new_value2"), 30000);
+        let e = db.resolve_conflit(resolve_change_2.clone());
+        println!("{:?}", e);
 
         assert_eq!(
             db.get_value(key.clone()).unwrap().value,
@@ -299,7 +314,80 @@ mod tests {
         );
 
         assert_eq!(
+            db.get_value(get_conflict_watch_key(&resolve_change_2))
+                .unwrap()
+                .value,
+            String::from("resolved new_value2")
+        );
+    }
+
+    #[test]
+    fn should_not_allow_force_change_if_key_is_in_conflict_resolution() {
+        init_logger();
+        let key = String::from("some");
+        let db = Database::new(
+            String::from("db_name"),
+            DatabaseMataData::new(1, ConsensuStrategy::Arbiter),
+        );
+
+        let change1 = Change::new(key.clone(), String::from("some1"), 0); // m1
+        let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
+                                                                                   //
+        let change3 = Change::new(String::from("some"), String::from("some3"), -1); //m3
+        db.set_value(&change2);
+        let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
+        db.register_arbiter(&arbiter_client);
+        db.set_value(&change1);
+        // This is a valid change coming to a key that has a pending conflict
+        db.set_value(&change3);
+        let v = receiver.try_next().unwrap();
+        assert_eq!(
+            v.unwrap(),
+            String::from(format!(
+                "resolve {} db_name 1 some some2 some1", // Conflict 1
+                change1.opp_id
+            ))
+        );
+
+        let resolve_change = Change::new(String::from("some"), String::from("new_value"), 2);
+        let resolved = db.resolve_conflit(resolve_change.clone());
+
+        /*
+         * Change one and 2  conflicted resolved to new_value
+         * So next conflict resolution needs to be from new_value to some3
+         * There should be some kind of chain
+         */
+        let v = receiver.try_next().unwrap();
+        assert_eq!(
+            v.unwrap(),
+            String::from(format!(
+                "resolve {} db_name 2 some {} some3", // Conflict 2
+                change3.opp_id,
+                get_conflict_watch_key(&change1),
+
+            )) // Not sure what to put here yet
+        );
+
+        let resolve_change_2 = Change::new(String::from("some"), String::from("new_value2"), 30000);
+        let e = db.resolve_conflit(resolve_change_2.clone());
+        println!("{:?}", e);
+
+        assert_eq!(
+            db.get_value(key.clone()).unwrap().value,
+            String::from("new_value2")
+        );
+        // Once the conflict is resolved it should change the value to resolved value
+        // clients will watch for that
+        // queue of conflicts will also use resolve vs resolved to check conflicts statuses
+        assert_eq!(
             db.get_value(get_conflict_watch_key(&resolve_change))
+                .unwrap()
+                .value,
+            String::from("resolved new_value")
+        );
+
+        assert_eq!(
+            db.get_value(get_conflict_watch_key(&resolve_change_2))
                 .unwrap()
                 .value,
             String::from("resolved new_value2")

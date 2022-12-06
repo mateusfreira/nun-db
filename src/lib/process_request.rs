@@ -466,6 +466,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                             value: value.clone(),
                             version,
                             opp_id,
+                            resolve_conflict: true,
                         })
                     } else {
                         send_message_to_primary(
@@ -489,6 +490,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                             value: value.clone(),
                             version,
                             opp_id,
+                            resolve_conflict: true
                         })
                     } else {
                         send_message_to_primary(

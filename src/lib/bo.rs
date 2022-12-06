@@ -207,6 +207,7 @@ pub struct Change {
     pub version: i32,
     pub opp_id: u64,
     pub key: String,
+    pub resolve_conflict: bool,
 }
 
 impl Change {
@@ -216,6 +217,17 @@ impl Change {
             value,
             version,
             opp_id: Databases::next_op_log_id(),
+            resolve_conflict: false,
+        }
+    }
+
+    pub fn  to_resolve_change(&self) -> Change {
+        Change {
+            key: self.key.clone(),
+            value: self.value.clone(),
+            version: self.version,
+            opp_id: self.opp_id,
+            resolve_conflict: true,
         }
     }
 }
@@ -573,8 +585,8 @@ impl Database {
         if let Some(old_version) = self.get_value(change.key.clone()) {
             let new_version = if change.version == -1 {
                 old_version.version + 1
-            } else if old_version.version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
-                old_version.version - 1
+            } else if old_version.version == IN_CONFLICT_RESOLUTION_KEY_VERSION && !change.resolve_conflict {
+                IN_CONFLICT_RESOLUTION_KEY_VERSION
             } else {
                 change.version + 1
             };
