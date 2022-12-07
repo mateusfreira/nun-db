@@ -27,7 +27,7 @@ impl Database {
                     log::info!("Will resolve the conflitct in the key {} using Newer", key);
                     if change.opp_id > old_value.opp_id {
                         // New value is older
-                        self.set_value(&Change::new(key.clone(), change.value.clone(), old_version))
+                        self.set_value(&Change::new(key.clone(), change.value.clone(), old_version).to_resolve_change())
                     } else {
                         Response::Set {
                             key: key.clone(),
@@ -158,6 +158,7 @@ mod tests {
             .format_timestamp_nanos()
             .init();
     }
+
     #[test]
     fn should_resolve_conflict() {
         let key = String::from("some");
