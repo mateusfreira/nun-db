@@ -351,6 +351,7 @@ mod tests {
                 change: _,
                 key: _,
                 db: _,
+                state: _,
             } => {
                 assert_eq!(msg, "Invalid version!");
             }

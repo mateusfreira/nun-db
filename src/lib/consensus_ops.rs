@@ -22,12 +22,16 @@ impl Database {
                 old_value,
                 change,
                 db,
+                state,
             } => match self.metadata.consensus_strategy {
                 ConsensuStrategy::Newer => {
                     log::info!("Will resolve the conflitct in the key {} using Newer", key);
                     if change.opp_id > old_value.opp_id {
                         // New value is older
-                        self.set_value(&Change::new(key.clone(), change.value.clone(), old_version).to_resolve_change())
+                        self.set_value(
+                            &Change::new(key.clone(), change.value.clone(), old_version)
+                                .to_resolve_change(),
+                        )
                     } else {
                         Response::Set {
                             key: key.clone(),
@@ -47,24 +51,39 @@ impl Database {
                         }
                     } else {
                         /*
+                         * Sets the version to IN_CONFLICT_RESOLUTION_KEY_VERSION meaning all new changes
+                         * to the same key must be also considered an conflict until the conflict is fully
+                         * solved
+                         */
+                        self.set_value_version(
+                            &change.key,
+                            &old_value.value,
+                            IN_CONFLICT_RESOLUTION_KEY_VERSION,
+                            state,
+                            old_value.value_disk_addr,
+                            old_value.key_disk_addr,
+                            old_value.opp_id,
+                        );
+                        /*
                          * Return the old value or  the key of the pending conflict.
-                         * 1. @todo to make sure it is not resolved 
+                         * 1. @todo to make sure it is not resolved
                          * 2. @todo chaing multiple changes to test behavior to
                          * 3. @todo coordenate chain in the server or in the client?
                          */
-                        let (old_value_or_conflict_key, change_version): (String, i32) = if old_version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
-                            let pedding_conflict = self.list_keys(
-                                &String::from(format!(
-                                    "{prefix}_{key}",
-                                    key = change.key,
-                                    prefix = CONFLICTS_KEY
-                                )),
-                                true,
-                            );
-                            (pedding_conflict[0].to_string(), version)
-                        } else {
-                            (old_value.to_string(), old_version)
-                        };
+                        let (old_value_or_conflict_key, change_version): (String, i32) =
+                            if old_version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
+                                let pedding_conflict = self.list_keys(
+                                    &String::from(format!(
+                                        "{prefix}_{key}",
+                                        key = change.key,
+                                        prefix = CONFLICTS_KEY
+                                    )),
+                                    true,
+                                );
+                                (pedding_conflict[0].to_string(), version)
+                            } else {
+                                (old_value.to_string(), old_version)
+                            };
                         log::info!("Sending conflict to the arbiter {}", key);
                         // Need may fail to send
                         // May fail to reply to the client
@@ -99,6 +118,7 @@ impl Database {
                     old_value,
                     change,
                     db,
+                    state,
                 },
             },
             r => r,
@@ -133,7 +153,11 @@ impl Database {
     }
 
     pub fn resolve_conflit(&self, change: Change) -> Response {
-        log::debug!("resolving conflict change key: {} version : {}", change.key, change.version);
+        log::debug!(
+            "resolving conflict change key: {} version : {}",
+            change.key,
+            change.version
+        );
         // Will update the clients waiting for that conflict resolution update
         self.set_value(&Change::new(
             get_conflict_watch_key(&change),
@@ -144,11 +168,17 @@ impl Database {
     }
 }
 
+impl Value {
+    pub fn is_in_conflict_resolution(&self) -> bool {
+        self.version == IN_CONFLICT_RESOLUTION_KEY_VERSION
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use log::LevelFilter;
     use env_logger::{Builder, Target};
+    use log::LevelFilter;
 
     fn init_logger() {
         Builder::new()
@@ -292,7 +322,6 @@ mod tests {
                 "resolve {} db_name 2 some {} some3", // Conflict 2
                 change3.opp_id,
                 get_conflict_watch_key(&change1),
-
             )) // Not sure what to put here yet
         );
 
@@ -324,7 +353,7 @@ mod tests {
 
     #[test]
     fn should_not_allow_force_change_if_key_is_in_conflict_resolution() {
-        init_logger();
+        ////init_logger();
         let key = String::from("some");
         let db = Database::new(
             String::from("db_name"),
@@ -365,7 +394,6 @@ mod tests {
                 "resolve {} db_name 2 some {} some3", // Conflict 2
                 change3.opp_id,
                 get_conflict_watch_key(&change1),
-
             )) // Not sure what to put here yet
         );
 

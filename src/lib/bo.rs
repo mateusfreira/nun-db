@@ -221,7 +221,7 @@ impl Change {
         }
     }
 
-    pub fn  to_resolve_change(&self) -> Change {
+    pub fn to_resolve_change(&self) -> Change {
         Change {
             key: self.key.clone(),
             value: self.value.clone(),
@@ -525,7 +525,7 @@ impl Database {
         }
     }
 
-    fn set_value_version(
+    pub fn set_value_version(
         &self,
         key: &String,
         value: &String,
@@ -583,10 +583,12 @@ impl Database {
 
     pub fn set_value(&self, change: &Change) -> Response {
         if let Some(old_version) = self.get_value(change.key.clone()) {
-            let new_version = if change.version == -1 {
+            let new_version = if change.resolve_conflict {
+                change.version + 1
+            } else if old_version.is_in_conflict_resolution() {
+                old_version.version
+            } else if change.version == -1 {
                 old_version.version + 1
-            } else if old_version.version == IN_CONFLICT_RESOLUTION_KEY_VERSION && !change.resolve_conflict {
-                IN_CONFLICT_RESOLUTION_KEY_VERSION
             } else {
                 change.version + 1
             };
@@ -597,20 +599,6 @@ impl Database {
                 } else {
                     ValueStatus::Updated
                 };
-                /*
-                 * Sets the version to IN_CONFLICT_RESOLUTION_KEY_VERSION meaning all new changes
-                 * to the same key must be also considered an conflict until the conflict is fully
-                 * solved
-                 */
-                self.set_value_version(
-                    &change.key,
-                    &old_version.value,
-                    IN_CONFLICT_RESOLUTION_KEY_VERSION,
-                    state,
-                    old_version.value_disk_addr,
-                    old_version.key_disk_addr,
-                    old_version.opp_id,
-                );
                 log::debug!(
                     "Version conflicted will try to resolve: {}, New version: {}, PassedVersion : {}",
                     old_version.version,
@@ -624,6 +612,7 @@ impl Database {
                     version: change.version,
                     old_value: old_version.clone(),
                     change: change.clone(),
+                    state: state,
                     db: self.name.clone(),
                 });
             }
@@ -1099,6 +1088,7 @@ pub enum Response {
         old_version: i32,
         version: i32,
         old_value: Value,
+        state: ValueStatus,
         change: Change,
         db: String,
     },
@@ -1318,7 +1308,8 @@ mod tests {
                     key_disk_addr: 0
                 },
                 change: change2,
-                db: String::from("some")
+                db: String::from("some"),
+                state: ValueStatus::New
             }
         );
     }
