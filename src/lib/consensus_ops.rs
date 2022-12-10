@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn should_put_new_set_as_conflitct_if_key_is_already_conflicted_if_using_arbiter() {
-        init_logger();
+        //init_logger();
         let key = String::from("some");
         let db = Database::new(
             String::from("db_name"),

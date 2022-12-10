@@ -230,6 +230,21 @@ impl Change {
             resolve_conflict: true,
         }
     }
+
+    /**
+     * Returns the next version from a change, for conflict cases it will return conflicted keys
+     */
+    pub fn next_version(&self, old_value: &Value) -> i32 {
+        if self.resolve_conflict {
+            self.version + 1
+        } else if old_value.is_in_conflict_resolution() {
+            old_value.version
+        } else if self.version == -1 {
+            old_value.version + 1
+        } else {
+            self.version + 1
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -290,6 +305,20 @@ impl PartialEq<&str> for Value {
         self.value.eq(other)
     }
 }
+
+impl Value {
+    /**
+     * If the key is new means it has not been stored in disk yet therefore status should still be
+     * ValueStatus::New, if it is Deleted became updated to be repopulated
+     */
+    pub fn get_update_value_sate(&self) -> ValueStatus {
+        if self.state == ValueStatus::New {
+            ValueStatus::New
+        } else {
+            ValueStatus::Updated
+        }
+    }
+}
 //Based on sabinchitrakar/ema-rs
 pub struct NunEma {
     //Exponential Moving Average
@@ -307,7 +336,7 @@ pub struct Database {
 }
 
 pub struct Databases {
-    pub query_ema: std::sync::RwLock<NunEma>,
+   pub query_ema: std::sync::RwLock<NunEma>,
     pub replication_ema: std::sync::RwLock<NunEma>,
     pub map: std::sync::RwLock<HashMap<String, Database>>,
     pub id_name_db_map: std::sync::RwLock<HashMap<u64, String>>,
@@ -583,22 +612,9 @@ impl Database {
 
     pub fn set_value(&self, change: &Change) -> Response {
         if let Some(old_version) = self.get_value(change.key.clone()) {
-            let new_version = if change.resolve_conflict {
-                change.version + 1
-            } else if old_version.is_in_conflict_resolution() {
-                old_version.version
-            } else if change.version == -1 {
-                old_version.version + 1
-            } else {
-                change.version + 1
-            };
-
+            let new_version = change.next_version(&old_version);
             if new_version <= old_version.version {
-                let state = if old_version.state == ValueStatus::New {
-                    ValueStatus::New
-                } else {
-                    ValueStatus::Updated
-                };
+                let state = old_version.get_update_value_sate();
                 log::debug!(
                     "Version conflicted will try to resolve: {}, New version: {}, PassedVersion : {}",
                     old_version.version,
@@ -622,11 +638,7 @@ impl Database {
                 new_version,
                 change.version,
             );
-            let state = if old_version.state == ValueStatus::New {
-                ValueStatus::New
-            } else {
-                ValueStatus::Updated
-            };
+            let state = old_version.get_update_value_sate();
             self.set_value_version(
                 &change.key,
                 &change.value,
