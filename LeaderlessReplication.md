@@ -148,3 +148,4 @@ Time line...
 - [x] Use keys with conflict to keys * to get pending conflict queue.
 - [ ] If try to set value to a key with pending conflict the set gets to the conflict queue
 - [ ] Database is shutdown while conflict is not solved yet
+- [ ] Replicate conflict keys

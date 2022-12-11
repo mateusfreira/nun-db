@@ -97,8 +97,24 @@ pub mod helpers {
             .assert()
     }
 
+    pub fn nundb_call(host: &str, command: &str) ->  std::process::Output {
+        Command::cargo_bin("nun-db")
+            .unwrap()
+            .args(["-p", "mateus"])
+            .args(["--user", "mateus"])
+            .args(["--host", host])
+            .arg("exec")
+            .arg(command)
+            .output()
+            .unwrap()
+    }
+
     pub fn nundb_exec_primary(command: &str) -> assert_cmd::assert::Assert {
         nundb_exec(PRIMARY_HTTP_URI, command)
+    }
+
+    pub fn nundb_exec_secondary(command: &str) -> assert_cmd::assert::Assert {
+        nundb_exec(SECOUNDAR_HTTP_URI, command)
     }
 
     pub fn wait_seconds(time: u64) {

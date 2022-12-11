@@ -80,7 +80,7 @@ impl Database {
                                     )),
                                     true,
                                 );
-                                (pedding_conflict[0].to_string(), version)
+                                (pedding_conflict.last().unwrap().to_string(), version)
                             } else {
                                 (old_value.to_string(), old_version)
                             };
@@ -177,9 +177,10 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use env_logger::{Builder, Target};
-    use log::LevelFilter;
+    //use env_logger::{Builder, Target};
+    //use log::LevelFilter;
 
+    /*
     fn init_logger() {
         Builder::new()
             .filter(None, LevelFilter::Debug)
@@ -187,7 +188,7 @@ mod tests {
             .target(Target::Stdout)
             .format_timestamp_nanos()
             .init();
-    }
+    }*/
 
     #[test]
     fn should_resolve_conflict() {
@@ -308,7 +309,7 @@ mod tests {
         );
 
         let resolve_change = Change::new(String::from("some"), String::from("new_value"), 2);
-        let resolved = db.resolve_conflit(resolve_change.clone());
+        let _resolved = db.resolve_conflit(resolve_change.clone());
 
         /*
          * Change one and 2  conflicted resolved to new_value
@@ -380,7 +381,7 @@ mod tests {
         );
 
         let resolve_change = Change::new(String::from("some"), String::from("new_value"), 2);
-        let resolved = db.resolve_conflit(resolve_change.clone());
+        let _resolved = db.resolve_conflit(resolve_change.clone());
 
         /*
          * Change one and 2  conflicted resolved to new_value
@@ -391,7 +392,7 @@ mod tests {
         assert_eq!(
             v.unwrap(),
             String::from(format!(
-                "resolve {} db_name 2 some {} some3", // Conflict 2
+                "resolve {} db_name -1 some {} some3", // Conflict 2
                 change3.opp_id,
                 get_conflict_watch_key(&change1),
             )) // Not sure what to put here yet
