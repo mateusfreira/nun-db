@@ -47,6 +47,28 @@ pub fn get_replicate_increment_message(db_name: String, key: String, inc: String
     return format!("replicate-increment {} {} {}", db_name, key, inc);
 }
 
+pub fn replicate_change(change: &Change, db: &Database, dbs: &Arc<Databases>) -> Response {
+    if dbs.is_primary() || dbs.is_eligible() {
+        replicate_web(
+            &dbs.replication_sender,
+            get_replicate_message(
+                db.name.clone(),
+                change.key.clone(),
+                change.value.clone(),
+                change.version,
+            ),
+        );
+    } else {
+        send_message_to_primary(
+            String::from(format!(
+                "set-safe {} {} {}",
+                change.key, change.version, change.value
+            )),
+            &dbs,
+        );
+    }
+    Response::Ok {}
+}
 pub fn replicate_request(
     input: Request,
     db_name: &String,

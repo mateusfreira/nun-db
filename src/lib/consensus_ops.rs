@@ -1,4 +1,6 @@
 use crate::bo::*;
+use crate::replication_ops::*;
+use std::sync::Arc;
 
 pub const CONFLICTS_KEY: &'static str = "$$conflicts";
 
@@ -152,18 +154,21 @@ impl Database {
         self.watch_key(&key, &client.sender)
     }
 
-    pub fn resolve_conflit(&self, change: Change) -> Response {
+    pub fn resolve_conflit(&self, change: Change, dbs: &Arc<Databases>) -> Response {
         log::debug!(
             "resolving conflict change key: {} version : {}",
             change.key,
             change.version
         );
         // Will update the clients waiting for that conflict resolution update
-        self.set_value(&Change::new(
+        let conflict_register_change = Change::new(
             get_conflict_watch_key(&change),
             format!("resolved {}", change.value),
             -1,
-        ));
+        );
+        self.set_value(&conflict_register_change);
+        // Replicate conflict keys to other replicas
+        replicate_change(&conflict_register_change, &self, &dbs);
         self.set_value(&change.to_resolve_change())
     }
 }
@@ -180,6 +185,9 @@ mod tests {
     //use env_logger::{Builder, Target};
     //use log::LevelFilter;
 
+    use futures::channel::mpsc::{channel, Receiver, Sender};
+    use std::collections::HashMap;
+    use std::sync::atomic::Ordering;
     /*
     fn init_logger() {
         Builder::new()
@@ -189,6 +197,29 @@ mod tests {
             .format_timestamp_nanos()
             .init();
     }*/
+
+    fn create_default_args() -> (Receiver<String>, Arc<Databases>, Client) {
+        let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (sender2, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
+        let dbs = Arc::new(Databases::new(
+            String::from("user"),
+            String::from("token"),
+            String::from(""),
+            sender1,
+            sender2,
+            keys_map,
+            1 as u128,
+            true,
+        ));
+
+        dbs.node_state
+            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+
+        let (client, receiver) = Client::new_empty_and_receiver();
+
+        return (receiver, dbs, client);
+    }
 
     #[test]
     fn should_resolve_conflict() {
@@ -262,8 +293,9 @@ mod tests {
                 change1.opp_id
             )) // Not sure what to put here yet
         );
+        let (_, dbs, _) = create_default_args();
         let resolve_change = Change::new(String::from("some"), String::from("some1"), 2);
-        db.resolve_conflit(resolve_change.clone());
+        db.resolve_conflit(resolve_change.clone(), &dbs);
         //process_request(&format!("resolved {} db_name some some1", change1.opp_id), &dbs, &mut client);
         assert_eq!(
             db.get_value(key.clone()).unwrap().value,
@@ -282,6 +314,7 @@ mod tests {
 
     #[test]
     fn should_put_new_set_as_conflitct_if_key_is_already_conflicted_if_using_arbiter() {
+        let (_, dbs, _) = create_default_args();
         //init_logger();
         let key = String::from("some");
         let db = Database::new(
@@ -309,7 +342,7 @@ mod tests {
         );
 
         let resolve_change = Change::new(String::from("some"), String::from("new_value"), 2);
-        let _resolved = db.resolve_conflit(resolve_change.clone());
+        let _resolved = db.resolve_conflit(resolve_change.clone(), &dbs);
 
         /*
          * Change one and 2  conflicted resolved to new_value
@@ -327,7 +360,7 @@ mod tests {
         );
 
         let resolve_change_2 = Change::new(String::from("some"), String::from("new_value2"), 30000);
-        let e = db.resolve_conflit(resolve_change_2.clone());
+        let e = db.resolve_conflit(resolve_change_2.clone(), &dbs);
         println!("{:?}", e);
 
         assert_eq!(
@@ -380,8 +413,10 @@ mod tests {
             ))
         );
 
+        let (_, dbs, _) = create_default_args();
+
         let resolve_change = Change::new(String::from("some"), String::from("new_value"), 2);
-        let _resolved = db.resolve_conflit(resolve_change.clone());
+        let _resolved = db.resolve_conflit(resolve_change.clone(), &dbs);
 
         /*
          * Change one and 2  conflicted resolved to new_value
@@ -399,7 +434,7 @@ mod tests {
         );
 
         let resolve_change_2 = Change::new(String::from("some"), String::from("new_value2"), 30000);
-        let e = db.resolve_conflit(resolve_change_2.clone());
+        let e = db.resolve_conflit(resolve_change_2.clone(), &dbs);
         println!("{:?}", e);
 
         assert_eq!(

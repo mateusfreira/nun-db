@@ -97,7 +97,7 @@ pub mod helpers {
             .assert()
     }
 
-    pub fn nundb_call(host: &str, command: &str) ->  std::process::Output {
+    pub fn nundb_call(host: &str, command: &str) -> std::process::Output {
         Command::cargo_bin("nun-db")
             .unwrap()
             .args(["-p", "mateus"])

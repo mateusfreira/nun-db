@@ -462,13 +462,16 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             if client.auth.load(Ordering::SeqCst) {
                 apply_to_database_name(dbs, client, &db_name, &|db| {
                     if dbs.is_primary() {
-                        db.resolve_conflit(Change {
-                            key: key.clone(),
-                            value: value.clone(),
-                            version,
-                            opp_id,
-                            resolve_conflict: true,
-                        })
+                        db.resolve_conflit(
+                            Change {
+                                key: key.clone(),
+                                value: value.clone(),
+                                version,
+                                opp_id,
+                                resolve_conflict: true,
+                            },
+                            &dbs,
+                        )
                     } else {
                         send_message_to_primary(
                             get_resolve_message(
@@ -486,13 +489,16 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             } else {
                 apply_to_database(&dbs, &client, &|db| {
                     if dbs.is_primary() {
-                        db.resolve_conflit(Change {
-                            key: key.clone(),
-                            value: value.clone(),
-                            version,
-                            opp_id,
-                            resolve_conflict: true,
-                        })
+                        db.resolve_conflit(
+                            Change {
+                                key: key.clone(),
+                                value: value.clone(),
+                                version,
+                                opp_id,
+                                resolve_conflict: true,
+                            },
+                            &dbs,
+                        )
                     } else {
                         send_message_to_primary(
                             get_resolve_message(

@@ -336,7 +336,7 @@ pub struct Database {
 }
 
 pub struct Databases {
-   pub query_ema: std::sync::RwLock<NunEma>,
+    pub query_ema: std::sync::RwLock<NunEma>,
     pub replication_ema: std::sync::RwLock<NunEma>,
     pub map: std::sync::RwLock<HashMap<String, Database>>,
     pub id_name_db_map: std::sync::RwLock<HashMap<u64, String>>,
