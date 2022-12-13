@@ -42,12 +42,12 @@ impl Client {
     }
 
     pub fn left(&self, dbs: &Arc<Databases>) {
-        let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
-        let db_box = dbs.get(&self.selected_db_name());
+        let dbs_maps = dbs.map.read().expect("Error getting the dbs.map.lock");
+        let db_box = dbs_maps.get(&self.selected_db_name());
         match db_box {
             Some(db) => {
                 db.dec_connections();
-                set_connection_counter(db);
+                set_connection_counter(db, &dbs);
             }
             _ => (),
         }
@@ -621,7 +621,7 @@ impl Database {
                     new_version,
                     change.version,
                 );
-                return self.resolve(Response::VersionError {
+                return Response::VersionError {
                     msg: String::from(INVALID_VERSION_ERROR),
                     old_version: old_version.version,
                     key: change.key.clone(),
@@ -630,7 +630,7 @@ impl Database {
                     change: change.clone(),
                     state: state,
                     db: self.name.clone(),
-                });
+                };
             }
             log::debug!(
                 "Updating existing value Old version: {}, New version: {}, PassedVersion : {}",

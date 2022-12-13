@@ -60,10 +60,12 @@ pub fn replicate_change(change: &Change, db: &Database, dbs: &Arc<Databases>) ->
         );
     } else {
         send_message_to_primary(
-            String::from(format!(
-                "set-safe {} {} {}",
-                change.key, change.version, change.value
-            )),
+            get_replicate_message(
+                db.name.clone(),
+                change.key.clone(),
+                change.value.clone(),
+                change.version,
+            ),
             &dbs,
         );
     }
@@ -957,8 +959,8 @@ mod tests {
         {
             let map = dbs.map.read().unwrap();
             let db = map.get("$admin").unwrap();
-            set_key_value("key".to_string(), "value1".to_string(), -1, db);
-            set_key_value("key".to_string(), "value3".to_string(), -1, db);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);
         }
 
         sender
@@ -992,8 +994,8 @@ mod tests {
         {
             let map = dbs.map.read().unwrap();
             let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
-            set_key_value("key".to_string(), "value1".to_string(), -1, db);
-            set_key_value("key".to_string(), "value3".to_string(), -1, db);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);
         }
 
         thread::sleep(time::Duration::from_millis(10));
@@ -1051,8 +1053,8 @@ mod tests {
             let map = dbs.map.read().unwrap();
             let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
             //set_key_value("key".to_string(), "value".to_string(), db);
-            set_key_value("key".to_string(), "value1".to_string(), -1, db);
-            set_key_value("key".to_string(), "value3".to_string(), -1, db);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);
         }
 
         thread::sleep(time::Duration::from_millis(10));
@@ -1109,14 +1111,15 @@ mod tests {
         {
             let map = dbs.map.read().unwrap();
             let db = map.get("$admin").unwrap();
-            set_key_value("key".to_string(), "value".to_string(), -1, db);
-            set_key_value("key".to_string(), "value1".to_string(), -1, db);
-            set_key_value("key".to_string(), "value3".to_string(), -1, db);
-            set_key_value("key".to_string(), "value4".to_string(), -1, db);
-            set_key_value("key".to_string(), "value5".to_string(), -1, db);
-            set_key_value("key".to_string(), "value6".to_string(), -1, db);
-            set_key_value("key".to_string(), "value7".to_string(), -1, db);
-            set_key_value("key".to_string(), "value8".to_string(), -1, db); // 11 recoreds on the op log
+            set_key_value("key".to_string(), "value".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value4".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value5".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value6".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value7".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value8".to_string(), -1, db, &dbs);
+            // 11 recoreds on the op log
         }
 
         sender

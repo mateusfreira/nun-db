@@ -80,7 +80,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             value,
             version,
         } => apply_to_database(&dbs, &client, &|_db| {
-            let respose = set_key_value(key.clone(), value.clone(), version, _db);
+            let respose = set_key_value(key.clone(), value.clone(), version, _db, &dbs);
             if !dbs.is_primary() {
                 let db_name_state = _db.name.clone();
                 send_message_to_primary(
@@ -116,9 +116,9 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             value,
             version,
         } => apply_if_auth(&client.auth, &|| {
-            let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
-            let respose: Response = match dbs.get(&name.to_string()) {
-                Some(db) => set_key_value(key.clone(), value.clone(), version, db),
+            let dbs_map = dbs.map.read().expect("Could not lock the dbs mutex");
+            let respose: Response = match dbs_map.get(&name.to_string()) {
+                Some(db) => set_key_value(key.clone(), value.clone(), version, db, &dbs),
                 _ => {
                     log::debug!("Not a valid database name");
                     Response::Error {
@@ -163,13 +163,13 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
 
         Request::UseDb { name, token } => {
             let mut db_name_state = client.selected_db.name.write().unwrap();
-            let dbs = dbs.map.read().expect("Could not lock the mao mutex");
-            let respose: Response = match dbs.get(&name.to_string()) {
+            let dbs_map = dbs.map.read().expect("Could not lock the mao mutex");
+            let respose: Response = match dbs_map.get(&name.to_string()) {
                 Some(db) => {
                     if is_valid_token(&token, db) {
                         let _ = std::mem::replace(&mut *db_name_state, name.clone());
                         db.inc_connections(); //Increment the number of connections
-                        set_connection_counter(db);
+                        set_connection_counter(db, &dbs);
                         Response::Ok {}
                     } else {
                         Response::Error {

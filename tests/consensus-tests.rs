@@ -80,13 +80,13 @@ mod tests {
         )
         .stdout(predicate::str::contains("value-version 2 mateus"));
 
-        helpers::wait_seconds(2); //Give it 5 seconds to elect the new leader
-                                  // revisit
+        helpers::wait_seconds(2);
         let output =  helpers::nundb_call(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
             &String::from("use test test-pwd;arbiter;set-safe name 0 change-1; set-safe name 0 change-2;set-safe name 0 change-3;ls"),
         );
 
+        helpers::wait_seconds(2);
         let output_string = String::from_utf8(output.stdout).unwrap();
         let mut response_parts = output_string.split("Response ");
         response_parts.next(); // command
@@ -111,4 +111,7 @@ mod tests {
         helpers::kill_replicas(replicas_processes)?;
         Ok(())
     }
+
+    // @todo read from another replicate after replicate (value must not change in the other
+    // replica if not resolved yet)
 }

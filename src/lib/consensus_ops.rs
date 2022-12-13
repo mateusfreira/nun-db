@@ -13,8 +13,8 @@ pub fn get_conflict_watch_key(change: &Change) -> String {
     ))
 }
 impl Database {
-    // Separate local conflitct with replication confilct
-    pub fn resolve(&self, conflitct_error: Response) -> Response {
+    // Separate local conflitct with replication conflitct
+    pub fn resolve(&self, conflitct_error: Response, dbs: &Arc<Databases>) -> Response {
         match conflitct_error {
             Response::VersionError {
                 msg,
@@ -103,7 +103,12 @@ impl Database {
                         .to_string();
                         self.send_message_to_arbiter_client(resolve_message.clone());
                         let conflitct_key = get_conflict_watch_key(&change);
-                        self.set_value(&Change::new(conflitct_key.clone(), resolve_message, -1));
+                        let conflict_register_change =
+                            Change::new(conflitct_key.clone(), resolve_message, -1);
+                        self.set_value(&conflict_register_change);
+
+                        replicate_change(&conflict_register_change, &self, &dbs);
+                        // Replicate
                         Response::Error {
                             msg: String::from(format!(
                                 "$$conflitct unresolved {}",
@@ -326,7 +331,9 @@ mod tests {
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
                                                                                    //
         let change3 = Change::new(String::from("some"), String::from("some3"), 2); //m3
+        // Change all set_value to set_key_value
         db.set_value(&change2);
+        //set_key_value(key.clone(), value.clone(), -1, &db, &dbs);
         let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&arbiter_client);
         db.set_value(&change1);
