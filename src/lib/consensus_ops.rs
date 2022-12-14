@@ -228,16 +228,20 @@ mod tests {
 
     #[test]
     fn should_resolve_conflict() {
+        let (_, dbs, _) = create_default_args();
         let key = String::from("some");
         let db = Database::new(
             String::from("some"),
             DatabaseMataData::new(1, ConsensuStrategy::Newer),
         );
         let change1 = Change::new(key.clone(), String::from("some1"), 0);
-        db.set_value(&change1);
+        let response = db.set_value(&change1);
+        db.resolve(response, &dbs);
         let change2 = Change::new(String::from("some"), String::from("some2"), 0);
+        let response = db.set_value(&change2);
+
         assert_eq!(
-            db.set_value(&change2),
+            db.resolve(response, &dbs),
             Response::Set {
                 key: String::from("some"),
                 value: String::from("some2")
@@ -336,9 +340,11 @@ mod tests {
         //set_key_value(key.clone(), value.clone(), -1, &db, &dbs);
         let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&arbiter_client);
-        db.set_value(&change1);
+        let response = db.set_value(&change1);
+        db.resolve(response, &dbs);
         // This is a valid change coming to a key that has a pending conflict
-        db.set_value(&change3);
+        let response = db.set_value(&change3);
+        db.resolve(response, &dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),
