@@ -274,6 +274,7 @@ mod tests {
 
     #[test]
     fn should_resolve_conflict_with_arbiter() {
+        let (_, dbs, _) = create_default_args();
         let key = String::from("some");
         let db = Database::new(
             String::from("db_name"),
@@ -282,9 +283,9 @@ mod tests {
 
         let change1 = Change::new(key.clone(), String::from("some1"), 0); // m1
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
-        db.set_value(&change2);
+        db.resolve(db.set_value(&change2), &dbs);
         assert_eq!(
-            db.set_value(&change1),
+            db.resolve(db.set_value(&change1), &dbs),
             Response::Error {
                 msg: String::from(
                     "An conflitct happend and there is no arbiter client not connected!"
@@ -293,7 +294,7 @@ mod tests {
         );
         let (client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&client);
-        db.set_value(&change1);
+        db.resolve(db.set_value(&change1), &dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),
@@ -302,7 +303,6 @@ mod tests {
                 change1.opp_id
             )) // Not sure what to put here yet
         );
-        let (_, dbs, _) = create_default_args();
         let resolve_change = Change::new(String::from("some"), String::from("some1"), 2);
         db.resolve_conflit(resolve_change.clone(), &dbs);
         //process_request(&format!("resolved {} db_name some some1", change1.opp_id), &dbs, &mut client);
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn should_not_allow_force_change_if_key_is_in_conflict_resolution() {
-        ////init_logger();
+        let (_, dbs, _) = create_default_args();
         let key = String::from("some");
         let db = Database::new(
             String::from("db_name"),
@@ -414,9 +414,9 @@ mod tests {
         db.set_value(&change2);
         let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&arbiter_client);
-        db.set_value(&change1);
+        db.resolve(db.set_value(&change1), &dbs);
         // This is a valid change coming to a key that has a pending conflict
-        db.set_value(&change3);
+        db.resolve(db.set_value(&change3),&dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),
@@ -426,7 +426,6 @@ mod tests {
             ))
         );
 
-        let (_, dbs, _) = create_default_args();
 
         let resolve_change = Change::new(String::from("some"), String::from("new_value"), 2);
         let _resolved = db.resolve_conflit(resolve_change.clone(), &dbs);
