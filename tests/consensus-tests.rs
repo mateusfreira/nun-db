@@ -17,7 +17,7 @@ mod tests {
         )
         .stdout(predicate::str::contains("value-version 2 mateus"));
 
-        helpers::wait_seconds(2); //Give it 5 seconds to elect the new leader
+        helpers::wait_seconds(2); //Give it 2 seconds to elect the new leader
                                   // revisit
         let output =  helpers::nundb_call(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
@@ -53,6 +53,7 @@ mod tests {
             .last()
             .unwrap()
             .trim(); // set command
+        helpers::wait_seconds(2);
         let get_command = format!("use test test-pwd;get {}", conflict1);
         helpers::nundb_exec_secondary(&get_command)
             // value resolve ${change_id} test 2 name mateus change-1

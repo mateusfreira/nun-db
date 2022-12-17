@@ -258,9 +258,10 @@ mod tests {
         );
         let change1 = Change::new(key.clone(), String::from("some1"), 0); // m1
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
+        let (_, dbs, _) = create_default_args();
         db.set_value(&change2);
         assert_eq!(
-            db.set_value(&change1),
+            db.resolve(db.set_value(&change1), &dbs),
             Response::Set {
                 key: String::from("some"),
                 value: String::from("some2")

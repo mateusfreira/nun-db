@@ -248,8 +248,8 @@ fn replicate_message_to_secoundary(op_log_id: u64, message: String, dbs: &Arc<Da
 
 pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
     // @todo remove this move this to a test method
-    let ten_millis = time::Duration::from_millis(1000);
-    thread::sleep(ten_millis);
+    //let ten_millis = time::Duration::from_millis(1000);
+    //thread::sleep(ten_millis);
     log::debug!("Got the message {} to send to primary", message);
     let state = dbs.cluster_state.lock().unwrap();
     for (_name, member) in state.members.lock().unwrap().iter() {
