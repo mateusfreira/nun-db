@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::bo::*;
-use crate::consensus_ops::*;
 use crate::disk_ops::*;
 
 pub const CONNECTIONS_KEY: &'static str = "$connections";
@@ -56,10 +55,10 @@ pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Resp
     }
 }
 
-pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &Client) -> Response {
+pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &Client, strategy: ConsensuStrategy) -> Response {
     if dbs.is_primary() || client.is_primary() {
         // If this node is the primary or the primary is asking to create it
-        let empty_db_box = create_temp_db(name.clone(), dbs);
+        let empty_db_box = create_temp_db(name.clone(), strategy, dbs);
         let empty_db = Arc::try_unwrap(empty_db_box);
         match empty_db {
             Ok(db) => {
@@ -200,8 +199,7 @@ pub fn set_key_value(
         state: _,
         change: _,
         db: _,
-    } = response
-    {
+    } = response {
         db.resolve(response, &dbs)
     } else {
         response
@@ -237,14 +235,14 @@ pub fn unwatch_all(sender: &Sender<String>, db: &Database) -> Response {
     Response::Ok {}
 }
 
-pub fn create_temp_db(name: String, dbs: &Arc<Databases>) -> Arc<Database> {
+pub fn create_temp_db(name: String, strategy: ConsensuStrategy, dbs: &Arc<Databases>) -> Arc<Database> {
     let initial_db = HashMap::new();
     return Arc::new(Database::create_db_from_hash(
         name,
         initial_db,
         DatabaseMataData::new(
             dbs.map.read().expect("could not get lock").len(),
-            ConsensuStrategy::Arbiter,
+            strategy,
         ),
     ));
 }
@@ -344,7 +342,7 @@ mod tests {
         let name = String::from(SAMPLE_NAME);
         let token = String::from(SAMPLE_NAME);
         let (client, _) = Client::new_empty_and_receiver();
-        create_db(&name, &token, &dbs, &client);
+        create_db(&name, &token, &dbs, &client, ConsensuStrategy::Newer);
         dbs
     }
 
@@ -461,7 +459,7 @@ mod tests {
 
     #[test]
     fn should_unwatch_a_value() {
-        let dbs = get_dbs();
+        let _dbs = get_dbs();
         let key = String::from("key");
         let hash = HashMap::new();
         let db = Database::create_db_from_hash(
@@ -480,7 +478,7 @@ mod tests {
 
     #[test]
     fn should_unwatch_all() {
-        let dbs = get_dbs();
+        let _dbs = get_dbs();
         let key = String::from("key");
         let key1 = String::from("key1");
         let hash = HashMap::new();

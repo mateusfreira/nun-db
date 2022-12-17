@@ -187,8 +187,8 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             respose
         }
 
-        Request::CreateDb { name, token } => {
-            apply_if_auth(&client.auth, &|| create_db(&name, &token, &dbs, &client))
+        Request::CreateDb { name, token, strategy  } => {
+            apply_if_auth(&client.auth, &|| create_db(&name, &token, &dbs, &client, strategy))
         }
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now

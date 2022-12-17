@@ -117,7 +117,9 @@ impl Database {
                         }
                     }
                 }
-                ConsensuStrategy::None => Response::VersionError {
+                ConsensuStrategy::None => { 
+                    log::info!("Will resolve the conflict in the key {} using None", key);
+                    Response::VersionError {
                     msg,
                     key,
                     old_version,
@@ -126,6 +128,7 @@ impl Database {
                     change,
                     db,
                     state,
+                }
                 },
             },
             r => r,
@@ -146,9 +149,6 @@ impl Database {
         }
     }
 
-    pub fn is_arbitered(&self) -> bool {
-        self.metadata.consensus_strategy == ConsensuStrategy::Arbiter
-    }
     pub fn has_arbiter_connected(&self) -> bool {
         let watchers = self.watchers.map.read().unwrap();
         watchers.contains_key(CONFLICTS_KEY)

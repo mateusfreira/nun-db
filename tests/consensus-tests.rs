@@ -13,7 +13,7 @@ mod tests {
         helpers::clean_env();
         let replicas_processes = helpers::start_3_replicas();
         helpers::nundb_exec_primary(
-            "create-db test test-pwd; use-db test test-pwd;set-safe name 1 mateus; get-safe name;",
+            "create-db test test-pwd arbiter; use-db test test-pwd;set-safe name 1 mateus; get-safe name;",
         )
         .stdout(predicate::str::contains("value-version 2 mateus"));
 
@@ -77,7 +77,7 @@ mod tests {
         helpers::clean_env();
         let replicas_processes = helpers::start_3_replicas();
         helpers::nundb_exec_primary(
-            "create-db test test-pwd; use-db test test-pwd;set-safe name 1 mateus; get-safe name;",
+            "create-db test test-pwd arbiter; use-db test test-pwd;set-safe name 1 mateus; get-safe name;",
         )
         .stdout(predicate::str::contains("value-version 2 mateus"));
 

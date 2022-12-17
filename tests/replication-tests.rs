@@ -102,10 +102,10 @@ mod tests {
         let secound_thread = thread::spawn(move || {
             helpers::nundb_exec(
                 &helpers::SECOUNDAR_HTTP_URI.to_string(),
-                &String::from("use-db test test-pwd;set-safe name 0 mateus; get-safe name"),
+                &String::from("use-db test test-pwd;set-safe name 2 mateus; get-safe name"),
             )
             .success()
-            .stdout(predicate::str::contains("value-version 1 mateus"));
+            .stdout(predicate::str::contains("value-version 3 mateus"));
         });
 
         let secound2_thread = thread::spawn(move || {
@@ -124,7 +124,7 @@ mod tests {
             &String::from("use-db test test-pwd;get-safe name"),
         )
         .success()
-        .stdout(predicate::str::contains("value-version 1 mateus"));
+        .stdout(predicate::str::contains("value-version 3 mateus"));
         helpers::kill_replicas(replicas_processes)?;
         Ok(())
     }

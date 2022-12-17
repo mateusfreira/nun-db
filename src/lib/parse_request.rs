@@ -346,7 +346,18 @@ impl Request {
                         ""
                     }
                 };
-                let token = match command.next() {
+                let mut rest = match command.next() {
+                    Some(rest) => rest.splitn(2, " "),
+                    None => {
+                        log::debug!("create-db needs token and strategy");
+                        return Err(String::from(
+                            "create-db must be followed by a token",
+                        ));
+                    }
+                };
+
+
+                let token = match rest.next() {
                     Some(key) => String::from(key).replace("\n", ""),
                     None => {
                         log::debug!("CreateDb needs and token");
@@ -354,9 +365,16 @@ impl Request {
                     }
                 };
 
+                let strategy = match rest.next() {
+                    Some(s) => String::from(s).replace("\n", ""),
+                    None => "none".to_string()
+                };
+
+
                 Ok(Request::CreateDb {
                     name: name.to_string(),
                     token: token.to_string(),
+                    strategy: ConsensuStrategy::from(strategy),
                 })
             }
 
@@ -603,14 +621,28 @@ mod tests {
     #[test]
     fn should_parse_create_db() -> Result<(), String> {
         match Request::parse("create-db foo some-key") {
-            Ok(Request::CreateDb { token, name }) => {
-                if name == "foo" && token == "some-key" {
+            Ok(Request::CreateDb { token, name, strategy  }) => {
+                if name == "foo" && token == "some-key"  &&  strategy == ConsensuStrategy::None {
                     Ok(())
                 } else {
                     Err(String::from("user should be foo and password bar"))
                 }
             }
             _ => Err(String::from("get foo sould be parsed to Get command")),
+        }
+    }
+
+    #[test]
+    fn should_parse_create_db_with_strategy() -> Result<(), String> {
+        match Request::parse("create-db foo some-key arbiter") {
+            Ok(Request::CreateDb { token, name, strategy }) => {
+                if name == "foo" && token == "some-key"  && strategy == ConsensuStrategy::Arbiter {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from("get foo should be parsed to Get command")),
         }
     }
 

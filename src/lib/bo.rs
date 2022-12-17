@@ -158,7 +158,7 @@ pub enum ConsensuStrategy {
 
 impl From<i32> for ConsensuStrategy {
     fn from(val: i32) -> Self {
-        print!("Val in ConsensuStrategy {}", val);
+        log::debug!("Val in ConsensuStrategy {}", val);
         use self::ConsensuStrategy::*;
         match val {
             2 => Arbiter,
@@ -168,13 +168,33 @@ impl From<i32> for ConsensuStrategy {
     }
 }
 
+impl From<String> for ConsensuStrategy {
+    fn from(val: String) -> Self {
+        log::debug!("Val in ConsensuStrategy {}", val);
+        use self::ConsensuStrategy::*;
+        match val.as_str()  {
+            "arbiter" => Arbiter,
+            "newer" => Newer,
+            _ => None,
+        }
+    }
+}
+
 impl ConsensuStrategy {
     pub fn to_le_bytes(&self) -> [u8; 4] {
-        print!("Val in ConsensuStrategy to_le_bytes {:#?}", self);
+        log::debug!("Val in ConsensuStrategy to_le_bytes {:#?}", self);
         match self {
             ConsensuStrategy::None => (0 as i32).to_le_bytes(),
             ConsensuStrategy::Newer => (1 as i32).to_le_bytes(),
             ConsensuStrategy::Arbiter => (2 as i32).to_le_bytes(),
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            ConsensuStrategy::None => "none".to_string(),
+            ConsensuStrategy::Newer => "newer".to_string(),
+            ConsensuStrategy::Arbiter => "arbiter".to_string(),
         }
     }
 }
@@ -1014,6 +1034,7 @@ pub enum Request {
     CreateDb {
         token: String,
         name: String,
+        strategy: ConsensuStrategy,
     },
     UseDb {
         token: String,
