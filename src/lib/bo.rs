@@ -256,7 +256,11 @@ impl Change {
      */
     pub fn next_version(&self, old_value: &Value) -> i32 {
         if self.resolve_conflict {
-            self.version + 1
+            if old_value.is_in_conflict_resolution() {
+                self.version + 1
+            } else {
+                old_value.version + 1
+            }
         } else if old_value.is_in_conflict_resolution() {
             old_value.version
         } else if self.version == -1 {

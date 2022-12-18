@@ -175,6 +175,30 @@ e.g:
 use $db-name $db-pwd
 ```
 
+### CreateDb
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [x] Replicate? How? (create-db)
+- [ ] Register Oplog? How? (Update)
+Creates a new database
+
+e.gs
+
+```
+# create simple db
+create-db test test-pwd;
+response: 
+empty
+```
+
+```
+# create db with arbiter conlifct resolution strategy
+create-db test test-pwd arbiter;
+response:
+empty
+```
+
 ### Get
 #### Context
 - [ ] Require admin auth

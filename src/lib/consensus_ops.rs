@@ -82,7 +82,7 @@ impl Database {
                                     )),
                                     true,
                                 );
-                                (pedding_conflict.last().unwrap().to_string(), version)
+                                (pedding_conflict.last().unwrap().to_string(), version + pedding_conflict.len() as i32)
                             } else {
                                 (old_value.to_string(), old_version)
                             };
