@@ -3,7 +3,6 @@ pub mod helpers;
 mod tests {
     use crate::helpers::*;
     use predicates::prelude::*; // Used for writing assertions
-    use std::thread;
 
     #[test]
     fn should_replicate_as_expected() -> Result<(), Box<dyn std::error::Error>> {

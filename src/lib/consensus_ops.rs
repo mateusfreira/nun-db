@@ -13,8 +13,8 @@ pub fn get_conflict_watch_key(change: &Change) -> String {
     ))
 }
 impl Database {
-    // Separate local conflitct with replication conflitct
-    pub fn resolve(&self, conflitct_error: Response, dbs: &Arc<Databases>) -> Response {
+    // Separate local conflict with replication conflict
+    pub fn try_resolve_conflict_response(&self, conflitct_error: Response, dbs: &Arc<Databases>) -> Response {
         match conflitct_error {
             Response::VersionError {
                 msg,
@@ -187,21 +187,10 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use env_logger::{Builder, Target};
-    //use log::LevelFilter;
 
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::collections::HashMap;
     use std::sync::atomic::Ordering;
-    /*
-    fn init_logger() {
-        Builder::new()
-            .filter(None, LevelFilter::Debug)
-            .format_level(false)
-            .target(Target::Stdout)
-            .format_timestamp_nanos()
-            .init();
-    }*/
 
     fn create_default_args() -> (Receiver<String>, Arc<Databases>, Client) {
         let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -236,12 +225,12 @@ mod tests {
         );
         let change1 = Change::new(key.clone(), String::from("some1"), 0);
         let response = db.set_value(&change1);
-        db.resolve(response, &dbs);
+        db.try_resolve_conflict_response(response, &dbs);
         let change2 = Change::new(String::from("some"), String::from("some2"), 0);
         let response = db.set_value(&change2);
 
         assert_eq!(
-            db.resolve(response, &dbs),
+            db.try_resolve_conflict_response(response, &dbs),
             Response::Set {
                 key: String::from("some"),
                 value: String::from("some2")
@@ -261,7 +250,7 @@ mod tests {
         let (_, dbs, _) = create_default_args();
         db.set_value(&change2);
         assert_eq!(
-            db.resolve(db.set_value(&change1), &dbs),
+            db.try_resolve_conflict_response(db.set_value(&change1), &dbs),
             Response::Set {
                 key: String::from("some"),
                 value: String::from("some2")
@@ -284,9 +273,9 @@ mod tests {
 
         let change1 = Change::new(key.clone(), String::from("some1"), 0); // m1
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
-        db.resolve(db.set_value(&change2), &dbs);
+        db.try_resolve_conflict_response(db.set_value(&change2), &dbs);
         assert_eq!(
-            db.resolve(db.set_value(&change1), &dbs),
+            db.try_resolve_conflict_response(db.set_value(&change1), &dbs),
             Response::Error {
                 msg: String::from(
                     "An conflitct happend and there is no arbiter client not connected!"
@@ -295,7 +284,7 @@ mod tests {
         );
         let (client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&client);
-        db.resolve(db.set_value(&change1), &dbs);
+        db.try_resolve_conflict_response(db.set_value(&change1), &dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),
@@ -342,10 +331,10 @@ mod tests {
         let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&arbiter_client);
         let response = db.set_value(&change1);
-        db.resolve(response, &dbs);
+        db.try_resolve_conflict_response(response, &dbs);
         // This is a valid change coming to a key that has a pending conflict
         let response = db.set_value(&change3);
-        db.resolve(response, &dbs);
+        db.try_resolve_conflict_response(response, &dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),
@@ -415,9 +404,9 @@ mod tests {
         db.set_value(&change2);
         let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&arbiter_client);
-        db.resolve(db.set_value(&change1), &dbs);
+        db.try_resolve_conflict_response(db.set_value(&change1), &dbs);
         // This is a valid change coming to a key that has a pending conflict
-        db.resolve(db.set_value(&change3), &dbs);
+        db.try_resolve_conflict_response(db.set_value(&change3), &dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),

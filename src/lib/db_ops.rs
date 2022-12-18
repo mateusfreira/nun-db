@@ -195,7 +195,11 @@ pub fn set_key_value(
     db: &Database,
     dbs: &Arc<Databases>,
 ) -> Response {
-    let response = db.set_value(&Change::new(key.to_string(), value.to_string(), version));
+    apply_change_to_db_try_fix_conflicts(&Change::new(key.to_string(), value.to_string(), version), &db, &dbs)
+}
+
+pub fn apply_change_to_db_try_fix_conflicts(change: &Change, db: &Database, dbs: &Arc<Databases>) -> Response {
+    let response = db.set_value(change);
     if let Response::VersionError {
         msg: _,
         key: _,
@@ -207,8 +211,8 @@ pub fn set_key_value(
         db: _,
     } = response
     {
-        log::debug!("VersionError in the key {}", key);
-        db.resolve(response.clone(), &dbs)
+        log::debug!("VersionError in the key {}", change.key.clone());
+        db.try_resolve_conflict_response(response.clone(), &dbs)
     } else {
         response
     }
@@ -440,6 +444,27 @@ mod tests {
         assert_eq!(
             message.to_string(),
             format_args!("value {}\n", value_new.to_string()).to_string()
+        );
+    }
+
+    #[test]
+    fn should_resolve_conflict() {
+        let dbs = get_dbs();
+        let key = String::from("some");
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
+        let change1 = Change::new(key.clone(), String::from("some1"), 0);
+        apply_change_to_db_try_fix_conflicts(&change1, &db, &dbs);
+        let change2 = Change::new(String::from("some"), String::from("some2"), 0);
+
+        assert_eq!(
+            apply_change_to_db_try_fix_conflicts(&change2, &db, &dbs),
+            Response::Set {
+                key: String::from("some"),
+                value: String::from("some2")
+            }
         );
     }
 

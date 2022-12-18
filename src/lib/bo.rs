@@ -630,6 +630,33 @@ impl Database {
         );
     }
 
+    /// apply the change to the database 
+    /// Does not fix conflicts if they happen
+    ///
+    /// # Arguments
+    ///
+    /// * `change` - The change to be applied to the database
+    /// A change contains a key, a value and a version
+    /// In case the version conflicts with that the database has it will return an error
+    /// Do not use this method if you need conflict resolution use
+    /// db_ops::apply_change_to_db_try_fix_conflicts instead
+    /// Response::VersionError
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let change1 = Change::new(String::from("key"), String::from("foo"), 0);
+    ///
+    /// let db = Database::new(
+    ///     String::from("some"),
+    ///     DatabaseMataData::new(1, ConsensuStrategy::Newer),
+    /// );
+    /// db.set_value(&change1);
+    /// let v = db.get_value(String::from("key"))
+    /// assert_eq!(v.value, "foo");
+    /// assert_eq!(v.version, 1);
+    /// ```
+    ///
     pub fn set_value(&self, change: &Change) -> Response {
         if let Some(old_version) = self.get_value(change.key.clone()) {
             let new_version = change.next_version(&old_version);
