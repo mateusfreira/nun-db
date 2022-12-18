@@ -17,7 +17,7 @@ mod tests {
         )
         .stdout(predicate::str::contains("value-version 2 mateus"));
 
-        helpers::wait_seconds(2); //Give it 2 seconds to elect the new leader
+        helpers::wait_seconds(3); //Give it 2 seconds to elect the new leader
                                   // revisit
         let output =  helpers::nundb_call(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),

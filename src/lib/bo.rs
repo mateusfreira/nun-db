@@ -172,7 +172,7 @@ impl From<String> for ConsensuStrategy {
     fn from(val: String) -> Self {
         log::debug!("Val in ConsensuStrategy {}", val);
         use self::ConsensuStrategy::*;
-        match val.as_str()  {
+        match val.as_str() {
             "arbiter" => Arbiter,
             "newer" => Newer,
             _ => None,
@@ -1101,7 +1101,7 @@ pub enum Request {
     },
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Response {
     Value {
         key: String,

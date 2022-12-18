@@ -117,19 +117,19 @@ impl Database {
                         }
                     }
                 }
-                ConsensuStrategy::None => { 
+                ConsensuStrategy::None => {
                     log::info!("Will resolve the conflict in the key {} using None", key);
                     Response::VersionError {
-                    msg,
-                    key,
-                    old_version,
-                    version,
-                    old_value,
-                    change,
-                    db,
-                    state,
+                        msg,
+                        key,
+                        old_version,
+                        version,
+                        old_value,
+                        change,
+                        db,
+                        state,
+                    }
                 }
-                },
             },
             r => r,
         }
@@ -336,7 +336,7 @@ mod tests {
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
                                                                                    //
         let change3 = Change::new(String::from("some"), String::from("some3"), 2); //m3
-        // Change all set_value to set_key_value
+                                                                                   // Change all set_value to set_key_value
         db.set_value(&change2);
         //set_key_value(key.clone(), value.clone(), -1, &db, &dbs);
         let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
@@ -417,7 +417,7 @@ mod tests {
         db.register_arbiter(&arbiter_client);
         db.resolve(db.set_value(&change1), &dbs);
         // This is a valid change coming to a key that has a pending conflict
-        db.resolve(db.set_value(&change3),&dbs);
+        db.resolve(db.set_value(&change3), &dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),
@@ -426,7 +426,6 @@ mod tests {
                 change1.opp_id
             ))
         );
-
 
         let resolve_change = Change::new(String::from("some"), String::from("new_value"), 2);
         let _resolved = db.resolve_conflit(resolve_change.clone(), &dbs);

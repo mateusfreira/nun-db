@@ -78,20 +78,27 @@ pub fn replicate_request(
 ) -> Response {
     match response {
         Response::Error { msg: _ } => response,
-        Response::VersionError { 
-                    msg: _,
-                    key: _,
-                    old_version: _,
-                    version: _,
-                    old_value: _,
-                    change: _,
-                    db: _,
-                    state: _,
+        Response::VersionError {
+            msg: _,
+            key: _,
+            old_version: _,
+            version: _,
+            old_value: _,
+            change: _,
+            db: _,
+            state: _,
         } => response,
         _ => match input {
-            Request::CreateDb { name, token, strategy } => {
+            Request::CreateDb {
+                name,
+                token,
+                strategy,
+            } => {
                 log::debug!("Will replicate command a created database name {}", name);
-                replicate_web(replication_sender, format!("create-db {} {} {}", name, token, strategy.to_string()));
+                replicate_web(
+                    replication_sender,
+                    format!("create-db {} {} {}", name, token, strategy.to_string()),
+                );
                 Response::Ok {}
             }
             Request::Snapshot { reclaim_space } => {
@@ -314,7 +321,11 @@ pub async fn start_replication_thread(
                 }
                 let request = Request::parse(&message.to_string()).unwrap();
                 let op_log_id: u64 = match request {
-                    Request::CreateDb { name, token: _ , strategy: _ } => {
+                    Request::CreateDb {
+                        name,
+                        token: _,
+                        strategy: _,
+                    } => {
                         let db_id = get_db_id(name, &dbs);
                         let key_id = 1;
                         log::debug!("Will write CreateDb");
@@ -1283,7 +1294,7 @@ mod tests {
         let request = Request::CreateDb {
             name: "mateus_db".to_string(),
             token: "jose".to_string(),
-            strategy: ConsensuStrategy::Newer
+            strategy: ConsensuStrategy::Newer,
         };
 
         let resp_get = Response::Ok {};

@@ -55,7 +55,13 @@ pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Resp
     }
 }
 
-pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &Client, strategy: ConsensuStrategy) -> Response {
+pub fn create_db(
+    name: &String,
+    token: &String,
+    dbs: &Arc<Databases>,
+    client: &Client,
+    strategy: ConsensuStrategy,
+) -> Response {
     if dbs.is_primary() || client.is_primary() {
         // If this node is the primary or the primary is asking to create it
         let empty_db_box = create_temp_db(name.clone(), strategy, dbs);
@@ -199,8 +205,10 @@ pub fn set_key_value(
         state: _,
         change: _,
         db: _,
-    } = response {
-        db.resolve(response, &dbs)
+    } = response
+    {
+        log::debug!("VersionError in the key {}", key);
+        db.resolve(response.clone(), &dbs)
     } else {
         response
     }
@@ -235,15 +243,16 @@ pub fn unwatch_all(sender: &Sender<String>, db: &Database) -> Response {
     Response::Ok {}
 }
 
-pub fn create_temp_db(name: String, strategy: ConsensuStrategy, dbs: &Arc<Databases>) -> Arc<Database> {
+pub fn create_temp_db(
+    name: String,
+    strategy: ConsensuStrategy,
+    dbs: &Arc<Databases>,
+) -> Arc<Database> {
     let initial_db = HashMap::new();
     return Arc::new(Database::create_db_from_hash(
         name,
         initial_db,
-        DatabaseMataData::new(
-            dbs.map.read().expect("could not get lock").len(),
-            strategy,
-        ),
+        DatabaseMataData::new(dbs.map.read().expect("could not get lock").len(), strategy),
     ));
 }
 

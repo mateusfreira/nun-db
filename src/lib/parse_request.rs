@@ -350,12 +350,9 @@ impl Request {
                     Some(rest) => rest.splitn(2, " "),
                     None => {
                         log::debug!("create-db needs token and strategy");
-                        return Err(String::from(
-                            "create-db must be followed by a token",
-                        ));
+                        return Err(String::from("create-db must be followed by a token"));
                     }
                 };
-
 
                 let token = match rest.next() {
                     Some(key) => String::from(key).replace("\n", ""),
@@ -367,9 +364,8 @@ impl Request {
 
                 let strategy = match rest.next() {
                     Some(s) => String::from(s).replace("\n", ""),
-                    None => "none".to_string()
+                    None => "none".to_string(),
                 };
-
 
                 Ok(Request::CreateDb {
                     name: name.to_string(),
@@ -621,8 +617,12 @@ mod tests {
     #[test]
     fn should_parse_create_db() -> Result<(), String> {
         match Request::parse("create-db foo some-key") {
-            Ok(Request::CreateDb { token, name, strategy  }) => {
-                if name == "foo" && token == "some-key"  &&  strategy == ConsensuStrategy::None {
+            Ok(Request::CreateDb {
+                token,
+                name,
+                strategy,
+            }) => {
+                if name == "foo" && token == "some-key" && strategy == ConsensuStrategy::None {
                     Ok(())
                 } else {
                     Err(String::from("user should be foo and password bar"))
@@ -635,8 +635,12 @@ mod tests {
     #[test]
     fn should_parse_create_db_with_strategy() -> Result<(), String> {
         match Request::parse("create-db foo some-key arbiter") {
-            Ok(Request::CreateDb { token, name, strategy }) => {
-                if name == "foo" && token == "some-key"  && strategy == ConsensuStrategy::Arbiter {
+            Ok(Request::CreateDb {
+                token,
+                name,
+                strategy,
+            }) => {
+                if name == "foo" && token == "some-key" && strategy == ConsensuStrategy::Arbiter {
                     Ok(())
                 } else {
                     Err(String::from("user should be foo and password bar"))
