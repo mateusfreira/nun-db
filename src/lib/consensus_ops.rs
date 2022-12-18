@@ -13,8 +13,8 @@ pub fn get_conflict_watch_key(change: &Change) -> String {
     ))
 }
 impl Database {
-    // Separate local conflitct with replication confilct
-    pub fn resolve(&self, conflitct_error: Response) -> Response {
+    // Separate local conflict with replication conflict
+    pub fn try_resolve_conflict_response(&self, conflitct_error: Response, dbs: &Arc<Databases>) -> Response {
         match conflitct_error {
             Response::VersionError {
                 msg,
@@ -103,7 +103,12 @@ impl Database {
                         .to_string();
                         self.send_message_to_arbiter_client(resolve_message.clone());
                         let conflitct_key = get_conflict_watch_key(&change);
-                        self.set_value(&Change::new(conflitct_key.clone(), resolve_message, -1));
+                        let conflict_register_change =
+                            Change::new(conflitct_key.clone(), resolve_message, -1);
+                        self.set_value(&conflict_register_change);
+
+                        replicate_change(&conflict_register_change, &self, &dbs);
+                        // Replicate
                         Response::Error {
                             msg: String::from(format!(
                                 "$$conflitct unresolved {}",
@@ -112,16 +117,19 @@ impl Database {
                         }
                     }
                 }
-                ConsensuStrategy::None => Response::VersionError {
-                    msg,
-                    key,
-                    old_version,
-                    version,
-                    old_value,
-                    change,
-                    db,
-                    state,
-                },
+                ConsensuStrategy::None => {
+                    log::info!("Will resolve the conflict in the key {} using None", key);
+                    Response::VersionError {
+                        msg,
+                        key,
+                        old_version,
+                        version,
+                        old_value,
+                        change,
+                        db,
+                        state,
+                    }
+                }
             },
             r => r,
         }
@@ -141,9 +149,6 @@ impl Database {
         }
     }
 
-    pub fn is_arbitered(&self) -> bool {
-        self.metadata.consensus_strategy == ConsensuStrategy::Arbiter
-    }
     pub fn has_arbiter_connected(&self) -> bool {
         let watchers = self.watchers.map.read().unwrap();
         watchers.contains_key(CONFLICTS_KEY)
@@ -182,21 +187,10 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use env_logger::{Builder, Target};
-    //use log::LevelFilter;
 
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::collections::HashMap;
     use std::sync::atomic::Ordering;
-    /*
-    fn init_logger() {
-        Builder::new()
-            .filter(None, LevelFilter::Debug)
-            .format_level(false)
-            .target(Target::Stdout)
-            .format_timestamp_nanos()
-            .init();
-    }*/
 
     fn create_default_args() -> (Receiver<String>, Arc<Databases>, Client) {
         let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -223,16 +217,20 @@ mod tests {
 
     #[test]
     fn should_resolve_conflict() {
+        let (_, dbs, _) = create_default_args();
         let key = String::from("some");
         let db = Database::new(
             String::from("some"),
             DatabaseMataData::new(1, ConsensuStrategy::Newer),
         );
         let change1 = Change::new(key.clone(), String::from("some1"), 0);
-        db.set_value(&change1);
+        let response = db.set_value(&change1);
+        db.try_resolve_conflict_response(response, &dbs);
         let change2 = Change::new(String::from("some"), String::from("some2"), 0);
+        let response = db.set_value(&change2);
+
         assert_eq!(
-            db.set_value(&change2),
+            db.try_resolve_conflict_response(response, &dbs),
             Response::Set {
                 key: String::from("some"),
                 value: String::from("some2")
@@ -249,9 +247,10 @@ mod tests {
         );
         let change1 = Change::new(key.clone(), String::from("some1"), 0); // m1
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
+        let (_, dbs, _) = create_default_args();
         db.set_value(&change2);
         assert_eq!(
-            db.set_value(&change1),
+            db.try_resolve_conflict_response(db.set_value(&change1), &dbs),
             Response::Set {
                 key: String::from("some"),
                 value: String::from("some2")
@@ -265,6 +264,7 @@ mod tests {
 
     #[test]
     fn should_resolve_conflict_with_arbiter() {
+        let (_, dbs, _) = create_default_args();
         let key = String::from("some");
         let db = Database::new(
             String::from("db_name"),
@@ -273,9 +273,9 @@ mod tests {
 
         let change1 = Change::new(key.clone(), String::from("some1"), 0); // m1
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
-        db.set_value(&change2);
+        db.try_resolve_conflict_response(db.set_value(&change2), &dbs);
         assert_eq!(
-            db.set_value(&change1),
+            db.try_resolve_conflict_response(db.set_value(&change1), &dbs),
             Response::Error {
                 msg: String::from(
                     "An conflitct happend and there is no arbiter client not connected!"
@@ -284,7 +284,7 @@ mod tests {
         );
         let (client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&client);
-        db.set_value(&change1);
+        db.try_resolve_conflict_response(db.set_value(&change1), &dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),
@@ -293,7 +293,6 @@ mod tests {
                 change1.opp_id
             )) // Not sure what to put here yet
         );
-        let (_, dbs, _) = create_default_args();
         let resolve_change = Change::new(String::from("some"), String::from("some1"), 2);
         db.resolve_conflit(resolve_change.clone(), &dbs);
         //process_request(&format!("resolved {} db_name some some1", change1.opp_id), &dbs, &mut client);
@@ -326,12 +325,16 @@ mod tests {
         let change2 = Change::new(String::from("some"), String::from("some2"), 0); //m2
                                                                                    //
         let change3 = Change::new(String::from("some"), String::from("some3"), 2); //m3
+                                                                                   // Change all set_value to set_key_value
         db.set_value(&change2);
+        //set_key_value(key.clone(), value.clone(), -1, &db, &dbs);
         let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&arbiter_client);
-        db.set_value(&change1);
+        let response = db.set_value(&change1);
+        db.try_resolve_conflict_response(response, &dbs);
         // This is a valid change coming to a key that has a pending conflict
-        db.set_value(&change3);
+        let response = db.set_value(&change3);
+        db.try_resolve_conflict_response(response, &dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),
@@ -387,7 +390,7 @@ mod tests {
 
     #[test]
     fn should_not_allow_force_change_if_key_is_in_conflict_resolution() {
-        ////init_logger();
+        let (_, dbs, _) = create_default_args();
         let key = String::from("some");
         let db = Database::new(
             String::from("db_name"),
@@ -401,9 +404,9 @@ mod tests {
         db.set_value(&change2);
         let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&arbiter_client);
-        db.set_value(&change1);
+        db.try_resolve_conflict_response(db.set_value(&change1), &dbs);
         // This is a valid change coming to a key that has a pending conflict
-        db.set_value(&change3);
+        db.try_resolve_conflict_response(db.set_value(&change3), &dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
             v.unwrap(),
@@ -412,8 +415,6 @@ mod tests {
                 change1.opp_id
             ))
         );
-
-        let (_, dbs, _) = create_default_args();
 
         let resolve_change = Change::new(String::from("some"), String::from("new_value"), 2);
         let _resolved = db.resolve_conflit(resolve_change.clone(), &dbs);

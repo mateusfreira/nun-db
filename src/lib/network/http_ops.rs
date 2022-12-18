@@ -22,6 +22,19 @@ fn process_commands(
                     responses.push(msg.clone());
                     log::debug!("Http response Error: {}", msg);
                 }
+                Response::VersionError {
+                    msg,
+                    key: _,
+                    old_version: _,
+                    version: _,
+                    old_value: _,
+                    state: _,
+                    change: _,
+                    db: _,
+                } => {
+                    responses.push(msg.clone());
+                    log::debug!("Http response Error: {}", msg);
+                }
                 _ => {
                     log::debug!("[http] - success processed");
                     match receiver.try_next() {

@@ -42,12 +42,12 @@ impl Client {
     }
 
     pub fn left(&self, dbs: &Arc<Databases>) {
-        let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
-        let db_box = dbs.get(&self.selected_db_name());
+        let dbs_maps = dbs.map.read().expect("Error getting the dbs.map.lock");
+        let db_box = dbs_maps.get(&self.selected_db_name());
         match db_box {
             Some(db) => {
                 db.dec_connections();
-                set_connection_counter(db);
+                set_connection_counter(db, &dbs);
             }
             _ => (),
         }
@@ -158,7 +158,7 @@ pub enum ConsensuStrategy {
 
 impl From<i32> for ConsensuStrategy {
     fn from(val: i32) -> Self {
-        print!("Val in ConsensuStrategy {}", val);
+        log::debug!("Val in ConsensuStrategy {}", val);
         use self::ConsensuStrategy::*;
         match val {
             2 => Arbiter,
@@ -168,13 +168,33 @@ impl From<i32> for ConsensuStrategy {
     }
 }
 
+impl From<String> for ConsensuStrategy {
+    fn from(val: String) -> Self {
+        log::debug!("Val in ConsensuStrategy {}", val);
+        use self::ConsensuStrategy::*;
+        match val.as_str() {
+            "arbiter" => Arbiter,
+            "newer" => Newer,
+            _ => None,
+        }
+    }
+}
+
 impl ConsensuStrategy {
     pub fn to_le_bytes(&self) -> [u8; 4] {
-        print!("Val in ConsensuStrategy to_le_bytes {:#?}", self);
+        log::debug!("Val in ConsensuStrategy to_le_bytes {:#?}", self);
         match self {
             ConsensuStrategy::None => (0 as i32).to_le_bytes(),
             ConsensuStrategy::Newer => (1 as i32).to_le_bytes(),
             ConsensuStrategy::Arbiter => (2 as i32).to_le_bytes(),
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            ConsensuStrategy::None => "none".to_string(),
+            ConsensuStrategy::Newer => "newer".to_string(),
+            ConsensuStrategy::Arbiter => "arbiter".to_string(),
         }
     }
 }
@@ -610,6 +630,33 @@ impl Database {
         );
     }
 
+    /// apply the change to the database 
+    /// Does not fix conflicts if they happen
+    ///
+    /// # Arguments
+    ///
+    /// * `change` - The change to be applied to the database
+    /// A change contains a key, a value and a version
+    /// In case the version conflicts with that the database has it will return an error
+    /// Do not use this method if you need conflict resolution use
+    /// db_ops::apply_change_to_db_try_fix_conflicts instead
+    /// Response::VersionError
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let change1 = Change::new(String::from("key"), String::from("foo"), 0);
+    ///
+    /// let db = Database::new(
+    ///     String::from("some"),
+    ///     DatabaseMataData::new(1, ConsensuStrategy::Newer),
+    /// );
+    /// db.set_value(&change1);
+    /// let v = db.get_value(String::from("key"))
+    /// assert_eq!(v.value, "foo");
+    /// assert_eq!(v.version, 1);
+    /// ```
+    ///
     pub fn set_value(&self, change: &Change) -> Response {
         if let Some(old_version) = self.get_value(change.key.clone()) {
             let new_version = change.next_version(&old_version);
@@ -621,7 +668,7 @@ impl Database {
                     new_version,
                     change.version,
                 );
-                return self.resolve(Response::VersionError {
+                return Response::VersionError {
                     msg: String::from(INVALID_VERSION_ERROR),
                     old_version: old_version.version,
                     key: change.key.clone(),
@@ -630,7 +677,7 @@ impl Database {
                     change: change.clone(),
                     state: state,
                     db: self.name.clone(),
-                });
+                };
             }
             log::debug!(
                 "Updating existing value Old version: {}, New version: {}, PassedVersion : {}",
@@ -1014,6 +1061,7 @@ pub enum Request {
     CreateDb {
         token: String,
         name: String,
+        strategy: ConsensuStrategy,
     },
     UseDb {
         token: String,
@@ -1080,7 +1128,7 @@ pub enum Request {
     },
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Response {
     Value {
         key: String,

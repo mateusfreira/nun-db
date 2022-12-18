@@ -55,14 +55,20 @@ pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Resp
     }
 }
 
-pub fn create_db(name: &String, token: &String, dbs: &Arc<Databases>, client: &Client) -> Response {
+pub fn create_db(
+    name: &String,
+    token: &String,
+    dbs: &Arc<Databases>,
+    client: &Client,
+    strategy: ConsensuStrategy,
+) -> Response {
     if dbs.is_primary() || client.is_primary() {
         // If this node is the primary or the primary is asking to create it
-        let empty_db_box = create_temp_db(name.clone(), dbs);
+        let empty_db_box = create_temp_db(name.clone(), strategy, dbs);
         let empty_db = Arc::try_unwrap(empty_db_box);
         match empty_db {
             Ok(db) => {
-                set_key_value(TOKEN_KEY.to_string(), token.clone(), -1, &db);
+                set_key_value(TOKEN_KEY.to_string(), token.clone(), -1, &db, &dbs);
                 match dbs.add_database(db) {
                     Response::Ok {} => {
                         match client
@@ -177,13 +183,39 @@ pub fn is_valid_token(token: &String, db: &Database) -> bool {
     }
 }
 
-pub fn set_connection_counter(db: &Database) -> Response {
+pub fn set_connection_counter(db: &Database, dbs: &Arc<Databases>) -> Response {
     let value = db.connections_count().to_string();
-    return set_key_value(CONNECTIONS_KEY.to_string(), value, -1, db);
+    return set_key_value(CONNECTIONS_KEY.to_string(), value, -1, db, &dbs);
 }
 
-pub fn set_key_value(key: String, value: String, version: i32, db: &Database) -> Response {
-    db.set_value(&Change::new(key.to_string(), value.to_string(), version))
+pub fn set_key_value(
+    key: String,
+    value: String,
+    version: i32,
+    db: &Database,
+    dbs: &Arc<Databases>,
+) -> Response {
+    apply_change_to_db_try_fix_conflicts(&Change::new(key.to_string(), value.to_string(), version), &db, &dbs)
+}
+
+pub fn apply_change_to_db_try_fix_conflicts(change: &Change, db: &Database, dbs: &Arc<Databases>) -> Response {
+    let response = db.set_value(change);
+    if let Response::VersionError {
+        msg: _,
+        key: _,
+        old_version: _,
+        version: _,
+        old_value: _,
+        state: _,
+        change: _,
+        db: _,
+    } = response
+    {
+        log::debug!("VersionError in the key {}", change.key.clone());
+        db.try_resolve_conflict_response(response.clone(), &dbs)
+    } else {
+        response
+    }
 }
 
 pub fn unwatch_key(key: &String, sender: &Sender<String>, db: &Database) -> Response {
@@ -215,15 +247,16 @@ pub fn unwatch_all(sender: &Sender<String>, db: &Database) -> Response {
     Response::Ok {}
 }
 
-pub fn create_temp_db(name: String, dbs: &Arc<Databases>) -> Arc<Database> {
+pub fn create_temp_db(
+    name: String,
+    strategy: ConsensuStrategy,
+    dbs: &Arc<Databases>,
+) -> Arc<Database> {
     let initial_db = HashMap::new();
     return Arc::new(Database::create_db_from_hash(
         name,
         initial_db,
-        DatabaseMataData::new(
-            dbs.map.read().expect("could not get lock").len(),
-            ConsensuStrategy::Arbiter,
-        ),
+        DatabaseMataData::new(dbs.map.read().expect("could not get lock").len(), strategy),
     ));
 }
 
@@ -300,8 +333,35 @@ mod tests {
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
 
+    pub const SAMPLE_NAME: &'static str = "sample";
+
+    fn get_dbs() -> Arc<Databases> {
+        let (sender, _replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let keys_map = HashMap::new();
+        let dbs = Arc::new(Databases::new(
+            String::from(""),
+            String::from(""),
+            String::from(""),
+            sender.clone(),
+            sender.clone(),
+            keys_map,
+            1 as u128,
+            true,
+        ));
+
+        dbs.node_state
+            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+
+        let name = String::from(SAMPLE_NAME);
+        let token = String::from(SAMPLE_NAME);
+        let (client, _) = Client::new_empty_and_receiver();
+        create_db(&name, &token, &dbs, &client, ConsensuStrategy::Newer);
+        dbs
+    }
+
     #[test]
     fn should_unset_a_value() {
+        let dbs: Arc<Databases> = get_dbs();
         let key = String::from("key");
         let value = String::from("This is the value");
         let hash = HashMap::new();
@@ -310,7 +370,7 @@ mod tests {
             hash,
             DatabaseMataData::new(0, ConsensuStrategy::Newer),
         );
-        set_key_value(key.clone(), value.clone(), -1, &db);
+        set_key_value(key.clone(), value.clone(), -1, &db, &dbs);
 
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
 
@@ -330,6 +390,7 @@ mod tests {
 
     #[test]
     fn should_fail_set_value_if_version_is_not_valid() {
+        let dbs = get_dbs();
         let key = String::from("key");
         let value = String::from("This is the value");
         let value_new = String::from("This is the new value");
@@ -339,10 +400,10 @@ mod tests {
             hash,
             DatabaseMataData::new(0, ConsensuStrategy::None),
         );
-        set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 0
-        set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 1
-        set_key_value(key.clone(), value.clone(), -1, &db); // Version up to 2
-        match set_key_value(key.clone(), value_new.clone(), 1, &db) {
+        set_key_value(key.clone(), value.clone(), -1, &db, &dbs); // Version up to 0
+        set_key_value(key.clone(), value.clone(), -1, &db, &dbs); // Version up to 1
+        set_key_value(key.clone(), value.clone(), -1, &db, &dbs); // Version up to 2
+        match set_key_value(key.clone(), value_new.clone(), 1, &db, &dbs) {
             Response::VersionError {
                 msg,
                 old_version: _,
@@ -363,6 +424,7 @@ mod tests {
 
     #[test]
     fn should_set_value_if_version_is_valid() {
+        let dbs = get_dbs();
         let key = String::from("key");
         let value = String::from("This is the value");
         let value_new = String::from("This is the new value");
@@ -372,8 +434,8 @@ mod tests {
             hash,
             DatabaseMataData::new(0, ConsensuStrategy::Newer),
         );
-        set_key_value(key.clone(), value.clone(), 1, &db);
-        set_key_value(key.clone(), value_new.clone(), 2, &db);
+        set_key_value(key.clone(), value.clone(), 1, &db, &dbs);
+        set_key_value(key.clone(), value_new.clone(), 2, &db, &dbs);
 
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
 
@@ -386,7 +448,29 @@ mod tests {
     }
 
     #[test]
+    fn should_resolve_conflict() {
+        let dbs = get_dbs();
+        let key = String::from("some");
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
+        let change1 = Change::new(key.clone(), String::from("some1"), 0);
+        apply_change_to_db_try_fix_conflicts(&change1, &db, &dbs);
+        let change2 = Change::new(String::from("some"), String::from("some2"), 0);
+
+        assert_eq!(
+            apply_change_to_db_try_fix_conflicts(&change2, &db, &dbs),
+            Response::Set {
+                key: String::from("some"),
+                value: String::from("some2")
+            }
+        );
+    }
+
+    #[test]
     fn should_set_a_value() {
+        let dbs = get_dbs();
         let key = String::from("key");
         let value = String::from("This is the value");
         let hash = HashMap::new();
@@ -395,7 +479,7 @@ mod tests {
             hash,
             DatabaseMataData::new(0, ConsensuStrategy::Newer),
         );
-        set_key_value(key.clone(), value.clone(), -1, &db);
+        set_key_value(key.clone(), value.clone(), -1, &db, &dbs);
 
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
 
@@ -409,6 +493,7 @@ mod tests {
 
     #[test]
     fn should_unwatch_a_value() {
+        let _dbs = get_dbs();
         let key = String::from("key");
         let hash = HashMap::new();
         let db = Database::create_db_from_hash(
@@ -427,6 +512,7 @@ mod tests {
 
     #[test]
     fn should_unwatch_all() {
+        let _dbs = get_dbs();
         let key = String::from("key");
         let key1 = String::from("key1");
         let hash = HashMap::new();
@@ -454,6 +540,7 @@ mod tests {
 
     #[test]
     fn should_validate_token() {
+        let dbs = get_dbs();
         let token = String::from("key");
         let token_invalid = String::from("invalid");
         let hash = HashMap::new();
@@ -462,7 +549,7 @@ mod tests {
             hash,
             DatabaseMataData::new(0, ConsensuStrategy::Newer),
         );
-        set_key_value(TOKEN_KEY.to_string(), token.clone(), -1, &db);
+        set_key_value(TOKEN_KEY.to_string(), token.clone(), -1, &db, &dbs);
 
         assert_eq!(is_valid_token(&token, &db), true);
         assert_eq!(is_valid_token(&token_invalid, &db), false);
