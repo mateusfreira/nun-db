@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(
             v.unwrap(),
             String::from(format!(
-                "resolve {} db_name 2 some {} some3", // Conflict 2
+                "resolve {} db_name 3 some {} some3", // Conflict 2
                 change3.opp_id,
                 get_conflict_watch_key(&change1),
             )) // Not sure what to put here yet
@@ -428,7 +428,7 @@ mod tests {
         assert_eq!(
             v.unwrap(),
             String::from(format!(
-                "resolve {} db_name -1 some {} some3", // Conflict 2
+                "resolve {} db_name 0 some {} some3", // Conflict 2
                 change3.opp_id,
                 get_conflict_watch_key(&change1),
             )) // Not sure what to put here yet
