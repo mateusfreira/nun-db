@@ -82,6 +82,7 @@ impl Database {
                                     )),
                                     true,
                                 );
+                                log::debug!("Conflict queue size for the key {} : {}", change.key, pedding_conflict.len());
                                 (pedding_conflict.last().unwrap().to_string(), version + pedding_conflict.len() as i32)
                             } else {
                                 (old_value.to_string(), old_version)
@@ -141,7 +142,14 @@ impl Database {
             Some(senders) => {
                 for sender in senders {
                     log::debug!("Sending to another client");
-                    sender.clone().try_send(message.clone()).unwrap();
+                    match sender.clone().try_send(message.clone()) {
+                        Ok(_) => {
+                            log::debug!("Send successfully!");
+                        },
+                        Err(e) => {
+                            log::warn!("Error to send message to arbiter, conflict may stay unresolved");
+                        }
+                    }
                 }
                 {}
             }
