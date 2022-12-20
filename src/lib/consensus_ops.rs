@@ -146,7 +146,7 @@ impl Database {
                         Ok(_) => {
                             log::debug!("Send successfully!");
                         },
-                        Err(e) => {
+                        Err(_e) => {
                             log::warn!("Error to send message to arbiter, conflict may stay unresolved");
                         }
                     }

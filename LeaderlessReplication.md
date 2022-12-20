@@ -150,3 +150,4 @@ Time line...
 - [x] Create db with conflict strategy
 - [x] If try to set value to a key with pending conflict the set gets to the conflict queue
 - [ ] Database is shutdown while conflict is not solved yet
+- [ ] Timeout while waiting for conflict resolution
