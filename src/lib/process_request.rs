@@ -131,7 +131,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
 
         Request::Snapshot { reclaim_space } => apply_if_auth(&client.auth, &|| {
             apply_to_database(&dbs, &client, &|_db| {
-                if (dbs.is_primary()) {
+                if dbs.is_primary() {
                     snapshot_db(_db, &dbs, reclaim_space)
                 } else {
                     send_message_to_primary(format!(
