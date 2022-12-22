@@ -634,7 +634,7 @@ impl Database {
         );
     }
 
-    /// apply the change to the database 
+    /// apply the change to the database
     /// Does not fix conflicts if they happen
     ///
     /// # Arguments

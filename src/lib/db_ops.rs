@@ -195,10 +195,18 @@ pub fn set_key_value(
     db: &Database,
     dbs: &Arc<Databases>,
 ) -> Response {
-    apply_change_to_db_try_fix_conflicts(&Change::new(key.to_string(), value.to_string(), version), &db, &dbs)
+    apply_change_to_db_try_fix_conflicts(
+        &Change::new(key.to_string(), value.to_string(), version),
+        &db,
+        &dbs,
+    )
 }
 
-pub fn apply_change_to_db_try_fix_conflicts(change: &Change, db: &Database, dbs: &Arc<Databases>) -> Response {
+pub fn apply_change_to_db_try_fix_conflicts(
+    change: &Change,
+    db: &Database,
+    dbs: &Arc<Databases>,
+) -> Response {
     let response = db.set_value(change);
     if let Response::VersionError {
         msg: _,

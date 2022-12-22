@@ -14,7 +14,11 @@ pub fn get_conflict_watch_key(change: &Change) -> String {
 }
 impl Database {
     // Separate local conflict with replication conflict
-    pub fn try_resolve_conflict_response(&self, conflitct_error: Response, dbs: &Arc<Databases>) -> Response {
+    pub fn try_resolve_conflict_response(
+        &self,
+        conflitct_error: Response,
+        dbs: &Arc<Databases>,
+    ) -> Response {
         match conflitct_error {
             Response::VersionError {
                 msg,
@@ -82,8 +86,15 @@ impl Database {
                                     )),
                                     true,
                                 );
-                                log::debug!("Conflict queue size for the key {} : {}", change.key, pedding_conflict.len());
-                                (pedding_conflict.last().unwrap().to_string(), version + pedding_conflict.len() as i32)
+                                log::debug!(
+                                    "Conflict queue size for the key {} : {}",
+                                    change.key,
+                                    pedding_conflict.len()
+                                );
+                                (
+                                    pedding_conflict.last().unwrap().to_string(),
+                                    version + pedding_conflict.len() as i32,
+                                )
                             } else {
                                 (old_value.to_string(), old_version)
                             };
@@ -145,9 +156,11 @@ impl Database {
                     match sender.clone().try_send(message.clone()) {
                         Ok(_) => {
                             log::debug!("Send successfully!");
-                        },
+                        }
                         Err(_e) => {
-                            log::warn!("Error to send message to arbiter, conflict may stay unresolved");
+                            log::warn!(
+                                "Error to send message to arbiter, conflict may stay unresolved"
+                            );
                         }
                     }
                 }
