@@ -75,6 +75,25 @@ impl Handler for Server {
                     ),
                 }
             }
+            Response::VersionError {
+                msg,
+                key: _,
+                old_version: _,
+                version: _,
+                old_value: _,
+                state: _,
+                change: _,
+                db: _,
+            } => {
+                log::debug!("Error: {}", msg);
+                match self.client.sender.try_send(format!("error {} \n", msg)) {
+                    Ok(_) => {}
+                    Err(e) => log::warn!(
+                        "ws_ops::_read_thread::process_request::try_send::Error {}",
+                        e
+                    ),
+                }
+            }
             e => {
                 log::debug!(
                     "[{}] Server responded message  {:?} to {}",

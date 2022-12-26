@@ -450,7 +450,7 @@ impl Database {
     pub fn inc_value(&self, key: String, inc: i32) -> Response {
         // This will reduce the lock time of map. It won't wait the notifyt time, we don't need to
         // wait for the update_watchers to release the key
-        let value = {
+        let (value, version) = {
             let mut db = self.map.write().unwrap();
             match i32::from_str_radix(
                 &db.get(&key.to_string())
@@ -461,7 +461,7 @@ impl Database {
                 Ok(current) => {
                     let next = (current + inc).to_string();
                     db.insert(key.clone(), Value::from(next.clone()));
-                    next
+                    (next, -1)
                 }
                 _ => {
                     return Response::Error {
@@ -471,7 +471,7 @@ impl Database {
             }
         };
 
-        self.notify_watchers(key.clone(), value.clone());
+        self.notify_watchers(key.clone(), value.clone(), version);
         Response::Ok {}
     }
 
@@ -504,7 +504,7 @@ impl Database {
         };
     }
 
-    fn notify_watchers(&self, key: String, value: String) {
+    fn notify_watchers(&self, key: String, value: String, version: i32) {
         let watchers = self.watchers.map.read().unwrap();
         match watchers.get(&key) {
             Some(senders) => {
@@ -513,6 +513,18 @@ impl Database {
                     match sender.clone().try_send(
                         format_args!("changed {} {}\n", key.to_string(), value.to_string())
                             .to_string(),
+                    ) {
+                        Ok(_n) => (),
+                        Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
+                    }
+                    match sender.clone().try_send(
+                        format_args!(
+                            "changed-version {} {} {}\n",
+                            key.to_string(),
+                            version,
+                            value.to_string()
+                        )
+                        .to_string(),
                     ) {
                         Ok(_n) => (),
                         Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
@@ -554,6 +566,14 @@ impl Database {
                     {
                         Ok(_n) => (),
                         Err(e) => log::warn!("Request::Remove sender.send Error: {}", e),
+                    }
+
+                    match sender.clone().try_send(
+                        format_args!("changed-version {} {} <Empty>\n", key.to_string(), -1)
+                            .to_string(),
+                    ) {
+                        Ok(_n) => (),
+                        Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
                     }
                 }
             }
@@ -698,21 +718,23 @@ impl Database {
                 old_version.value_disk_addr,
                 old_version.key_disk_addr,
                 change.opp_id,
-            )
+            );
+            self.notify_watchers(change.key.clone(), change.value.clone(), new_version);
         } else {
+            let new_version = change.version + 1;
             //new key
             self.set_value_version(
                 &change.key,
                 &change.value,
-                change.version + 1,
+                new_version,
                 ValueStatus::New,
                 0,
                 0,
                 change.opp_id,
-            )
+            );
             // not in disk yet
+            self.notify_watchers(change.key.clone(), change.value.clone(), new_version);
         }
-        self.notify_watchers(change.key.clone(), change.value.clone());
 
         Response::Set {
             key: change.key.clone(),

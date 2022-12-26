@@ -134,11 +134,14 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 if dbs.is_primary() {
                     snapshot_db(_db, &dbs, reclaim_space)
                 } else {
-                    send_message_to_primary(format!(
-                        "replicate-snapshot {} {}",
-                        _db.name.to_string(),
-                        reclaim_space
-                    ), &dbs);
+                    send_message_to_primary(
+                        format!(
+                            "replicate-snapshot {} {}",
+                            _db.name.to_string(),
+                            reclaim_space
+                        ),
+                        &dbs,
+                    );
                     Response::Ok {}
                 }
             })

@@ -29,120 +29,122 @@ impl Database {
                 change,
                 db,
                 state,
-            } => match self.metadata.consensus_strategy {
-                ConsensuStrategy::Newer => {
-                    log::info!("Will resolve the conflitct in the key {} using Newer", key);
-                    if change.opp_id > old_value.opp_id {
-                        // New value is older
-                        self.set_value(
-                            &Change::new(key.clone(), change.value.clone(), old_version)
-                                .to_resolve_change(),
-                        )
-                    } else {
-                        Response::Set {
-                            key: key.clone(),
-                            value: old_value.value.to_string(),
+            } => {
+                match self.metadata.consensus_strategy {
+                    ConsensuStrategy::Newer => {
+                        log::info!("Will resolve the conflitct in the key {} using Newer", key);
+                        if change.opp_id > old_value.opp_id {
+                            // New value is older
+                            self.set_value(
+                                &Change::new(key.clone(), change.value.clone(), old_version)
+                                    .to_resolve_change(),
+                            )
+                        } else {
+                            Response::Set {
+                                key: key.clone(),
+                                value: old_value.value.to_string(),
+                            }
                         }
                     }
-                }
-                ConsensuStrategy::Arbiter => {
-                    log::info!(
-                        "Will resolve the conflitct in the key {} using Arbiter",
-                        key
-                    );
-                    if !self.has_arbiter_connected() {
-                        log::info!("Has no arbiter");
-                        Response::Error {
-                            msg: String::from("An conflitct happend and there is no arbiter client not connected!"),
-                        }
-                    } else {
-                        /*
-                         * Sets the version to IN_CONFLICT_RESOLUTION_KEY_VERSION meaning all new changes
-                         * to the same key must be also considered an conflict until the conflict is fully
-                         * solved
-                         */
-                        self.set_value_version(
-                            &change.key,
-                            &old_value.value,
-                            IN_CONFLICT_RESOLUTION_KEY_VERSION,
-                            state,
-                            old_value.value_disk_addr,
-                            old_value.key_disk_addr,
-                            old_value.opp_id,
+                    ConsensuStrategy::Arbiter => {
+                        log::info!(
+                            "Will resolve the conflitct in the key {} using Arbiter",
+                            key
                         );
-                        /*
-                         * Return the old value or  the key of the pending conflict.
-                         * 1. @todo to make sure it is not resolved
-                         * 2. @todo chaing multiple changes to test behavior to
-                         * 3. @todo coordenate chain in the server or in the client?
-                         */
-                        let (old_value_or_conflict_key, change_version): (String, i32) =
-                            if old_version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
-                                let pedding_conflict = self.list_keys(
-                                    &String::from(format!(
-                                        "{prefix}_{key}",
-                                        key = change.key,
-                                        prefix = CONFLICTS_KEY
-                                    )),
-                                    true,
-                                );
-                                log::debug!(
-                                    "Conflict queue size for the key {} : {}",
-                                    change.key,
-                                    pedding_conflict.len()
-                                );
-                                (
-                                    pedding_conflict.last().unwrap().to_string(),
-                                    version + pedding_conflict.len() as i32,
-                                )
-                            } else {
-                                (old_value.to_string(), old_version)
-                            };
-                        log::info!("Sending conflict to the arbiter {}", key);
-                        // Need may fail to send
-                        // May fail to reply to the client
-                        // May disconnection before getting a response
-                        // May be a good idea to treat at the client
-                        let resolve_message = format!(
-                            "resolve {opp_id} {db} {old_version} {key} {old_value} {value}",
-                            opp_id = change.opp_id,
-                            db = db,
-                            old_version = change_version,
-                            key = key,
-                            old_value = old_value_or_conflict_key,
-                            value = change.value
-                        )
-                        .to_string();
-                        self.send_message_to_arbiter_client(resolve_message.clone());
-                        let conflitct_key = get_conflict_watch_key(&change);
-                        let conflict_register_change =
-                            Change::new(conflitct_key.clone(), resolve_message, -1);
-                        self.set_value(&conflict_register_change);
+                        if !self.has_arbiter_connected() {
+                            log::info!("Has no arbiter");
+                            Response::Error {
+                            msg: String::from("An conflitct happend and there is no arbiter client not connected"),
+                        }
+                        } else {
+                            /*
+                             * Sets the version to IN_CONFLICT_RESOLUTION_KEY_VERSION meaning all new changes
+                             * to the same key must be also considered an conflict until the conflict is fully
+                             * solved
+                             */
+                            self.set_value_version(
+                                &change.key,
+                                &old_value.value,
+                                IN_CONFLICT_RESOLUTION_KEY_VERSION,
+                                state,
+                                old_value.value_disk_addr,
+                                old_value.key_disk_addr,
+                                old_value.opp_id,
+                            );
+                            /*
+                             * Return the old value or  the key of the pending conflict.
+                             * 1. @todo to make sure it is not resolved
+                             * 2. @todo chaing multiple changes to test behavior to
+                             * 3. @todo coordenate chain in the server or in the client?
+                             */
+                            let (old_value_or_conflict_key, change_version): (String, i32) =
+                                if old_version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
+                                    let pedding_conflict = self.list_keys(
+                                        &String::from(format!(
+                                            "{prefix}_{key}",
+                                            key = change.key,
+                                            prefix = CONFLICTS_KEY
+                                        )),
+                                        true,
+                                    );
+                                    log::debug!(
+                                        "Conflict queue size for the key {} : {}",
+                                        change.key,
+                                        pedding_conflict.len()
+                                    );
+                                    (
+                                        pedding_conflict.last().unwrap().to_string(),
+                                        version + pedding_conflict.len() as i32,
+                                    )
+                                } else {
+                                    (old_value.to_string(), old_version)
+                                };
+                            log::info!("Sending conflict to the arbiter {}", key);
+                            // Need may fail to send
+                            // May fail to reply to the client
+                            // May disconnection before getting a response
+                            // May be a good idea to treat at the client
+                            let resolve_message = format!(
+                                "resolve {opp_id} {db} {old_version} {key} {old_value} {value}",
+                                opp_id = change.opp_id,
+                                db = db,
+                                old_version = change_version,
+                                key = key,
+                                old_value = old_value_or_conflict_key,
+                                value = change.value
+                            )
+                            .to_string();
+                            self.send_message_to_arbiter_client(resolve_message.clone());
+                            let conflitct_key = get_conflict_watch_key(&change);
+                            let conflict_register_change =
+                                Change::new(conflitct_key.clone(), resolve_message, -1);
+                            self.set_value(&conflict_register_change);
 
-                        replicate_change(&conflict_register_change, &self, &dbs);
-                        // Replicate
-                        Response::Error {
-                            msg: String::from(format!(
-                                "$$conflitct unresolved {}",
-                                conflitct_key.clone()
-                            )),
+                            replicate_change(&conflict_register_change, &self, &dbs);
+                            // Replicate
+                            Response::Error {
+                                msg: String::from(format!(
+                                    "$$conflitct unresolved {}",
+                                    conflitct_key.clone()
+                                )),
+                            }
+                        }
+                    }
+                    ConsensuStrategy::None => {
+                        log::info!("Will resolve the conflict in the key {} using None", key);
+                        Response::VersionError {
+                            msg,
+                            key,
+                            old_version,
+                            version,
+                            old_value,
+                            change,
+                            db,
+                            state,
                         }
                     }
                 }
-                ConsensuStrategy::None => {
-                    log::info!("Will resolve the conflict in the key {} using None", key);
-                    Response::VersionError {
-                        msg,
-                        key,
-                        old_version,
-                        version,
-                        old_value,
-                        change,
-                        db,
-                        state,
-                    }
-                }
-            },
+            }
             r => r,
         }
     }
@@ -177,7 +179,20 @@ impl Database {
 
     pub fn register_arbiter(&self, client: &Client) -> Response {
         let key = String::from(CONFLICTS_KEY);
-        self.watch_key(&key, &client.sender)
+        let response  = self.watch_key(&key, &client.sender);
+        let pedding_conflict = self.list_keys(
+            &String::from(format!("{prefix}", prefix = CONFLICTS_KEY)),
+            true,
+        );
+        log::debug!(
+            "Will send {} conflicts to arbiger to resolve",
+            pedding_conflict.len()
+        );
+        for conflict in pedding_conflict { 
+            let conflict_command = self.get_value(conflict).unwrap().value;
+            self.send_message_to_arbiter_client(conflict_command);
+        }
+        response 
     }
 
     pub fn resolve_conflit(&self, change: Change, dbs: &Arc<Databases>) -> Response {
@@ -299,7 +314,7 @@ mod tests {
             db.try_resolve_conflict_response(db.set_value(&change1), &dbs),
             Response::Error {
                 msg: String::from(
-                    "An conflitct happend and there is no arbiter client not connected!"
+                    "An conflitct happend and there is no arbiter client not connected"
                 )
             }
         );
