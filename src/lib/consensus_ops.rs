@@ -208,7 +208,7 @@ impl Database {
             .collect::<Vec<_>>();
         values
             .iter()
-            .any(|value| value.starts_with(RESOLVED_KEY_PREFIX))
+            .any(|value| !value.starts_with(RESOLVED_KEY_PREFIX))
     }
 
     pub fn resolve_conflit(&self, change: Change, dbs: &Arc<Databases>) -> Response {
@@ -227,6 +227,17 @@ impl Database {
         // Replicate conflict keys to other replicas
         replicate_change(&conflict_register_change, &self, &dbs);
         if self.has_pendding_conflict(&change.key) {
+        let pendding_conflict = self.list_conflicts_keys(&change.key);
+        let values = pendding_conflict
+            .iter()
+            .map(|key| self.get_value(key.clone()).unwrap().value)
+            .collect::<Vec<_>>();
+        println!(
+            "has_pendding_conflict conflict change key: {} version : {}, list: {}",
+            change.key,
+            change.version,
+            values.join("-")
+        );
             // If there is still open conflicts set version to conflicted
             self.set_value(
                 &change
@@ -413,8 +424,15 @@ mod tests {
             ))
         );
 
-        let resolve_change = Change::new(String::from("some"), String::from("new_value"), 2);
+        let resolve_change = Change {  
+            opp_id:  change1.opp_id, 
+            key: String::from("some"), 
+            value: String::from("new_value"),
+            version: 2,
+            resolve_conflict: false,
+        };
         let _resolved = db.resolve_conflit(resolve_change.clone(), &dbs);
+
 
         /*
          * Change one and 2  conflicted resolved to new_value
@@ -433,14 +451,22 @@ mod tests {
 
         /* Even with the first resolution the version should still presents -2 since there is still
          * one pedding conflict!
-         *
          */
         let value = db.get_value(String::from("some")).unwrap();
         assert_eq!(value.version, IN_CONFLICT_RESOLUTION_KEY_VERSION);
 
-        let resolve_change_2 = Change::new(String::from("some"), String::from("new_value2"), 30000);
+        let resolve_change_2 = Change {  
+            opp_id:  change3.opp_id, 
+            key: String::from("some"), 
+            value: String::from("new_value2"),
+            version: 2,
+            resolve_conflict: false,
+        };
         let e = db.resolve_conflit(resolve_change_2.clone(), &dbs);
         println!("{:?}", e);
+        let value = db.get_value(String::from("some")).unwrap();
+
+        assert_eq!(value.version, 3);
 
         assert_eq!(
             db.get_value(key.clone()).unwrap().value,
