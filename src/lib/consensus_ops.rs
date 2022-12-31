@@ -3,6 +3,8 @@ use crate::replication_ops::*;
 use std::sync::Arc;
 
 pub const CONFLICTS_KEY: &'static str = "$$conflicts";
+pub const RESOLVED_KEY_PREFIX: &'static str = "resolved";
+pub const RESOLVE_KEY_PREFIX: &'static str = "resolve";
 
 pub fn get_conflict_watch_key(change: &Change) -> String {
     String::from(format!(
@@ -13,6 +15,13 @@ pub fn get_conflict_watch_key(change: &Change) -> String {
     ))
 }
 impl Database {
+    pub fn list_conflicts_keys(&self, key: &String) -> Vec<String> {
+        let pendding_conflict = self.list_keys(
+            &String::from(format!("{prefix}_{key}", key = key, prefix = CONFLICTS_KEY)),
+            true,
+        );
+        pendding_conflict
+    }
     // Separate local conflict with replication conflict
     pub fn try_resolve_conflict_response(
         &self,
@@ -54,8 +63,8 @@ impl Database {
                         if !self.has_arbiter_connected() {
                             log::info!("Has no arbiter");
                             Response::Error {
-                            msg: String::from("An conflitct happend and there is no arbiter client not connected"),
-                        }
+                             msg: String::from("An conflitct happend and there is no arbiter client not connected"),
+                            }
                         } else {
                             /*
                              * Sets the version to IN_CONFLICT_RESOLUTION_KEY_VERSION meaning all new changes
@@ -79,22 +88,15 @@ impl Database {
                              */
                             let (old_value_or_conflict_key, change_version): (String, i32) =
                                 if old_version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
-                                    let pedding_conflict = self.list_keys(
-                                        &String::from(format!(
-                                            "{prefix}_{key}",
-                                            key = change.key,
-                                            prefix = CONFLICTS_KEY
-                                        )),
-                                        true,
-                                    );
+                                    let pendding_conflict = self.list_conflicts_keys(&change.key);
                                     log::debug!(
                                         "Conflict queue size for the key {} : {}",
                                         change.key,
-                                        pedding_conflict.len()
+                                        pendding_conflict.len()
                                     );
                                     (
-                                        pedding_conflict.last().unwrap().to_string(),
-                                        version + pedding_conflict.len() as i32,
+                                        pendding_conflict.last().unwrap().to_string(),
+                                        version + pendding_conflict.len() as i32,
                                     )
                                 } else {
                                     (old_value.to_string(), old_version)
@@ -105,7 +107,8 @@ impl Database {
                             // May disconnection before getting a response
                             // May be a good idea to treat at the client
                             let resolve_message = format!(
-                                "resolve {opp_id} {db} {old_version} {key} {old_value} {value}",
+                                "{prefix} {opp_id} {db} {old_version} {key} {old_value} {value}",
+                                prefix = RESOLVE_KEY_PREFIX,
                                 opp_id = change.opp_id,
                                 db = db,
                                 old_version = change_version,
@@ -179,20 +182,33 @@ impl Database {
 
     pub fn register_arbiter(&self, client: &Client) -> Response {
         let key = String::from(CONFLICTS_KEY);
-        let response  = self.watch_key(&key, &client.sender);
-        let pedding_conflict = self.list_keys(
-            &String::from(format!("{prefix}", prefix = CONFLICTS_KEY)),
-            true,
-        );
+        let response = self.watch_key(&key, &client.sender);
+        let pendding_conflict = self.list_conflicts_keys(&String::from("")); // List all
         log::debug!(
             "Will send {} conflicts to arbiger to resolve",
-            pedding_conflict.len()
+            pendding_conflict.len()
         );
-        for conflict in pedding_conflict { 
-            let conflict_command = self.get_value(conflict).unwrap().value;
-            self.send_message_to_arbiter_client(conflict_command);
+        for conflict in pendding_conflict {
+            let conflict_command = self.get_value(conflict.clone()).unwrap().value;
+            if conflict_command.starts_with(RESOLVED_KEY_PREFIX) {
+                log::debug!("Conflict {} already resolved, remove the key", conflict);
+                self.remove_value(conflict.clone());
+            } else {
+                self.send_message_to_arbiter_client(conflict_command);
+            }
         }
-        response 
+        response
+    }
+
+    fn has_pendding_conflict(&self, key: &String) -> bool {
+        let pendding_conflict = self.list_conflicts_keys(key);
+        let values = pendding_conflict
+            .iter()
+            .map(|key| self.get_value(key.clone()).unwrap().value)
+            .collect::<Vec<_>>();
+        values
+            .iter()
+            .any(|value| value.starts_with(RESOLVED_KEY_PREFIX))
     }
 
     pub fn resolve_conflit(&self, change: Change, dbs: &Arc<Databases>) -> Response {
@@ -204,13 +220,23 @@ impl Database {
         // Will update the clients waiting for that conflict resolution update
         let conflict_register_change = Change::new(
             get_conflict_watch_key(&change),
-            format!("resolved {}", change.value),
+            format!("{} {}", RESOLVED_KEY_PREFIX, change.value),
             -1,
         );
         self.set_value(&conflict_register_change);
         // Replicate conflict keys to other replicas
         replicate_change(&conflict_register_change, &self, &dbs);
-        self.set_value(&change.to_resolve_change())
+        if self.has_pendding_conflict(&change.key) {
+            // If there is still open conflicts set version to conflicted
+            self.set_value(
+                &change
+                    .to_resolve_change()
+                    .to_different_version(IN_CONFLICT_RESOLUTION_KEY_VERSION),
+            )
+            //self.set_value(&change.to_resolve_change())
+        } else {
+            self.set_value(&change.to_resolve_change())
+        }
     }
 }
 
@@ -363,13 +389,20 @@ mod tests {
         let change3 = Change::new(String::from("some"), String::from("some3"), 2); //m3
                                                                                    // Change all set_value to set_key_value
         db.set_value(&change2);
+        let value = db.get_value(String::from("some")).unwrap();
+        assert_eq!(value.version, 1);
         //set_key_value(key.clone(), value.clone(), -1, &db, &dbs);
         let (arbiter_client, mut receiver) = Client::new_empty_and_receiver();
         db.register_arbiter(&arbiter_client);
         let response = db.set_value(&change1);
+
         db.try_resolve_conflict_response(response, &dbs);
         // This is a valid change coming to a key that has a pending conflict
         let response = db.set_value(&change3);
+
+        let value = db.get_value(String::from("some")).unwrap();
+        assert_eq!(value.version, -2);
+
         db.try_resolve_conflict_response(response, &dbs);
         let v = receiver.try_next().unwrap();
         assert_eq!(
@@ -397,6 +430,13 @@ mod tests {
                 get_conflict_watch_key(&change1),
             )) // Not sure what to put here yet
         );
+
+        /* Even with the first resolution the version should still presents -2 since there is still
+         * one pedding conflict!
+         *
+         */
+        let value = db.get_value(String::from("some")).unwrap();
+        assert_eq!(value.version, IN_CONFLICT_RESOLUTION_KEY_VERSION);
 
         let resolve_change_2 = Change::new(String::from("some"), String::from("new_value2"), 30000);
         let e = db.resolve_conflit(resolve_change_2.clone(), &dbs);

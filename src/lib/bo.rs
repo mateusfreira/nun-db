@@ -251,16 +251,40 @@ impl Change {
         }
     }
 
+    pub fn to_different_version(&self, version: i32) -> Change {
+        Change {
+            key: self.key.clone(),
+            value: self.value.clone(),
+            version: version,
+            opp_id: self.opp_id,
+            resolve_conflict: self.resolve_conflict,
+        }
+    }
+
+    pub fn allow_save_version(&self) -> bool {
+        self.keep_in_conflict_resolution()
+    }
+
+    pub fn keep_in_conflict_resolution(&self) -> bool {
+        self.version == IN_CONFLICT_RESOLUTION_KEY_VERSION
+    }
+
+    pub fn resolving_conflict(&self) -> bool {
+        self.resolve_conflict
+    }
     /**
      * Returns the next version from a change, for conflict cases it will return conflicted keys
      */
     pub fn next_version(&self, old_value: &Value) -> i32 {
-        if self.resolve_conflict {
-            if old_value.is_in_conflict_resolution() {
-                self.version + 1
+        if self.keep_in_conflict_resolution() {
+            self.version
+        } else if self.resolving_conflict() {
+            let source_version = if old_value.is_in_conflict_resolution() {
+                self.version
             } else {
-                old_value.version + 1
-            }
+                old_value.version
+            };
+            source_version + 1
         } else if old_value.is_in_conflict_resolution() {
             old_value.version
         } else if self.version == -1 {
@@ -684,7 +708,7 @@ impl Database {
     pub fn set_value(&self, change: &Change) -> Response {
         if let Some(old_version) = self.get_value(change.key.clone()) {
             let new_version = change.next_version(&old_version);
-            if new_version <= old_version.version {
+            if new_version <= old_version.version && !change.allow_save_version() {
                 let state = old_version.get_update_value_sate();
                 log::debug!(
                     "Version conflicted will try to resolve: {}, New version: {}, PassedVersion : {}",
