@@ -1,4 +1,3 @@
-use std::mem;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
@@ -8,6 +7,7 @@ use crate::db_ops::*;
 use crate::election_ops::*;
 use crate::replication_ops::*;
 use crate::security::*;
+//use crate::consensus_ops::*;
 use log;
 
 fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Client) -> Response {
@@ -34,6 +34,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 _db.inc_value(key.to_string(), inc);
             } else {
                 let db_name_state = _db.name.clone();
+                // This is wrong
                 send_message_to_primary(
                     get_replicate_increment_message(
                         db_name_state.to_string(),
@@ -79,9 +80,8 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             value,
             version,
         } => apply_to_database(&dbs, &client, &|_db| {
-            if dbs.is_primary() {
-                set_key_value(key.clone(), value.clone(), version, _db)
-            } else {
+            let respose = set_key_value(key.clone(), value.clone(), version, _db, &dbs);
+            if !dbs.is_primary() {
                 let db_name_state = _db.name.clone();
                 send_message_to_primary(
                     get_replicate_message(
@@ -92,8 +92,8 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                     ),
                     dbs,
                 );
-                Response::Ok {}
             }
+            respose
         }),
 
         Request::ReplicateRemove { db: name, key } => apply_if_auth(&client.auth, &|| {
@@ -116,9 +116,9 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             value,
             version,
         } => apply_if_auth(&client.auth, &|| {
-            let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
-            let respose: Response = match dbs.get(&name.to_string()) {
-                Some(db) => set_key_value(key.clone(), value.clone(), version, db),
+            let dbs_map = dbs.map.read().expect("Could not lock the dbs mutex");
+            let respose: Response = match dbs_map.get(&name.to_string()) {
+                Some(db) => set_key_value(key.clone(), value.clone(), version, db, &dbs),
                 _ => {
                     log::debug!("Not a valid database name");
                     Response::Error {
@@ -130,7 +130,21 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         }),
 
         Request::Snapshot { reclaim_space } => apply_if_auth(&client.auth, &|| {
-            apply_to_database(&dbs, &client, &|_db| snapshot_db(_db, &dbs, reclaim_space))
+            apply_to_database(&dbs, &client, &|_db| {
+                if dbs.is_primary() {
+                    snapshot_db(_db, &dbs, reclaim_space)
+                } else {
+                    send_message_to_primary(
+                        format!(
+                            "replicate-snapshot {} {}",
+                            _db.name.to_string(),
+                            reclaim_space
+                        ),
+                        &dbs,
+                    );
+                    Response::Ok {}
+                }
+            })
         }),
 
         Request::ReplicateSnapshot {
@@ -163,13 +177,13 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
 
         Request::UseDb { name, token } => {
             let mut db_name_state = client.selected_db.name.write().unwrap();
-            let dbs = dbs.map.read().expect("Could not lock the mao mutex");
-            let respose: Response = match dbs.get(&name.to_string()) {
+            let dbs_map = dbs.map.read().expect("Could not lock the mao mutex");
+            let respose: Response = match dbs_map.get(&name.to_string()) {
                 Some(db) => {
                     if is_valid_token(&token, db) {
-                        let _ = mem::replace(&mut *db_name_state, name.clone());
+                        let _ = std::mem::replace(&mut *db_name_state, name.clone());
                         db.inc_connections(); //Increment the number of connections
-                        set_connection_counter(db);
+                        set_connection_counter(db, &dbs);
                         Response::Ok {}
                     } else {
                         Response::Error {
@@ -187,9 +201,13 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             respose
         }
 
-        Request::CreateDb { name, token } => {
-            apply_if_auth(&client.auth, &|| create_db(&name, &token, &dbs, &client))
-        }
+        Request::CreateDb {
+            name,
+            token,
+            strategy,
+        } => apply_if_auth(&client.auth, &|| {
+            create_db(&name, &token, &dbs, &client, strategy)
+        }),
 
         Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
         Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(&dbs)),
@@ -347,21 +365,13 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             }
         }),
 
-        Request::Keys {} => apply_to_database(&dbs, &client, &|db| {
-            let mut keys: Vec<String> = {
-                db.map
-                    .read()
-                    .unwrap()
-                    .iter()
-                    .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
-                    .filter(|(key, _v)| !key.starts_with("$$")) // filter the secret keys
-                    .map(|(key, _v)| format!("{}", key))
-                    .collect()
-            };
-            keys.sort();
-            let keys = keys.iter().fold(String::from(""), |current, acc| {
-                format!("{},{}", current, acc)
-            });
+        Request::Keys { pattern } => apply_to_database(&dbs, &client, &|db| {
+            let keys = db
+                .list_keys(&pattern, client.is_admin_auth())
+                .iter()
+                .fold(String::from(""), |current, acc| {
+                    format!("{},{}", current, acc)
+                });
             match client
                 .sender
                 .clone()
@@ -388,7 +398,13 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             opp_id,
         } => {
             send_message_to_primary(format!("ack {} {}", opp_id, dbs.tcp_address), dbs); // Todo validate auth
-            process_request(&request_str, &dbs, client)
+            match process_request(&request_str, &dbs, client) {
+                Response::Error { msg } => {
+                    log::warn!("Error to process message {}, error: {}", opp_id, msg);
+                    Response::Error { msg }
+                }
+                r => r,
+            }
         }
         /*
          * This command should only return get opperations
@@ -408,10 +424,116 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                         _ => (),
                     }
                 }
+                "pendding-conflitcts" => {
+                    apply_to_database(&dbs, &client, &|db| {
+                        let keys: Vec<String> = {
+                            db.map
+                                .read()
+                                .unwrap()
+                                .iter()
+                                .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
+                                .filter(|(key, _v)| key.starts_with("$$conflitcts"))
+                                .map(|(key, _v)| format!("{}", key))
+                                .collect()
+                        };
+                        let keys = keys.iter().fold(String::from(""), |current, acc| {
+                            format!("{},{}", current, acc)
+                        });
+                        log::info!("Peding conflitcts on the server {}", keys);
+                        match client
+                            .sender
+                            .clone()
+                            .try_send(format_args!("conflitcts-list {}\n", keys).to_string())
+                        {
+                            Err(e) => {
+                                log::warn!("Request::pending-ops sender.send Error: {}", e);
+                            }
+                            _ => (),
+                        };
+                        Response::Ok {}
+                    });
+                }
+
                 _ => log::info!("Invalid debug command"),
             };
             Response::Ok {}
         }),
+        Request::Arbiter {} => {
+            apply_to_database(&dbs, &client, &|db| db.register_arbiter(&client))
+
+            /*if dbs.is_primary() {
+            } else {
+                Response::Error {
+                    msg: String::from("Arbiter can only be connected to the primary!"),
+                }
+            }*/
+        }
+        Request::Resolve {
+            opp_id,
+            db_name,
+            key,
+            value,
+            version,
+        } => {
+            log::info!("Processing resolve for {} to {} ", key, value);
+            // Replica set or admin auth resolving
+            if client.auth.load(Ordering::SeqCst) {
+                apply_to_database_name(dbs, client, &db_name, &|db| {
+                    if dbs.is_primary() {
+                        db.resolve_conflit(
+                            Change {
+                                key: key.clone(),
+                                value: value.clone(),
+                                version,
+                                opp_id,
+                                resolve_conflict: true,
+                            },
+                            &dbs,
+                        )
+                    } else {
+                        send_message_to_primary(
+                            get_resolve_message(
+                                opp_id,
+                                db_name.to_string(),
+                                key.clone(),
+                                value.clone(),
+                                version,
+                            ),
+                            dbs,
+                        );
+                        Response::Ok {}
+                    }
+                });
+            } else {
+                apply_to_database(&dbs, &client, &|db| {
+                    if dbs.is_primary() {
+                        db.resolve_conflit(
+                            Change {
+                                key: key.clone(),
+                                value: value.clone(),
+                                version,
+                                opp_id,
+                                resolve_conflict: true,
+                            },
+                            &dbs,
+                        )
+                    } else {
+                        send_message_to_primary(
+                            get_resolve_message(
+                                opp_id,
+                                db_name.to_string(),
+                                key.clone(),
+                                value.clone(),
+                                version,
+                            ),
+                            dbs,
+                        );
+                        Response::Ok {}
+                    }
+                });
+            };
+            return Response::Ok {};
+        }
     }
 }
 
@@ -524,6 +646,9 @@ mod tests {
         assert_received(&mut receiver, "valid auth\n");
         process_request("create-db test test-1", &dbs, &mut client);
         assert_received(&mut receiver, "create-db success\n");
+
+        // New client connected without admin auth
+        let (mut receiver, _, mut client) = create_default_args();
         process_request("use-db test test-1", &dbs, &mut client);
         process_request("set name jose", &dbs, &mut client);
         process_request("set name1 jose", &dbs, &mut client);
@@ -532,6 +657,84 @@ mod tests {
         process_request("remove name1 jose", &dbs, &mut client);
         process_request("keys", &dbs, &mut client);
         assert_received(&mut receiver, "keys ,$connections,name\n");
+    }
+
+    #[test]
+    fn should_return_secret_keys_if_admin_auth() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,$$token,$connections,name,name1\n");
+        process_request("remove name1 jose", &dbs, &mut client);
+        process_request("keys", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,$$token,$connections,name\n");
+    }
+
+    #[test]
+    fn should_return_keys_starting_with() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys name*", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,name,name1\n");
+    }
+
+    #[test]
+    fn should_return_keys_ending_with() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys *1", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,name1\n");
+    }
+
+    #[test]
+    fn should_return_keys_contains_with() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys a", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,name,name1\n");
+    }
+
+    #[test]
+    fn should_return_keys_contains_with_using_alias() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("ls a", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,name,name1\n");
     }
 
     #[test]

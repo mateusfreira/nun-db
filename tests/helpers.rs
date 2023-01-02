@@ -2,10 +2,13 @@
 pub mod helpers {
 
     use assert_cmd::prelude::*; // Add methods on commands
+    use predicates::prelude::*;
     use std::env;
     use std::process::Child;
     use std::process::Command;
-    use std::{thread, time};
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
+    use std::{thread, time}; // Used for writing assertions
 
     pub const USER_NAME: &'static str = "mateus";
     pub const PWD: &'static str = "mateus";
@@ -96,8 +99,24 @@ pub mod helpers {
             .assert()
     }
 
+    pub fn nundb_call(host: &str, command: &str) -> std::process::Output {
+        Command::cargo_bin("nun-db")
+            .unwrap()
+            .args(["-p", "mateus"])
+            .args(["--user", "mateus"])
+            .args(["--host", host])
+            .arg("exec")
+            .arg(command)
+            .output()
+            .unwrap()
+    }
+
     pub fn nundb_exec_primary(command: &str) -> assert_cmd::assert::Assert {
         nundb_exec(PRIMARY_HTTP_URI, command)
+    }
+
+    pub fn nundb_exec_secondary(command: &str) -> assert_cmd::assert::Assert {
+        nundb_exec(SECOUNDAR_HTTP_URI, command)
     }
 
     pub fn wait_seconds(time: u64) {
@@ -115,6 +134,16 @@ pub mod helpers {
         (start_primary(), start_secoundary(), start_secoundary_2())
     }
 
+    pub fn create_test_db() {
+        nundb_exec(
+            &PRIMARY_HTTP_URI.to_string(),
+            &String::from("create-db test test-pwd; use-db test test-pwd;"),
+        )
+        .success()
+        .stdout(predicate::str::contains("empty"));
+        wait_seconds(3); //Wait 3s to the replication
+    }
+
     pub fn kill_replicas(
         mut replica_processes: (Child, Child, Child),
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -122,5 +151,14 @@ pub mod helpers {
         replica_processes.1.kill()?;
         replica_processes.2.kill()?;
         Ok(())
+    }
+
+    pub fn get_db_name_seed() -> String {
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let id = since_the_epoch.as_nanos() as u64;
+        return format!("{}", id);
     }
 }

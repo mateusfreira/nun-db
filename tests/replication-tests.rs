@@ -84,4 +84,90 @@ mod tests {
         helpers::kill_replicas(replicas_processes)?;
         Ok(())
     }
+
+    /*
+    // This tests require latancy beetwhen processes
+    #[test]
+    fn should_set_and_imediatly_read_from_secoundary() -> Result<(), Box<dyn std::error::Error>> {
+        let db_name_seed = helpers::get_db_name_seed();
+        helpers::clean_env();
+        let replicas_processes = helpers::start_3_replicas();
+        helpers::nundb_exec(
+            &helpers::PRIMARY_HTTP_URI.to_string(),
+            &String::from(format!("create-db {} test-pwd; use-db {} test-pwd;", db_name_seed, db_name_seed)),
+        )
+        .success()
+        .stdout(predicate::str::contains("empty"));
+
+        helpers::wait_seconds(3); //Wait 3s to the replication
+
+        let db_name_seed_t1 = db_name_seed.clone();
+        let secound_thread = thread::spawn(move || {
+            helpers::nundb_exec(
+                &helpers::SECOUNDAR_HTTP_URI.to_string(),
+                &String::from(format!("use-db {} test-pwd;set-safe name 2 mateus; get-safe name", db_name_seed_t1)),
+            )
+            .success()
+            .stdout(predicate::str::contains("value-version 3 mateus"));
+        });
+
+        let db_name_seed_t1 = db_name_seed.clone();
+        let secound2_thread = thread::spawn(move || {
+            helpers::nundb_exec(
+                &helpers::SECOUNDAR2_HTTP_URI.to_string(),
+                &String::from(format!("use-db {} test-pwd;set-safe name 0 maria; get-safe name", db_name_seed_t1.clone())),
+            )
+            .success()
+            .stdout(predicate::str::contains("value-version 1 maria"));
+        });
+        secound_thread.join().unwrap();
+        secound2_thread.join().unwrap();
+
+        helpers::nundb_exec(
+            &helpers::PRIMARY_HTTP_URI.to_string(),
+            &String::from("use-db test test-pwd;get-safe name"),
+        )
+        .success()
+        .stdout(predicate::str::contains("value-version 3 mateus"));
+        helpers::kill_replicas(replicas_processes)?;
+        Ok(())
+    }
+
+    #[test]
+    fn should_not_replicate_processing_from_the_sending_replica(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        helpers::clean_env();
+        let replicas_processes = helpers::start_3_replicas();
+        helpers::create_test_db();
+
+        let secound_thread = thread::spawn(move || {
+            helpers::nundb_exec(
+                &helpers::SECOUNDAR_HTTP_URI.to_string(),
+                &String::from("use-db test test-pwd;set-safe name 0 mateus; get-safe name"),
+            )
+            .success()
+            .stdout(predicate::str::contains("value-version 1 mateus"));
+        });
+
+        let secound2_thread = thread::spawn(move || {
+            helpers::nundb_exec(
+                &helpers::SECOUNDAR2_HTTP_URI.to_string(),
+                &String::from("use-db test test-pwd;set-safe name 2 maria; get-safe name"),
+            )
+            .success()
+            .stdout(predicate::str::contains("value-version 3 maria"));
+        });
+        secound_thread.join().unwrap();
+        secound2_thread.join().unwrap();
+
+        helpers::nundb_exec(
+            &helpers::SECOUNDAR2_HTTP_URI.to_string(),
+            &String::from("use-db test test-pwd;get-safe name"),
+        )
+        .success()
+        .stdout(predicate::str::contains("value-version 3 maria"));
+        helpers::kill_replicas(replicas_processes)?;
+        Ok(())
+    }
+    */
 }

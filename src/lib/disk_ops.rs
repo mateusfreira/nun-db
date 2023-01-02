@@ -38,6 +38,7 @@ const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP
 const VERSION_SIZE: usize = 4;
 const ADDR_SIZE: usize = 8;
 const U64_SIZE: usize = 8;
+const U32_SIZE: usize = 4;
 
 const VERSION_DELETED: i32 = -1;
 
@@ -102,10 +103,13 @@ pub fn load_db_metadata_from_disk_or_empty(name: String, dbs: &Arc<Databases>) -
         let mut buffer = [0; U64_SIZE];
         file.read(&mut buffer).unwrap();
         let id: usize = usize::from_le_bytes(buffer);
+        let mut buffer = [0; U32_SIZE];
+        file.read(&mut buffer).unwrap();
+        let consensus_strategy: i32 = i32::from_le_bytes(buffer);
 
-        DatabaseMataData::new(id)
+        DatabaseMataData::new(id, ConsensuStrategy::from(consensus_strategy))
     } else {
-        DatabaseMataData::new(dbs.map.read().unwrap().len())
+        DatabaseMataData::new(dbs.map.read().unwrap().len(), ConsensuStrategy::Newer)
     }
 }
 
@@ -121,10 +125,10 @@ fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::D
             let db_name = db_name_from_file_name(&full_name);
             storage_data_disk(&db, &db_name, true);
             remove_old_db_file(&db_name);
-            dbs.add_database(&db_name.to_string(), db);
+            dbs.add_database(db);
         } else if full_name.ends_with(DB_KEYS_FILE_NAME) {
-            let (db, db_name) = create_db_from_file_name(&full_name, &dbs);
-            dbs.add_database(&db_name.to_string(), db);
+            let (db, _) = create_db_from_file_name(&full_name, &dbs);
+            dbs.add_database(db);
         }
     }
 }
@@ -193,6 +197,7 @@ fn create_db_from_file_name(file_name: &String, dbs: &Arc<Databases>) -> (Databa
                     state: ValueStatus::Ok,
                     value_disk_addr: value_addr,
                     key_disk_addr,
+                    opp_id: Databases::next_op_log_id(),
                 },
             );
         } else {
@@ -385,11 +390,23 @@ fn storage_data_disk(db: &Database, db_name: &String, reclame_space: bool) -> u3
                         value_addr,
                         value.key_disk_addr,
                     );
-                    db.set_value_as_ok(&key, &value, value_addr, value.key_disk_addr);
+                    db.set_value_as_ok(
+                        &key,
+                        &value,
+                        value_addr,
+                        value.key_disk_addr,
+                        Databases::next_op_log_id(),
+                    );
                     // Append key file
                 } else {
                     let key_size = write_key(&mut keys_file, &key, &value, value_addr);
-                    db.set_value_as_ok(&key, &value, value_addr, next_key_addr);
+                    db.set_value_as_ok(
+                        &key,
+                        &value,
+                        value_addr,
+                        next_key_addr,
+                        Databases::next_op_log_id(),
+                    );
                     next_key_addr = next_key_addr + key_size;
                 }
                 value_addr = value_addr + record_size;
@@ -441,7 +458,13 @@ fn write_new_key_value(
     );
     // Append key file
     let key_size = write_key(keys_file, key, value, value_addr);
-    db.set_value_as_ok(key, value, value_addr, next_key_addr);
+    db.set_value_as_ok(
+        key,
+        value,
+        value_addr,
+        next_key_addr,
+        Databases::next_op_log_id(),
+    );
     (record_size, key_size)
 }
 
@@ -521,8 +544,12 @@ fn write_metadata_file(db_name: &String, db: &Database) {
         .write(true)
         .open(meta_file_name_from_db_name(db_name.to_string()))
         .unwrap();
-    meta_file.write(&db.metadata.id.to_le_bytes()).unwrap();
     //8 bytes
+    meta_file.write(&db.metadata.id.to_le_bytes()).unwrap();
+    //4 bytes
+    meta_file
+        .write(&db.metadata.consensus_strategy.to_le_bytes())
+        .unwrap();
 }
 
 // calls storage_data_disk each $SNAPSHOT_TIME seconds
@@ -990,7 +1017,11 @@ mod tests {
         let mut hash = HashMap::new();
         hash.insert(String::from("some"), String::from("value"));
         hash.insert(String::from("some1"), String::from("value1"));
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(
+            db_name.clone(),
+            hash,
+            DatabaseMataData::new(0, ConsensuStrategy::Arbiter),
+        );
         storage_data_disk_old(&db, db_name.clone());
         let db_file_name = file_name_from_db_name(&db_name);
         let loaded_db = create_db_from_file_name_old(&db_file_name, &dbs);
@@ -998,6 +1029,11 @@ mod tests {
         assert_eq!(
             loaded_db.get_value(String::from("some1")).unwrap().value,
             String::from("value1")
+        );
+
+        assert_eq!(
+            loaded_db.metadata.consensus_strategy,
+            ConsensuStrategy::Arbiter,
         );
         remove_database_file(&db_name);
     }
@@ -1019,41 +1055,36 @@ mod tests {
         hash.insert(key.clone(), value.clone());
         hash.insert(key1.clone(), value1.clone());
 
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-        db.set_value(key.clone(), value_updated.clone(), 2);
+        let db = Database::create_db_from_hash(
+            db_name.clone(),
+            hash,
+            DatabaseMataData::new(0, ConsensuStrategy::Newer),
+        );
+        db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value_new.version, 2);
+        assert_eq!(key_value_new.version, 3);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk(&db, &db_name, false);
 
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
+        assert_eq!(loaded_db.metadata.id, db.metadata.id);
+        assert_eq!(
+            loaded_db.metadata.consensus_strategy,
+            db.metadata.consensus_strategy
+        );
+
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value.value, value_updated);
-        assert_eq!(key_value.version, 2);
-
-        let key1_value = loaded_db.get_value(key1.to_string()).unwrap();
-        assert_eq!(key1_value.value, value1);
-        assert_eq!(key1_value.version, 1);
-
-        let final_value = String::from("final_value");
-        loaded_db.set_value(key.clone(), final_value.clone(), 3);
-
-        // To test in place update
-        storage_data_disk(&loaded_db, &db_name, false);
-        let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
-
-        let key_value = loaded_db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value.value, final_value);
         assert_eq!(key_value.version, 3);
 
         let key1_value = loaded_db.get_value(key1.to_string()).unwrap();
         assert_eq!(key1_value.value, value1);
         assert_eq!(key1_value.version, 1);
 
-        let final_value = String::from("final_value1");
-        loaded_db.set_value(key.clone(), final_value.clone(), 3);
+        let final_value = String::from("final_value");
+        loaded_db.set_value(&Change::new(key.clone(), final_value.clone(), 3));
 
         // To test in place update
         storage_data_disk(&loaded_db, &db_name, false);
@@ -1062,6 +1093,21 @@ mod tests {
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
         assert_eq!(key_value.value, final_value);
         assert_eq!(key_value.version, 4);
+
+        let key1_value = loaded_db.get_value(key1.to_string()).unwrap();
+        assert_eq!(key1_value.value, value1);
+        assert_eq!(key1_value.version, 1);
+
+        let final_value = String::from("final_value1");
+        loaded_db.set_value(&Change::new(key.clone(), final_value.clone(), 4));
+
+        // To test in place update
+        storage_data_disk(&loaded_db, &db_name, false);
+        let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
+
+        let key_value = loaded_db.get_value(key.to_string()).unwrap();
+        assert_eq!(key_value.value, final_value);
+        assert_eq!(key_value.version, 5);
 
         let key1_value = loaded_db.get_value(key1.to_string()).unwrap();
         assert_eq!(key1_value.value, value1);
@@ -1084,11 +1130,15 @@ mod tests {
         hash.insert(key.clone(), value.clone());
         hash.insert(key1.clone(), value1.clone());
 
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-        db.set_value(key.clone(), value_updated.clone(), 2);
+        let db = Database::create_db_from_hash(
+            db_name.clone(),
+            hash,
+            DatabaseMataData::new(0, ConsensuStrategy::Newer),
+        );
+        db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value_new.version, 2);
+        assert_eq!(key_value_new.version, 3);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk_old(&db, db_name.clone()); //Store as old
@@ -1117,11 +1167,15 @@ mod tests {
         hash.insert(key.clone(), value.clone());
         hash.insert(key1.clone(), value1.clone());
 
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-        db.set_value(key.clone(), value_updated.clone(), 2);
+        let db = Database::create_db_from_hash(
+            db_name.clone(),
+            hash,
+            DatabaseMataData::new(0, ConsensuStrategy::Newer),
+        );
+        db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value_new.version, 2);
+        assert_eq!(key_value_new.version, 3);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk_old(&db, db_name.clone()); //Store as old
@@ -1151,11 +1205,15 @@ mod tests {
         hash.insert(key.clone(), value.clone());
         hash.insert(key1.clone(), value1.clone());
 
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-        db.set_value(key.clone(), value_updated.clone(), 2);
+        let db = Database::create_db_from_hash(
+            db_name.clone(),
+            hash,
+            DatabaseMataData::new(0, ConsensuStrategy::Newer),
+        );
+        db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value_new.version, 2);
+        assert_eq!(key_value_new.version, 3);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         storage_data_disk(&db, &db_name, false);
@@ -1185,11 +1243,15 @@ mod tests {
         hash.insert(key.clone(), value.clone());
         hash.insert(key1.clone(), value1.clone());
 
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
-        db.set_value(key.clone(), value_updated.clone(), 2);
+        let db = Database::create_db_from_hash(
+            db_name.clone(),
+            hash,
+            DatabaseMataData::new(0, ConsensuStrategy::Newer),
+        );
+        db.set_value(&Change::new(key.clone(), value_updated.clone(), 2));
 
         let key_value_new = db.get_value(key.to_string()).unwrap();
-        assert_eq!(key_value_new.version, 2);
+        assert_eq!(key_value_new.version, 3);
         assert_eq!(db.count_keys(), 2);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
@@ -1255,7 +1317,7 @@ mod tests {
         let key_1 = String::from("key_1");
         let value = db.get_value(key_1.clone()).unwrap();
         assert_eq!(value.state, ValueStatus::Ok);
-        db.set_value(key_1.clone(), String::from("NewValue"), 2);
+        db.set_value(&Change::new(key_1.clone(), String::from("NewValue"), 2));
 
         let value = db.get_value(key_1.clone()).unwrap();
         assert_eq!(value.state, ValueStatus::Updated);
@@ -1272,8 +1334,12 @@ mod tests {
     #[test]
     fn remove_keys_should_work() {
         let (dbs, db_name, db) = create_empty_db();
-        db.set_value("Jose".to_string(), "value".to_string(), 1);
-        db.set_value("Keyhshshshsh1".to_string(), "value".to_string(), 1);
+        db.set_value(&Change::new("Jose".to_string(), "value".to_string(), 1));
+        db.set_value(&Change::new(
+            "Keyhshshshsh1".to_string(),
+            "value".to_string(),
+            1,
+        ));
         let _ = db.remove_value(String::from("Keyhshshshsh1"));
         clean_all_db_files(&db_name);
         let _ = storage_data_disk(&db, &db_name, false);
@@ -1311,7 +1377,11 @@ mod tests {
         let value = loaded_db.get_value(String::from("key_1")).unwrap();
         assert_eq!(value.state, ValueStatus::Ok);
 
-        loaded_db.set_value(String::from("key_1"), String::from("New-value"), 2);
+        loaded_db.set_value(&Change::new(
+            String::from("key_1"),
+            String::from("New-value"),
+            2,
+        ));
 
         let value = loaded_db.get_value(String::from("key_1")).unwrap();
         let value_100 = loaded_db.get_value(String::from("key_100")).unwrap();
@@ -1350,13 +1420,17 @@ mod tests {
         let db_file_name = file_name_from_db_name(&db_name);
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
         let time_in_ms = start_load.elapsed().as_millis();
-        log::info!("TIme to update {:?}ms", time_in_ms);
+        log::info!("Time to update {:?}ms", time_in_ms);
         assert!(start_load.elapsed().as_millis() < 100);
 
         let value = loaded_db.get_value(String::from("key_1")).unwrap();
         assert_eq!(value.state, ValueStatus::Ok);
 
-        loaded_db.set_value(String::from("key_1"), String::from("New-value"), 2);
+        loaded_db.set_value(&Change::new(
+            String::from("key_1"),
+            String::from("New-value"),
+            2,
+        ));
 
         let value = loaded_db.get_value(String::from("key_1")).unwrap();
         let value_100 = loaded_db.get_value(String::from("key_100")).unwrap();
@@ -1391,7 +1465,11 @@ mod tests {
         let dbs = create_test_dbs();
         let db_name = String::from("test-db");
         let hash = HashMap::new();
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(
+            db_name.clone(),
+            hash,
+            DatabaseMataData::new(0, ConsensuStrategy::Newer),
+        );
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         (dbs, db_name, db)
     }
@@ -1403,7 +1481,11 @@ mod tests {
         for i in 0..10000 {
             hash.insert(format!("key_{}", i), format!("key_{}", i));
         }
-        let db = Database::create_db_from_hash(db_name.clone(), hash, DatabaseMataData::new(0));
+        let db = Database::create_db_from_hash(
+            db_name.clone(),
+            hash,
+            DatabaseMataData::new(0, ConsensuStrategy::Newer),
+        );
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         (dbs, db_name, db)
     }

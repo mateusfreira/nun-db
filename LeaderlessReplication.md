@@ -74,3 +74,81 @@ Time line...
 +--------+       +--------+        +---+        +------+                                                 
 
 ```
+
+
+# Todo
+- [ ] Replica set sending the set does not need to process the replication!!! (works because if rejects the new version but it is unnecessary  travel)
+- [ ] Measure clock difference from replica-sets (Is it needed?) to implement oldest change wins
+
+
+
+
+## 1. Process to resolve from arbiter to Secondary (Working as expected)
+```text
+                          +-----------------------+                                                                                                                                                 
++------------+ 1. resolve |                       |                                                                                                                                                          
+|   Arbiter  |------------|  Secoundary 1 server  |       +---------------+                                                                                                                         
++------------+            +---+----------------+--+       |               |                                                                                                                                   
+                              |                |      +---+ Primary server| -> resolve the conflict in the DB and memory                                                                                                                                    
+                   +---------------+           +------+   +---------+-----+                                                                                                                                   
+                   | Secoundary 2  |       2 resolve                |                                                                                                                                         
+                   |               +--------------------------------+                                                                                                                                         
+                   +---------------+          3 replicate set value version                                                                                                                                                                 
+                                              4 replicate set $$conflitc_{opp_id} version                                                                                                                                                                 
+                                                                                                                                                                                                              
+```
+1. Arbiter sends resolve the conflict pushes the change as a resolve command                                                                                                                                                                                                               
+1.1  If server is secondary sends the same message to primary [src/lib/process_request.rs:441]
+1.1  If server is primary resolve resolve it in memory [src/lib/process_request.rs:434]
+2. Secondary sends message to Primary to resolve
+2.1 replicates to other nodes as a set value [src/lib/replication_ops.rs:95]
+3. Primary sends replicate set value version to all nodes [src/lib/replication_ops.rs:107]
+4. Primary sends replicate set $$conflitc_{opp_id} to all nodes to resolve the conflict [src/lib/replication_ops.rs:111]
+
+## 2. Process to resolve from arbiter to Primary ( Simples case working as expected
+
+## 3. Change in 2 nodes at the same time and Arbiter is connected to the 3rd node (Works because of replication)
+                                             +---------+ 1.2 replicate name 1 jose
+```text                                      |         |
+                          +------------------+----+    |                           +-----------+                                                                                                    
++------------+            |                       |    |                           |  Client 2 |                                                                                                                     
+|   Arbiter  |------------|  Secoundary 1 server  |    |  +---------------+        +----+------+                                                                                                    
++------------+            +---+----------------+--+    |  |               +-------------+                                                                                                                     
+                              |                        +--+ Primary server|     1. set-safe name 1 jose                                                                                                                                                     
+                   +---------------+   1.2 $conflict >    +---------+-----+                                                                                                                                   
+                   | Secoundary 2  |   2.1 replicate name 1 mary>   |            In memory 2.2 Conflict no arbiter error                                                                                                                              
+                   |               +--------------------------------+ 100ms                                                                                                                                        
+                   +---+-----------+  < 1.1 replicate name 1 jose                                                                                                                                                                                                      
+                       |              < 2.3 error $conflict 1 name mary jose
+                       |  
+                       |  
+                       |  
+                       |  
+                       |  
+                       |  2 set-safe name 1 mary                                                                                                                                                                                                                               
+          +----------+ |                                                                                                                                                                                                                                  
+          | Client 1 +-+                                                                                                                                                                                                                                          
+          +----------+                                                                                                                                                                                        
+```
+
+### Options to solve. (No longer needed)
+3.1 - Do not allow the arbiter to connect to secondary. Cons: May introduce complexity, Need to notify client if primary changes.
+3.2 - "Ask" in the network who has one arbiter connected, if no server has one. Cons: Hard to conciliate the messages if no arbiter is connected anyware.
+
+## 4. Change in 2 nodes at the same time and no Arbiter is connected to the 3rd node (Not working)
+
+### Options to solve.
+4.1 Reject the set command if there is no arbiter!!
+4.1.1 What if the arbiter is connected in another instance??
+4.2 If there is no arbiter make it set direct to primary (Very bad with latency)
+4.3 *Make all values in Nun-db "eventual" consistent and notify the clients that there may be conflict with one of their keys*
+4.4 In case one db is "arbitered" there must be one arbiter connected.
+
+# Create conflict queue
+- [x] Use keys with conflict to keys * to get pending conflict queue.
+- [x] Replicate conflict keys
+- [x] Create db with conflict strategy
+- [x] If try to set value to a key with pending conflict the set gets to the conflict queue
+- [ ] Database is shutdown while conflict is not solved yet
+- [ ] Timeout while waiting for conflict resolution
+- [ ] Clean old resolved conflicts

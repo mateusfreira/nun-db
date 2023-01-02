@@ -13,8 +13,12 @@ use std::time::UNIX_EPOCH;
 use crate::db_ops::*;
 use crate::disk_ops::*;
 
+pub const IN_CONFLICT_RESOLUTION_KEY_VERSION: i32 = -2;
+
 pub const TOKEN_KEY: &'static str = "$$token";
 pub const ADMIN_DB: &'static str = "$admin";
+
+const INVALID_VERSION_ERROR: &'static str = "Invalid version!";
 
 pub struct Client {
     pub auth: Arc<AtomicBool>,
@@ -32,13 +36,18 @@ impl Client {
             false
         }
     }
+
+    pub fn is_admin_auth(&self) -> bool {
+        self.auth.load(Ordering::SeqCst)
+    }
+
     pub fn left(&self, dbs: &Arc<Databases>) {
-        let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
-        let db_box = dbs.get(&self.selected_db_name());
+        let dbs_maps = dbs.map.read().expect("Error getting the dbs.map.lock");
+        let db_box = dbs_maps.get(&self.selected_db_name());
         match db_box {
             Some(db) => {
                 db.dec_connections();
-                set_connection_counter(db);
+                set_connection_counter(db, &dbs);
             }
             _ => (),
         }
@@ -140,6 +149,56 @@ impl ValueStatus {
     }
 }
 
+#[derive(Clone, PartialEq, Copy, Debug)]
+pub enum ConsensuStrategy {
+    Arbiter = 2,
+    Newer = 1,
+    None = 0,
+}
+
+impl From<i32> for ConsensuStrategy {
+    fn from(val: i32) -> Self {
+        log::debug!("Val in ConsensuStrategy {}", val);
+        use self::ConsensuStrategy::*;
+        match val {
+            2 => Arbiter,
+            1 => Newer,
+            _ => None,
+        }
+    }
+}
+
+impl From<String> for ConsensuStrategy {
+    fn from(val: String) -> Self {
+        log::debug!("Val in ConsensuStrategy {}", val);
+        use self::ConsensuStrategy::*;
+        match val.as_str() {
+            "arbiter" => Arbiter,
+            "newer" => Newer,
+            _ => None,
+        }
+    }
+}
+
+impl ConsensuStrategy {
+    pub fn to_le_bytes(&self) -> [u8; 4] {
+        log::debug!("Val in ConsensuStrategy to_le_bytes {:#?}", self);
+        match self {
+            ConsensuStrategy::None => (0 as i32).to_le_bytes(),
+            ConsensuStrategy::Newer => (1 as i32).to_le_bytes(),
+            ConsensuStrategy::Arbiter => (2 as i32).to_le_bytes(),
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            ConsensuStrategy::None => "none".to_string(),
+            ConsensuStrategy::Newer => "newer".to_string(),
+            ConsensuStrategy::Arbiter => "arbiter".to_string(),
+        }
+    }
+}
+
 pub struct ClusterState {
     pub members: Mutex<HashMap<String, ClusterMember>>,
 }
@@ -150,11 +209,89 @@ pub struct SelectedDatabase {
 
 pub struct DatabaseMataData {
     pub id: usize,
+    pub consensus_strategy: ConsensuStrategy,
 }
 
 impl DatabaseMataData {
-    pub fn new(id: usize) -> DatabaseMataData {
-        return DatabaseMataData { id };
+    pub fn new(id: usize, consensus_strategy: ConsensuStrategy) -> DatabaseMataData {
+        return DatabaseMataData {
+            id,
+            consensus_strategy,
+        };
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Change {
+    pub value: String,
+    pub version: i32,
+    pub opp_id: u64,
+    pub key: String,
+    pub resolve_conflict: bool,
+}
+
+impl Change {
+    pub fn new(key: String, value: String, version: i32) -> Change {
+        Change {
+            key,
+            value,
+            version,
+            opp_id: Databases::next_op_log_id(),
+            resolve_conflict: false,
+        }
+    }
+
+    pub fn to_resolve_change(&self) -> Change {
+        Change {
+            key: self.key.clone(),
+            value: self.value.clone(),
+            version: self.version,
+            opp_id: self.opp_id,
+            resolve_conflict: true,
+        }
+    }
+
+    pub fn to_different_version(&self, version: i32) -> Change {
+        Change {
+            key: self.key.clone(),
+            value: self.value.clone(),
+            version: version,
+            opp_id: self.opp_id,
+            resolve_conflict: self.resolve_conflict,
+        }
+    }
+
+    pub fn allow_save_version(&self) -> bool {
+        self.keep_in_conflict_resolution()
+    }
+
+    pub fn keep_in_conflict_resolution(&self) -> bool {
+        self.version == IN_CONFLICT_RESOLUTION_KEY_VERSION
+    }
+
+    pub fn resolving_conflict(&self) -> bool {
+        self.resolve_conflict
+    }
+    /**
+     * Returns the next version from a change, for conflict cases it will return conflicted keys
+     */
+    pub fn next_version(&self, old_value: &Value) -> i32 {
+        if self.keep_in_conflict_resolution() {
+            self.version
+        } else if self.resolving_conflict() {
+            let source_version = if old_value.is_in_conflict_resolution() {
+                self.version
+            } else {
+                old_value.version
+            };
+            source_version + 1
+        } else if old_value.is_in_conflict_resolution() {
+            old_value.version
+        } else if self.version == -1 {
+            old_value.version + 1
+        } else {
+            self.version + 1
+        }
     }
 }
 
@@ -162,6 +299,7 @@ impl DatabaseMataData {
 pub struct Value {
     pub value: String,
     pub version: i32,
+    pub opp_id: u64,
     pub state: ValueStatus,
     pub value_disk_addr: u64,
     pub key_disk_addr: u64,
@@ -172,6 +310,7 @@ impl From<String> for Value {
         Value {
             value,
             version: 1,
+            opp_id: Databases::next_op_log_id(),
             state: ValueStatus::New,
             value_disk_addr: 0,
             key_disk_addr: 0,
@@ -212,6 +351,20 @@ impl PartialEq<str> for Value {
 impl PartialEq<&str> for Value {
     fn eq(&self, other: &&str) -> bool {
         self.value.eq(other)
+    }
+}
+
+impl Value {
+    /**
+     * If the key is new means it has not been stored in disk yet therefore status should still be
+     * ValueStatus::New, if it is Deleted became updated to be repopulated
+     */
+    pub fn get_update_value_sate(&self) -> ValueStatus {
+        if self.state == ValueStatus::New {
+            ValueStatus::New
+        } else {
+            ValueStatus::Updated
+        }
     }
 }
 //Based on sabinchitrakar/ema-rs
@@ -321,7 +474,7 @@ impl Database {
     pub fn inc_value(&self, key: String, inc: i32) -> Response {
         // This will reduce the lock time of map. It won't wait the notifyt time, we don't need to
         // wait for the update_watchers to release the key
-        let value = {
+        let (value, version) = {
             let mut db = self.map.write().unwrap();
             match i32::from_str_radix(
                 &db.get(&key.to_string())
@@ -332,7 +485,7 @@ impl Database {
                 Ok(current) => {
                     let next = (current + inc).to_string();
                     db.insert(key.clone(), Value::from(next.clone()));
-                    next
+                    (next, -1)
                 }
                 _ => {
                     return Response::Error {
@@ -342,8 +495,25 @@ impl Database {
             }
         };
 
-        self.notify_watchers(key.clone(), value.clone());
+        self.notify_watchers(key.clone(), value.clone(), version);
         Response::Ok {}
+    }
+
+    pub fn list_keys(&self, pattern: &String, list_system_keys: bool) -> Vec<String> {
+        let query_function = get_function_by_pattern(&pattern);
+        let mut keys: Vec<String> = {
+            self.map
+                .read()
+                .unwrap()
+                .iter()
+                .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
+                .filter(|(key, _v)| query_function(&key, &pattern))
+                .filter(|(key, _v)| list_system_keys || !key.starts_with("$$"))
+                .map(|(key, _v)| format!("{}", key))
+                .collect()
+        };
+        keys.sort();
+        keys
     }
 
     pub fn new(name: String, metadata: DatabaseMataData) -> Database {
@@ -358,7 +528,7 @@ impl Database {
         };
     }
 
-    fn notify_watchers(&self, key: String, value: String) {
+    fn notify_watchers(&self, key: String, value: String, version: i32) {
         let watchers = self.watchers.map.read().unwrap();
         match watchers.get(&key) {
             Some(senders) => {
@@ -367,6 +537,18 @@ impl Database {
                     match sender.clone().try_send(
                         format_args!("changed {} {}\n", key.to_string(), value.to_string())
                             .to_string(),
+                    ) {
+                        Ok(_n) => (),
+                        Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
+                    }
+                    match sender.clone().try_send(
+                        format_args!(
+                            "changed-version {} {} {}\n",
+                            key.to_string(),
+                            version,
+                            value.to_string()
+                        )
+                        .to_string(),
                     ) {
                         Ok(_n) => (),
                         Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
@@ -394,6 +576,7 @@ impl Database {
                         ValueStatus::Deleted,
                         value.value_disk_addr,
                         value.key_disk_addr,
+                        value.opp_id,
                     );
                 }
             }
@@ -407,6 +590,14 @@ impl Database {
                     {
                         Ok(_n) => (),
                         Err(e) => log::warn!("Request::Remove sender.send Error: {}", e),
+                    }
+
+                    match sender.clone().try_send(
+                        format_args!("changed-version {} {} <Empty>\n", key.to_string(), -1)
+                            .to_string(),
+                    ) {
+                        Ok(_n) => (),
+                        Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
                     }
                 }
             }
@@ -424,13 +615,14 @@ impl Database {
                 state: value.state,
                 value_disk_addr: value.value_disk_addr,
                 key_disk_addr: value.key_disk_addr,
+                opp_id: value.opp_id,
             })
         } else {
             None
         }
     }
 
-    fn set_value_version(
+    pub fn set_value_version(
         &self,
         key: &String,
         value: &String,
@@ -438,6 +630,7 @@ impl Database {
         state: ValueStatus,
         value_disk_addr: u64,
         key_disk_addr: u64,
+        opp_id: u64,
     ) {
         {
             let mut db = self.map.write().unwrap();
@@ -449,9 +642,21 @@ impl Database {
                     state,
                     value_disk_addr, // will change on the store
                     key_disk_addr,   // will change on the store
+                    opp_id,
                 },
             );
         } // release the db
+    }
+
+    pub fn watch_key(&self, key: &String, sender: &Sender<String>) -> Response {
+        let mut watchers = self.watchers.map.write().unwrap();
+        let mut senders: Vec<Sender<String>> = match watchers.get(key) {
+            Some(watchers_vec) => watchers_vec.clone(),
+            _ => Vec::new(),
+        };
+        senders.push(sender.clone());
+        watchers.insert(key.clone(), senders);
+        Response::Ok {}
     }
 
     pub fn set_value_as_ok(
@@ -460,6 +665,7 @@ impl Database {
         value: &Value,
         value_disk_addr: u64,
         key_disk_addr: u64,
+        opp_id: u64,
     ) {
         self.set_value_version(
             key,
@@ -468,45 +674,95 @@ impl Database {
             ValueStatus::Ok,
             value_disk_addr,
             key_disk_addr,
+            opp_id,
         );
     }
 
-    pub fn set_value(&self, key: String, value: String, version: i32) -> Response {
-        if let Some(old_version) = self.get_value(key.clone()) {
-            if version != -1 && version < old_version.version {
-                return Response::Error {
-                    msg: String::from("Invalid version!"),
+    /// apply the change to the database
+    /// Does not fix conflicts if they happen
+    ///
+    /// # Arguments
+    ///
+    /// * `change` - The change to be applied to the database
+    /// A change contains a key, a value and a version
+    /// In case the version conflicts with that the database has it will return an error
+    /// Do not use this method if you need conflict resolution use
+    /// db_ops::apply_change_to_db_try_fix_conflicts instead
+    /// Response::VersionError
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let change1 = Change::new(String::from("key"), String::from("foo"), 0);
+    ///
+    /// let db = Database::new(
+    ///     String::from("some"),
+    ///     DatabaseMataData::new(1, ConsensuStrategy::Newer),
+    /// );
+    /// db.set_value(&change1);
+    /// let v = db.get_value(String::from("key"))
+    /// assert_eq!(v.value, "foo");
+    /// assert_eq!(v.version, 1);
+    /// ```
+    ///
+    pub fn set_value(&self, change: &Change) -> Response {
+        if let Some(old_version) = self.get_value(change.key.clone()) {
+            let new_version = change.next_version(&old_version);
+            if new_version <= old_version.version && !change.allow_save_version() {
+                let state = old_version.get_update_value_sate();
+                log::debug!(
+                    "Version conflicted will try to resolve: {}, New version: {}, PassedVersion : {}",
+                    old_version.version,
+                    new_version,
+                    change.version,
+                );
+                return Response::VersionError {
+                    msg: String::from(INVALID_VERSION_ERROR),
+                    old_version: old_version.version,
+                    key: change.key.clone(),
+                    version: change.version,
+                    old_value: old_version.clone(),
+                    change: change.clone(),
+                    state: state,
+                    db: self.name.clone(),
                 };
             }
-            let new_version = old_version.version + 1;
             log::debug!(
                 "Updating existing value Old version: {}, New version: {}, PassedVersion : {}",
                 old_version.version,
                 new_version,
-                version
+                change.version,
             );
-            let state = if old_version.state == ValueStatus::New {
-                ValueStatus::New
-            } else {
-                ValueStatus::Updated
-            };
+            let state = old_version.get_update_value_sate();
             self.set_value_version(
-                &key,
-                &value,
+                &change.key,
+                &change.value,
                 new_version,
                 state,
                 old_version.value_disk_addr,
                 old_version.key_disk_addr,
-            )
+                change.opp_id,
+            );
+            self.notify_watchers(change.key.clone(), change.value.clone(), new_version);
         } else {
+            let new_version = change.version + 1;
             //new key
-            self.set_value_version(&key, &value, 1, ValueStatus::New, 0, 0) // not in disk yet
+            self.set_value_version(
+                &change.key,
+                &change.value,
+                new_version,
+                ValueStatus::New,
+                0,
+                0,
+                change.opp_id,
+            );
+            // not in disk yet
+            self.notify_watchers(change.key.clone(), change.value.clone(), new_version);
         }
-        self.notify_watchers(key.clone(), value.clone());
 
         Response::Set {
-            key: key.clone(),
-            value: value.to_string(),
+            key: change.key.clone(),
+            value: change.value.to_string(),
         }
     }
 }
@@ -538,19 +794,18 @@ impl Databases {
         );
     }
 
-    pub fn add_database(&self, name: &String, database: Database) -> Response {
-        log::debug!("add_database {}", name.to_string());
+    pub fn add_database(&self, database: Database) -> Response {
+        let db_name = database.name.to_string();
+        log::debug!("add_database {}", db_name);
         let mut dbs = self.map.write().unwrap();
-        match dbs.get(name) {
+        match dbs.get(&database.name.to_string()) {
             None => {
                 let mut id_name_db_map = self.id_name_db_map.write().unwrap();
-                id_name_db_map.insert(database.metadata.id as u64, name.to_string());
-                dbs.insert(name.to_string(), database);
-                dbs.get(&String::from(ADMIN_DB)).unwrap().set_value(
-                    name.to_string(),
-                    String::from("{}"),
-                    -1,
-                );
+                id_name_db_map.insert(database.metadata.id as u64, database.name.to_string());
+                dbs.insert(db_name.to_string(), database);
+                dbs.get(&String::from(ADMIN_DB))
+                    .unwrap()
+                    .set_value(&Change::new(db_name.to_string(), String::from("{}"), -1));
                 Response::Ok {}
             }
             _ => Response::Error {
@@ -619,10 +874,12 @@ impl Databases {
         };
 
         let admin_db_name = String::from(ADMIN_DB);
-        let admin_db = Database::new(admin_db_name.to_string(), DatabaseMataData::new(0)); // id 0 adnmin db
-        admin_db.set_value(String::from(TOKEN_KEY), pwd.to_string(), -1);
-        dbs.add_database(&admin_db_name.to_string(), admin_db);
-
+        let admin_db = Database::new(
+            admin_db_name.to_string(),
+            DatabaseMataData::new(0, ConsensuStrategy::Newer),
+        ); // id 0 adnmin db
+        admin_db.set_value(&Change::new(String::from(TOKEN_KEY), pwd.to_string(), -1));
+        dbs.add_database(admin_db);
         dbs
     }
 
@@ -805,7 +1062,7 @@ impl OpLogRecord {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     Get {
         key: String,
@@ -854,6 +1111,7 @@ pub enum Request {
     CreateDb {
         token: String,
         name: String,
+        strategy: ConsensuStrategy,
     },
     UseDb {
         token: String,
@@ -896,7 +1154,9 @@ pub enum Request {
         id: u128,
     },
     ElectionActive {},
-    Keys {},
+    Keys {
+        pattern: String,
+    },
     ReplicateRequest {
         request_str: String,
         opp_id: u64,
@@ -908,14 +1168,40 @@ pub enum Request {
     Debug {
         command: String,
     },
+    Arbiter {},
+    Resolve {
+        opp_id: u64,
+        db_name: String,
+        key: String,
+        value: String,
+        version: i32,
+    },
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Response {
-    Value { key: String, value: String },
+    Value {
+        key: String,
+        value: String,
+    },
     Ok {},
-    Set { key: String, value: String },
-    Error { msg: String },
+    Set {
+        key: String,
+        value: String,
+    },
+    Error {
+        msg: String,
+    },
+    VersionError {
+        msg: String,
+        key: String,
+        old_version: i32,
+        version: i32,
+        old_value: Value,
+        state: ValueStatus,
+        change: Change,
+        db: String,
+    },
 }
 
 pub struct ReplicationMessage {
@@ -1014,13 +1300,19 @@ mod tests {
 
     #[test]
     fn connection_count_should_start_at_0() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         assert_eq!(db.connections_count(), 0);
     }
 
     #[test]
     fn connection_count_should_increment() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         assert_eq!(db.connections_count(), 0);
 
         db.inc_connections();
@@ -1030,7 +1322,10 @@ mod tests {
 
     #[test]
     fn connection_count_should_decrement() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         assert_eq!(db.connections_count(), 0);
 
         db.inc_connections();
@@ -1042,7 +1337,10 @@ mod tests {
 
     #[test]
     fn inc_should_increment_empty_key() {
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
         let key = String::from("new");
         db.inc_value(key.clone(), 1);
         {
@@ -1069,13 +1367,89 @@ mod tests {
     }
 
     #[test]
+    fn set_should_set_the_latest_version() {
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
+        let key = String::from("new");
+        db.set_value(&Change::new(key.clone(), String::from("1"), 1));
+        db.set_value(&Change::new(key.clone(), String::from("23"), 23));
+        let value = db.get_value(key);
+        assert_eq!(value.unwrap().version, 24);
+    }
+
+    #[test]
+    fn set_should_set_the_latest_version_on_creation() {
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
+        let key = String::from("new");
+        db.set_value(&Change::new(key.clone(), String::from("1"), 23));
+        let value = db.get_value(key);
+        assert_eq!(value.unwrap().version, 24);
+    }
+
+    #[test]
+    fn set_should_return_error_if_invalid_version_passed() {
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::None),
+        );
+        let key = String::from("new");
+        let change1 = Change::new(key.clone(), String::from("1"), 23);
+        db.set_value(&change1);
+        let change2 = Change::new(key.clone(), String::from("2"), 22);
+        let r = db.set_value(&change2);
+        assert_eq!(
+            r,
+            Response::VersionError {
+                msg: String::from("Invalid version!"),
+                old_version: 24,
+                version: 22,
+                key,
+                old_value: Value {
+                    value: String::from("1"),
+                    version: 22,
+                    opp_id: change1.opp_id,
+                    state: ValueStatus::New,
+                    value_disk_addr: 0,
+                    key_disk_addr: 0
+                },
+                change: change2,
+                db: String::from("some"),
+                state: ValueStatus::New
+            }
+        );
+    }
+
+    #[test]
+    fn set_with_negative_value_should_increment_last_version() {
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
+        let key = String::from("new");
+        db.set_value(&Change::new(key.clone(), String::from("1"), 23));
+        let value = db.get_value(key.clone());
+        assert_eq!(value.unwrap().version, 24);
+        db.set_value(&Change::new(key.clone(), String::from("2"), -1));
+        let value = db.get_value(key);
+        assert_eq!(value.unwrap().version, 25);
+    }
+
+    #[test]
     fn add_database_should_add_a_database() {
         let dbs = get_empty_dbs();
         assert_eq!(dbs.map.read().expect("error to lock").keys().len(), 1); //Admin db
 
-        let db = Database::new(String::from("some"), DatabaseMataData::new(1));
+        let db = Database::new(
+            String::from("some"),
+            DatabaseMataData::new(1, ConsensuStrategy::Newer),
+        );
 
-        dbs.add_database(&String::from("jose"), db);
+        dbs.add_database(db);
         assert_eq!(dbs.map.read().expect("error to lock").keys().len(), 2); // Admin db and the db
     }
 

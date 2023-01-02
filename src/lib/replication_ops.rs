@@ -29,10 +29,47 @@ pub fn get_replicate_message(db_name: String, key: String, value: String, versio
     return format!("replicate {} {} {} {}", db_name, key, version, value);
 }
 
+pub fn get_resolve_message(
+    opp_id: u64,
+    db_name: String,
+    key: String,
+    value: String,
+    version: i32,
+) -> String {
+    return format!(
+        "resolve {} {} {} {} {}",
+        opp_id, db_name, key, version, value
+    );
+}
+
 pub fn get_replicate_increment_message(db_name: String, key: String, inc: String) -> String {
     return format!("replicate-increment {} {} {}", db_name, key, inc);
 }
 
+pub fn replicate_change(change: &Change, db: &Database, dbs: &Arc<Databases>) -> Response {
+    if dbs.is_primary() || dbs.is_eligible() {
+        replicate_web(
+            &dbs.replication_sender,
+            get_replicate_message(
+                db.name.clone(),
+                change.key.clone(),
+                change.value.clone(),
+                change.version,
+            ),
+        );
+    } else {
+        send_message_to_primary(
+            get_replicate_message(
+                db.name.clone(),
+                change.key.clone(),
+                change.value.clone(),
+                change.version,
+            ),
+            &dbs,
+        );
+    }
+    Response::Ok {}
+}
 pub fn replicate_request(
     input: Request,
     db_name: &String,
@@ -41,10 +78,27 @@ pub fn replicate_request(
 ) -> Response {
     match response {
         Response::Error { msg: _ } => response,
+        Response::VersionError {
+            msg: _,
+            key: _,
+            old_version: _,
+            version: _,
+            old_value: _,
+            change: _,
+            db: _,
+            state: _,
+        } => response,
         _ => match input {
-            Request::CreateDb { name, token } => {
+            Request::CreateDb {
+                name,
+                token,
+                strategy,
+            } => {
                 log::debug!("Will replicate command a created database name {}", name);
-                replicate_web(replication_sender, format!("create-db {} {}", name, token));
+                replicate_web(
+                    replication_sender,
+                    format!("create-db {} {} {}", name, token, strategy.to_string()),
+                );
                 Response::Ok {}
             }
             Request::Snapshot { reclaim_space } => {
@@ -74,6 +128,34 @@ pub fn replicate_request(
                 replicate_web(
                     replication_sender,
                     get_replicate_message(db_name.to_string(), key, value, version),
+                );
+                Response::Ok {}
+            }
+
+            Request::Resolve {
+                opp_id,
+                db_name,
+                key,
+                value,
+                version,
+            } => {
+                log::debug!(
+                    "Will replicate the resolve of the key {} to {} ",
+                    key,
+                    value
+                );
+                replicate_web(
+                    replication_sender,
+                    get_replicate_message(db_name.to_string(), key.clone(), value.clone(), version),
+                );
+                replicate_web(
+                    replication_sender,
+                    get_replicate_message(
+                        db_name.to_string(),
+                        format!("$$conflitct_{opp_id}", opp_id = opp_id),
+                        value.clone(),
+                        -1,
+                    ),
                 );
                 Response::Ok {}
             }
@@ -181,6 +263,8 @@ fn replicate_message_to_secoundary(op_log_id: u64, message: String, dbs: &Arc<Da
 }
 
 pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
+    // in test intoduces latency to replication in app noop
+    latency_trap();
     log::debug!("Got the message {} to send to primary", message);
     let state = dbs.cluster_state.lock().unwrap();
     for (_name, member) in state.members.lock().unwrap().iter() {
@@ -237,7 +321,11 @@ pub async fn start_replication_thread(
                 }
                 let request = Request::parse(&message.to_string()).unwrap();
                 let op_log_id: u64 = match request {
-                    Request::CreateDb { name, token: _ } => {
+                    Request::CreateDb {
+                        name,
+                        token: _,
+                        strategy: _,
+                    } => {
                         let db_id = get_db_id(name, &dbs);
                         let key_id = 1;
                         log::debug!("Will write CreateDb");
@@ -831,6 +919,15 @@ pub fn add_as_secoundary(dbs: &Arc<Databases>, name: &String) {
 }
 
 #[cfg(test)]
+fn latency_trap() {
+    let ten_millis = std::time::Duration::from_millis(100);
+    thread::sleep(ten_millis);
+}
+
+#[cfg(not(test))]
+fn latency_trap() {}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
@@ -875,7 +972,7 @@ mod tests {
         let name = String::from(SAMPLE_NAME);
         let token = String::from(SAMPLE_NAME);
         let (client, _) = Client::new_empty_and_receiver();
-        create_db(&name, &token, &dbs, &client);
+        create_db(&name, &token, &dbs, &client, ConsensuStrategy::Newer);
         (dbs, sender, replication_receiver)
     }
 
@@ -890,8 +987,8 @@ mod tests {
         {
             let map = dbs.map.read().unwrap();
             let db = map.get("$admin").unwrap();
-            set_key_value("key".to_string(), "value1".to_string(), -1, db);
-            set_key_value("key".to_string(), "value3".to_string(), -1, db);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);
         }
 
         sender
@@ -925,8 +1022,8 @@ mod tests {
         {
             let map = dbs.map.read().unwrap();
             let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
-            set_key_value("key".to_string(), "value1".to_string(), -1, db);
-            set_key_value("key".to_string(), "value3".to_string(), -1, db);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);
         }
 
         thread::sleep(time::Duration::from_millis(10));
@@ -984,8 +1081,8 @@ mod tests {
             let map = dbs.map.read().unwrap();
             let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
             //set_key_value("key".to_string(), "value".to_string(), db);
-            set_key_value("key".to_string(), "value1".to_string(), -1, db);
-            set_key_value("key".to_string(), "value3".to_string(), -1, db);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);
         }
 
         thread::sleep(time::Duration::from_millis(10));
@@ -1042,14 +1139,15 @@ mod tests {
         {
             let map = dbs.map.read().unwrap();
             let db = map.get("$admin").unwrap();
-            set_key_value("key".to_string(), "value".to_string(), -1, db);
-            set_key_value("key".to_string(), "value1".to_string(), -1, db);
-            set_key_value("key".to_string(), "value3".to_string(), -1, db);
-            set_key_value("key".to_string(), "value4".to_string(), -1, db);
-            set_key_value("key".to_string(), "value5".to_string(), -1, db);
-            set_key_value("key".to_string(), "value6".to_string(), -1, db);
-            set_key_value("key".to_string(), "value7".to_string(), -1, db);
-            set_key_value("key".to_string(), "value8".to_string(), -1, db); // 11 recoreds on the op log
+            set_key_value("key".to_string(), "value".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value1".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value4".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value5".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value6".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value7".to_string(), -1, db, &dbs);
+            set_key_value("key".to_string(), "value8".to_string(), -1, db, &dbs);
+            // 11 recoreds on the op log
         }
 
         sender
@@ -1196,6 +1294,7 @@ mod tests {
         let request = Request::CreateDb {
             name: "mateus_db".to_string(),
             token: "jose".to_string(),
+            strategy: ConsensuStrategy::Newer,
         };
 
         let resp_get = Response::Ok {};
@@ -1207,6 +1306,6 @@ mod tests {
         };
         assert!(result, "should have returned an Ok response!");
         let receiver_replicate_result = receiver.try_next().unwrap().unwrap();
-        assert_eq!(receiver_replicate_result, "create-db mateus_db jose");
+        assert_eq!(receiver_replicate_result, "create-db mateus_db jose newer");
     }
 }

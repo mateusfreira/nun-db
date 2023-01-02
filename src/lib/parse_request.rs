@@ -13,8 +13,20 @@ impl Request {
                 Ok(Request::Watch { key })
             }
             Some("unwatch-all") => Ok(Request::UnWatchAll {}),
-            Some("keys") => Ok(Request::Keys {}),
-            Some("ls") => Ok(Request::Keys {}),
+            Some("keys") => {
+                let pattern = match command.next() {
+                    Some(pattren) => pattren.replace("\n", ""),
+                    None => "".to_string(),
+                };
+                Ok(Request::Keys { pattern })
+            }
+            Some("ls") => {
+                let pattern = match command.next() {
+                    Some(pattren) => pattren.replace("\n", ""),
+                    None => "".to_string(),
+                };
+                Ok(Request::Keys { pattern })
+            }
             Some("snapshot") => {
                 let reclaim_space = command.next().unwrap_or("false");
                 Ok(Request::Snapshot {
@@ -334,7 +346,15 @@ impl Request {
                         ""
                     }
                 };
-                let token = match command.next() {
+                let mut rest = match command.next() {
+                    Some(rest) => rest.splitn(2, " "),
+                    None => {
+                        log::debug!("create-db needs token and strategy");
+                        return Err(String::from("create-db must be followed by a token"));
+                    }
+                };
+
+                let token = match rest.next() {
                     Some(key) => String::from(key).replace("\n", ""),
                     None => {
                         log::debug!("CreateDb needs and token");
@@ -342,9 +362,15 @@ impl Request {
                     }
                 };
 
+                let strategy = match rest.next() {
+                    Some(s) => String::from(s).replace("\n", ""),
+                    None => "none".to_string(),
+                };
+
                 Ok(Request::CreateDb {
                     name: name.to_string(),
                     token: token.to_string(),
+                    strategy: ConsensuStrategy::from(strategy),
                 })
             }
 
@@ -484,6 +510,57 @@ impl Request {
                     command: debug_command,
                 })
             }
+            Some("arbiter") => Ok(Request::Arbiter {}),
+
+            Some("resolve") => {
+                let opp_id = match command.next() {
+                    Some(opp_id) => match opp_id.parse::<u64>() {
+                        Ok(opp_id) => opp_id,
+                        Err(_) => return Err(format!("Invalid opp_id")),
+                    },
+                    None => return Err(format!("opp id mandatory")),
+                };
+                let mut rest = match command.next() {
+                    Some(rest) => rest.splitn(4, " "),
+                    None => {
+                        log::debug!("resolve missing params");
+                        return Err(String::from(
+                            "resoved must be followed by db_name, key version and value",
+                        ));
+                    }
+                };
+
+                let db_name = match rest.next() {
+                    Some(db_name) => db_name.replace("\n", ""),
+                    None => return Err(String::from("db_name must be provided")),
+                };
+
+                let key = match rest.next() {
+                    Some(key) => key.replace("\n", ""),
+                    None => return Err(String::from("key must be provided")),
+                };
+
+                let version = match rest.next() {
+                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+                        Ok(n) => n,
+                        _ => -1,
+                    },
+                    None => -1,
+                };
+
+                let value = match rest.next() {
+                    Some(value) => value.replace("\n", ""),
+                    None => return Err(String::from("set-safe must be followed by a key")),
+                };
+
+                Ok(Request::Resolve {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                    version,
+                    db_name,
+                    opp_id,
+                })
+            }
             Some(cmd) => Err(format!("unknown command: {}", cmd)),
             _ => Err(format!("no command sent")),
         };
@@ -540,14 +617,36 @@ mod tests {
     #[test]
     fn should_parse_create_db() -> Result<(), String> {
         match Request::parse("create-db foo some-key") {
-            Ok(Request::CreateDb { token, name }) => {
-                if name == "foo" && token == "some-key" {
+            Ok(Request::CreateDb {
+                token,
+                name,
+                strategy,
+            }) => {
+                if name == "foo" && token == "some-key" && strategy == ConsensuStrategy::None {
                     Ok(())
                 } else {
                     Err(String::from("user should be foo and password bar"))
                 }
             }
             _ => Err(String::from("get foo sould be parsed to Get command")),
+        }
+    }
+
+    #[test]
+    fn should_parse_create_db_with_strategy() -> Result<(), String> {
+        match Request::parse("create-db foo some-key arbiter") {
+            Ok(Request::CreateDb {
+                token,
+                name,
+                strategy,
+            }) => {
+                if name == "foo" && token == "some-key" && strategy == ConsensuStrategy::Arbiter {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from("get foo should be parsed to Get command")),
         }
     }
 
@@ -592,6 +691,25 @@ mod tests {
         }
     }
 
+    #[test]
+    fn should_parse_set_with_version_with_big_version() -> Result<(), String> {
+        match Request::parse("set-safe jose12389123849 1663536194 123\n") {
+            Ok(Request::Set {
+                key,
+                value,
+                version,
+            }) => {
+                if key == "jose12389123849" && value == "123" && version == 1663536194 {
+                    Ok(())
+                } else {
+                    Err(String::from(
+                        "the key should be foo and the value should be 1 and version 2",
+                    ))
+                }
+            }
+            _ => Err(String::from("get foo should be parsed to set command")),
+        }
+    }
     #[test]
     fn should_parse_set_with_version() -> Result<(), String> {
         match Request::parse("set-safe foo 2 1\n") {
@@ -883,7 +1001,21 @@ mod tests {
     #[test]
     fn should_parse_keys() -> Result<(), String> {
         match Request::parse("keys") {
-            Ok(Request::Keys {}) => Ok(()),
+            Ok(Request::Keys { pattern: _ }) => Ok(()),
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
+    fn should_parse_query_pattern() -> Result<(), String> {
+        match Request::parse("keys jose*") {
+            Ok(Request::Keys { pattern }) => {
+                if pattern == "jose*" {
+                    Ok(())
+                } else {
+                    Err(String::from("wrong pattern parsed"))
+                }
+            }
             _ => Err(String::from("wrong command parsed")),
         }
     }
@@ -891,7 +1023,7 @@ mod tests {
     #[test]
     fn should_parse_keys_as_ls_command() -> Result<(), String> {
         match Request::parse("ls") {
-            Ok(Request::Keys {}) => Ok(()),
+            Ok(Request::Keys { pattern: _ }) => Ok(()),
             _ => Err(String::from("wrong command parsed")),
         }
     }
@@ -973,6 +1105,56 @@ mod tests {
                 }
             }
             _ => Err(String::from("Should not have parsed!!")),
+        }
+    }
+
+    #[test]
+    fn should_parse_regier_as_arbiter_command() -> Result<(), String> {
+        match Request::parse("arbiter") {
+            Ok(Request::Arbiter {}) => Ok(()),
+            _ => Err(String::from("Invalid parsing")),
+        }
+    }
+
+    #[test]
+    fn should_parse_resolve_conflit_with_error() -> Result<(), String> {
+        match Request::parse("resolve a db_name some 2 some1") {
+            Err(m) => {
+                if m != "Invalid opp_id" {
+                    Err(String::from("Invalid opp_id"))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(String::from("Invalid parsing")),
+        }
+    }
+
+    #[test]
+    fn should_parse_resolve_conflit() -> Result<(), String> {
+        match Request::parse("resolve 1 db_name some 2 some1") {
+            Ok(Request::Resolve {
+                opp_id,
+                db_name,
+                key,
+                value,
+                version,
+            }) => {
+                if opp_id != 1 {
+                    Err(String::from("Invalid opp_id"))
+                } else if db_name != "db_name" {
+                    Err(String::from("Invalid db_name"))
+                } else if key != "some" {
+                    Err(String::from("Invalid key"))
+                } else if value != "some1" {
+                    Err(String::from("Invalid value"))
+                } else if version != 2 {
+                    Err(String::from("Invalid version"))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(String::from("Invalid parsing")),
         }
     }
 }

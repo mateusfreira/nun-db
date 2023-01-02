@@ -175,6 +175,30 @@ e.g:
 use $db-name $db-pwd
 ```
 
+### CreateDb
+#### Context
+- [x] Require admin auth
+- [ ] Require db auth
+- [x] Replicate? How? (create-db)
+- [ ] Register Oplog? How? (Update)
+Creates a new database
+
+e.gs
+
+```
+# create simple db
+create-db test test-pwd;
+response: 
+empty
+```
+
+```
+# create db with arbiter conlifct resolution strategy
+create-db test test-pwd arbiter;
+response:
+empty
+```
+
 ### Get
 #### Context
 - [ ] Require admin auth
@@ -249,9 +273,18 @@ Return the list of keys for the database.
 #### Context
 - [ ] Require admin auth
 - [x] Require db auth
-- [ ] Replicate? How? 
+- [ ] Replicate? How?
 
-e.gs: `keys`
+e.gs: 
+* Return all keys
+`keys`
+* Return keys starting with name
+`keys name*`
+* Return keys ending with name
+`keys *name`
+* Return keys containing with name
+`keys name`
+
 #### Alias
 `ls`
 
@@ -359,9 +392,30 @@ The debug command holds admin queries for Nun-db, like, for example, checking th
 
 e.gs
 ```
-debug pending_ops
+debug pending-ops
+# result
+pending-ops #list-of-pending-ops#
+
+debug pending-conflicts
+# result (Must be connected to a database with use *** ***)
+pending-conflicts #list-of-pending-conflicts#
+```
+
+### Arbiter
+#### Context
+- [ ] Require admin auth
+- [x] Require db auth
+- [ ] Replicate? How? ()
+- [ ] Register Oplog? How? (no)
+
+With the arbiter command one client register it self as an arbiter for conflicts, this client must be connected to the primary database.
+Internally this command is equivalent to watching the key $conflict.
+
+e.gs
+```
+arbiter
 #result
-pending_ops #list-of-pending-ops#
+ok|error
 ```
 
 
@@ -369,7 +423,7 @@ pending_ops #list-of-pending-ops#
 
 All special keys will have a `$` symbol in the first letter of the name.
 
-### $connections 
+### $connections
 
 Count the number of connections to a databse.
 
@@ -377,3 +431,6 @@ Count the number of connections to a databse.
 ```
 $connections
 ```
+
+### $$conflicts
+* Key used to register client as arbiter for conflict resolution
