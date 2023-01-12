@@ -73,7 +73,9 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 # How-tos
 
 * [How-to Make Redux TodoMVC Example a real-time multiuser with Nun-db in 10 steps](https://mateusfreira.github.io/@mateusfreira-2021-06-30-how-to-making-redux-todomvc-example-a-real-time-multiuser-with-nun-db/)
+
 * [How to create your simple version of google analytics real-time using Nun-db](https://mateusfreira.github.io/@mateusfreira-create-a-simple-verison-of-google-analytics-realtime-using-nun-db/)
+
 * [NunDb How to backup one or all databases](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
 
 * [How to snapshot Nun-db databases from memory to disk](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
@@ -81,6 +83,7 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 # TLDR version
 nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-db $DB_NAME $DB_TOKEN; snapshot"
 ```
+* [Introduction to manage conflicts in Nun-DB](https://mateusfreira.github.io/@mateusfreira-dealing-with-conflicts-in-nun-db/)
 
 ## Technical documentations
 
