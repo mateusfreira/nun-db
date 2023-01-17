@@ -133,7 +133,7 @@ pub fn replicate_request(
             }
 
             Request::Resolve {
-                opp_id,
+                opp_id: _,
                 db_name,
                 key,
                 value,
@@ -147,15 +147,6 @@ pub fn replicate_request(
                 replicate_web(
                     replication_sender,
                     get_replicate_message(db_name.to_string(), key.clone(), value.clone(), version),
-                );
-                replicate_web(
-                    replication_sender,
-                    get_replicate_message(
-                        db_name.to_string(),
-                        format!("$$conflitct_{opp_id}", opp_id = opp_id),
-                        value.clone(),
-                        -1,
-                    ),
                 );
                 Response::Ok {}
             }
