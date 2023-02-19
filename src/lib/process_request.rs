@@ -453,6 +453,18 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                         Response::Ok {}
                     });
                 }
+                "list-dbs" => {
+                    let dbs_name_and_strategy = dbs.get_dbs_name_strategy().join("\n");
+                    match client
+                        .sender
+                        .clone()
+                        .try_send(format_args!("dbs-list \n{}\n", dbs_name_and_strategy).to_string())
+                    {
+                        Err(e) => log::warn!("Request::dbs-list sender.send Error: {}", e),
+                        _ => (),
+                    }
+
+                }
 
                 _ => log::info!("Invalid debug command"),
             };
