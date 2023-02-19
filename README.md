@@ -402,6 +402,15 @@ pending-ops #list-of-pending-ops#
 debug pending-conflicts
 # result (Must be connected to a database with use *** ***)
 pending-conflicts #list-of-pending-conflicts#
+
+debug list-dbs
+# result (List the name and the strategy of the dbs one on each line)
+dbs-list
+sample : none
+vue : none
+test : arbiter
+analitcs-blog : none
+$admin : newer
 ```
 
 ### Arbiter
