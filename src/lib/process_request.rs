@@ -65,11 +65,11 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Ok {}
         }
 
-        Request::Get { key } => apply_to_database(&dbs, &client, &|_db| {
+        Request::Get { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             get_key_value(&key, &client.sender, _db)
         }),
 
-        Request::GetSafe { key } => apply_to_database(&dbs, &client, &|_db| {
+        Request::GetSafe { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             get_key_value_safe(&key, &client.sender, _db)
         }),
 
@@ -79,7 +79,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             key,
             value,
             version,
-        } => apply_to_database(&dbs, &client, &|_db| {
+        } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             let respose = set_key_value(key.clone(), value.clone(), version, _db, &dbs);
             if !dbs.is_primary() {
                 let db_name_state = _db.name.clone();
@@ -341,6 +341,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Value {
                 key: String::from("cluster-state"),
                 value: String::from(cluster_state_str),
+                version: -1,
             }
         }),
 
@@ -362,6 +363,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Value {
                 key: String::from("oplog-state"),
                 value: String::from(metrics_state),
+                version: -1,
             }
         }),
 
@@ -384,6 +386,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Value {
                 key: String::from("keys"),
                 value: String::from(keys),
+                version: -1,
             }
         }),
         Request::Acknowledge {
@@ -455,24 +458,19 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 }
                 "list-dbs" => {
                     let dbs_name_and_strategy = dbs.get_dbs_name_strategy().join("\n");
-                    match client
-                        .sender
-                        .clone()
-                        .try_send(format_args!("dbs-list \n{}\n", dbs_name_and_strategy).to_string())
-                    {
+                    match client.sender.clone().try_send(
+                        format_args!("dbs-list \n{}\n", dbs_name_and_strategy).to_string(),
+                    ) {
                         Err(e) => log::warn!("Request::dbs-list sender.send Error: {}", e),
                         _ => (),
                     }
-
                 }
 
                 _ => log::info!("Invalid debug command"),
             };
             Response::Ok {}
         }),
-        Request::Arbiter {} => {
-            apply_to_database(&dbs, &client, &|db| db.register_arbiter(&client))
-        }
+        Request::Arbiter {} => apply_to_database(&dbs, &client, &|db| db.register_arbiter(&client)),
         Request::Resolve {
             opp_id,
             db_name,
@@ -740,6 +738,26 @@ mod tests {
         process_request("set name1 jose", &dbs, &mut client);
         process_request("ls a", &dbs, &mut client);
         assert_received(&mut receiver, "keys ,name,name1\n");
+    }
+
+    #[test]
+    fn should_not_allow_non_admins_to_read_secure_keys() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("get $$token", &dbs, &mut client);
+        assert_received(&mut receiver, "value test-1\n");
+        client.auth.store(false, Ordering::Relaxed);// Unauth
+        let r = process_request("get $$token", &dbs, &mut client);
+        if let Response::Error { msg: e } = r {
+            assert_eq!(e, "To read security keys you must auth as an admin!");
+        } else {
+            panic!("Should return error");
+        }
     }
 
     #[test]

@@ -29,10 +29,18 @@ pub fn get_replicate_message(db_name: String, key: String, value: String, versio
     return format!("replicate {} {} {} {}", db_name, key, version, value);
 }
 
-pub fn get_replicate_resolve_message(opp_id: u64, db_name: String, key: String, value: String, version: i32) -> String {
-    return format!("resolve {} {} {} {} {}", opp_id, db_name, key, version, value);
+pub fn get_replicate_resolve_message(
+    opp_id: u64,
+    db_name: String,
+    key: String,
+    value: String,
+    version: i32,
+) -> String {
+    return format!(
+        "resolve {} {} {} {} {}",
+        opp_id, db_name, key, version, value
+    );
 }
-
 
 pub fn get_resolve_message(
     opp_id: u64,
@@ -151,7 +159,13 @@ pub fn replicate_request(
                 );
                 replicate_web(
                     replication_sender,
-                    get_replicate_resolve_message(opp_id, db_name.to_string(), key.clone(), value.clone(), version),
+                    get_replicate_resolve_message(
+                        opp_id,
+                        db_name.to_string(),
+                        key.clone(),
+                        value.clone(),
+                        version,
+                    ),
                 );
                 Response::Ok {}
             }
@@ -801,7 +815,11 @@ fn make_create_db_command(db: &Database) -> String {
     let db_name = db.name.clone();
     let key_str = String::from(TOKEN_KEY);
     let token = match get_key_value_new(&key_str, &db) {
-        Response::Value { key: _key, value } => value,
+        Response::Value {
+            key: _key,
+            value,
+            version: _,
+        } => value,
         _ => String::from("none"),
     };
     format!("create-db {} {}", db_name, token)
@@ -858,7 +876,11 @@ fn get_pendding_opps_since_from_sync(since: u64, dbs: &Arc<Databases>) -> Vec<St
                     last_db = db_name;
                 }
                 let value = match get_key_value_new(key_str, &db) {
-                    Response::Value { key: _key, value } => value,
+                    Response::Value {
+                        key: _key,
+                        value,
+                        version: _,
+                    } => value,
                     _ => String::from(""),
                 };
                 format!("replicate {} {} {}", db_name, key_str, value)
@@ -1244,6 +1266,7 @@ mod tests {
         let resp_get = Response::Value {
             key: "any_key".to_string(),
             value: "any_value".to_string(),
+            version: 1,
         };
 
         let db_name = "some".to_string();
@@ -1255,7 +1278,11 @@ mod tests {
             resp_get,
             &sender,
         ) {
-            Response::Value { key: _, value: _ } => true,
+            Response::Value {
+                key: _,
+                value: _,
+                version: _,
+            } => true,
             _ => false,
         };
         assert!(result, "should have returned an value response!");

@@ -1,3 +1,4 @@
+use crate::security::SECURY_KEYS_PREFIX;
 use futures::channel::mpsc::Sender;
 use log;
 use std::collections::HashMap;
@@ -43,6 +44,22 @@ pub fn apply_to_database(
 ) -> Response {
     let db_name = client.selected_db_name();
     apply_to_database_name(dbs, client, &db_name, opp)
+}
+
+pub fn apply_if_safe_access(
+    dbs: &Arc<Databases>,
+    client: &Client,
+    key: &String,
+    opp: &dyn Fn(&Database) -> Response,
+) -> Response {
+    println!("apply_if_safe_access key: {} , {}", key,  client.is_admin_auth());
+    if key.starts_with(SECURY_KEYS_PREFIX) && !client.is_admin_auth(){
+        Response::Error {
+            msg: "To read security keys you must auth as an admin!".to_string(),
+        }
+    } else {
+        apply_to_database(dbs, client, opp)
+    }
 }
 
 pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Response {
@@ -119,52 +136,57 @@ pub fn snapshot_db(db: &Database, dbs: &Databases, reclaim_space: bool) -> Respo
 }
 
 pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Response {
-    let db = db.map.read().unwrap();
-    let value = match db.get(&key.to_string()) {
-        Some(value) => value.to_string(),
-        None => String::from("<Empty>"),
-    };
-    match sender
-        .clone()
-        .try_send(format_args!("value {}\n", value.to_string()).to_string())
+    let result = get_key_value_new(key, &db);
+    if let Response::Value {
+        key: _,
+        value,
+        version: _,
+    } = result.clone()
     {
-        Ok(_n) => (),
-        Err(e) => log::warn!("Request::Get sender.send Error: {}", e),
+        match sender
+            .clone()
+            .try_send(format_args!("value {}\n", value.to_string()).to_string())
+        {
+            Err(e) => log::warn!("Request::Get sender.send Error: {}", e),
+            _ => (),
+        }
     }
-    Response::Value {
-        key: key.clone(),
-        value: value.to_string(),
-    }
+
+    result
 }
 
 pub fn get_key_value_safe(key: &String, sender: &Sender<String>, db: &Database) -> Response {
+    let result = get_key_value_new(key, &db);
+    if let Response::Value {
+        key: _,
+        version,
+        value,
+    } = result.clone()
+    {
+        match sender
+            .clone()
+            .try_send(format_args!("value-version {} {}\n", version, value).to_string())
+        {
+            Ok(_n) => (),
+            Err(e) => log::warn!("Request::Get sender.send Error: {}", e),
+        }
+    }
+    result
+}
+
+/**
+ * All get keys functions must call this function and parse the result from it
+ */
+pub fn get_key_value_new(key: &String, db: &Database) -> Response {
     let db = db.map.read().unwrap();
     let (value, version) = match db.get(&key.to_string()) {
         Some(value) => (value.to_string(), value.version),
-        None => (String::from("<Empty>"), 0),
-    };
-    match sender
-        .clone()
-        .try_send(format_args!("value-version {} {}\n", version, value).to_string())
-    {
-        Ok(_n) => (),
-        Err(e) => log::warn!("Request::Get sender.send Error: {}", e),
-    }
-    Response::Value {
-        key: key.clone(),
-        value: value.to_string(),
-    }
-}
-
-pub fn get_key_value_new(key: &String, db: &Database) -> Response {
-    let db = db.map.read().unwrap();
-    let value = match db.get(&key.to_string()) {
-        Some(value) => value.to_string(),
-        None => String::from("<Empty>"),
+        None => (String::from("<Empty>"), 1 as i32),
     };
     Response::Value {
         key: key.clone(),
         value: value.to_string(),
+        version,
     }
 }
 

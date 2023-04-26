@@ -1,4 +1,3 @@
-
 use atomic_float::*;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
@@ -158,8 +157,8 @@ pub enum ConsensuStrategy {
 }
 
 impl fmt::Display for ConsensuStrategy {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> { 
-           write!(f, "{}", self.to_string())
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        write!(f, "{}", self.to_string())
     }
 }
 impl From<i32> for ConsensuStrategy {
@@ -1009,11 +1008,9 @@ impl Databases {
     pub fn get_dbs_name_strategy(&self) -> Vec<String> {
         let dbs = self.map.read().unwrap();
         let dbs = dbs.values();
-        dbs
-            .into_iter()
-            .map(|db|{
-                format!("{} : {}", db.name, db.metadata.consensus_strategy)
-            }).collect()
+        dbs.into_iter()
+            .map(|db| format!("{} : {}", db.name, db.metadata.consensus_strategy))
+            .collect()
     }
 }
 
@@ -1199,6 +1196,7 @@ pub enum Response {
     Value {
         key: String,
         value: String,
+        version: i32,
     },
     Ok {},
     Set {

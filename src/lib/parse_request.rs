@@ -732,13 +732,18 @@ mod tests {
 
     #[test]
     fn should_parse_set_with_version_and_json() -> Result<(), String> {
-        match Request::parse("set-safe obj_new 1673521342 {\"_id\":1673521342,\"value\":{\"name\":\"name^2\"}}\n") {
+        match Request::parse(
+            "set-safe obj_new 1673521342 {\"_id\":1673521342,\"value\":{\"name\":\"name^2\"}}\n",
+        ) {
             Ok(Request::Set {
                 key,
                 value,
                 version,
             }) => {
-                if key == "obj_new" && value == "{\"_id\":1673521342,\"value\":{\"name\":\"name^2\"}}" && version == 1673521342 {
+                if key == "obj_new"
+                    && value == "{\"_id\":1673521342,\"value\":{\"name\":\"name^2\"}}"
+                    && version == 1673521342
+                {
                     Ok(())
                 } else {
                     Err(String::from("Wrong parse"))
@@ -747,7 +752,6 @@ mod tests {
             _ => Err(String::from("get foo should be parsed to set command")),
         }
     }
-
 
     #[test]
     fn should_parse_set_safe_without_version() -> Result<(), String> {

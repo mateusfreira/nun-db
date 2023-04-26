@@ -84,7 +84,7 @@ impl Database {
                              * Return the old value or  the key of the pending conflict.
                              * 1. @todo to make sure it is not resolved
                              * 2. @todo chaing multiple changes to test behavior to
-                             * 3. @todo coordenate chain in the server or in the client?
+                             *
                              */
                             let (old_value_or_conflict_key, change_version): (String, i32) =
                                 if old_version == IN_CONFLICT_RESOLUTION_KEY_VERSION {
@@ -102,10 +102,6 @@ impl Database {
                                     (old_value.to_string(), old_version)
                                 };
                             log::info!("Sending conflict to the arbiter {}", key);
-                            // Need may fail to send
-                            // May fail to reply to the client
-                            // May disconnection before getting a response
-                            // May be a good idea to treat at the client
                             let resolve_message = format!(
                                 "{prefix} {opp_id} {db} {old_version} {key} {old_value} {value}",
                                 prefix = RESOLVE_KEY_PREFIX,
@@ -227,17 +223,17 @@ impl Database {
         // Replicate conflict keys to other replicas
         replicate_change(&conflict_register_change, &self, &dbs);
         if self.has_pendding_conflict(&change.key) {
-        let pendding_conflict = self.list_conflicts_keys(&change.key);
-        let values = pendding_conflict
-            .iter()
-            .map(|key| self.get_value(key.clone()).unwrap().value)
-            .collect::<Vec<_>>();
-        println!(
-            "has_pendding_conflict conflict change key: {} version : {}, list: {}",
-            change.key,
-            change.version,
-            values.join("-")
-        );
+            let pendding_conflict = self.list_conflicts_keys(&change.key);
+            let values = pendding_conflict
+                .iter()
+                .map(|key| self.get_value(key.clone()).unwrap().value)
+                .collect::<Vec<_>>();
+            println!(
+                "has_pendding_conflict conflict change key: {} version : {}, list: {}",
+                change.key,
+                change.version,
+                values.join("-")
+            );
             // If there is still open conflicts set version to conflicted
             self.set_value(
                 &change
@@ -424,15 +420,14 @@ mod tests {
             ))
         );
 
-        let resolve_change = Change {  
-            opp_id:  change1.opp_id, 
-            key: String::from("some"), 
+        let resolve_change = Change {
+            opp_id: change1.opp_id,
+            key: String::from("some"),
             value: String::from("new_value"),
             version: 2,
             resolve_conflict: false,
         };
         let _resolved = db.resolve_conflit(resolve_change.clone(), &dbs);
-
 
         /*
          * Change one and 2  conflicted resolved to new_value
@@ -455,9 +450,9 @@ mod tests {
         let value = db.get_value(String::from("some")).unwrap();
         assert_eq!(value.version, IN_CONFLICT_RESOLUTION_KEY_VERSION);
 
-        let resolve_change_2 = Change {  
-            opp_id:  change3.opp_id, 
-            key: String::from("some"), 
+        let resolve_change_2 = Change {
+            opp_id: change3.opp_id,
+            key: String::from("some"),
             value: String::from("new_value2"),
             version: 2,
             resolve_conflict: false,
