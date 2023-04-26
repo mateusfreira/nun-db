@@ -52,11 +52,6 @@ pub fn apply_if_safe_access(
     key: &String,
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
-    println!(
-        "apply_if_safe_access key: {} , {}",
-        key,
-        client.is_admin_auth()
-    );
     if key.starts_with(SECURY_KEYS_PREFIX) && !client.is_admin_auth() {
         Response::Error {
             msg: "To read security keys you must auth as an admin!".to_string(),
