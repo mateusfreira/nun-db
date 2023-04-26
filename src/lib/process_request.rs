@@ -751,7 +751,7 @@ mod tests {
         process_request("use-db test test-1", &dbs, &mut client);
         process_request("get $$token", &dbs, &mut client);
         assert_received(&mut receiver, "value test-1\n");
-        client.auth.store(false, Ordering::Relaxed);// Unauth
+        client.auth.store(false, Ordering::Relaxed); // Unauth
         let r = process_request("get $$token", &dbs, &mut client);
         if let Response::Error { msg: e } = r {
             assert_eq!(e, "To read security keys you must auth as an admin!");
