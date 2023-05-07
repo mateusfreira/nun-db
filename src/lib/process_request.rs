@@ -73,7 +73,9 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             get_key_value_safe(&key, &client.sender, _db)
         }),
 
-        Request::Remove { key } => apply_to_database(&dbs, &client, &|_db| remove_key(&key, _db)),
+        Request::Remove { key } => {
+            apply_if_safe_access(&dbs, &client, &key, &|_db| remove_key(&key, _db))
+        }
 
         Request::Set {
             key,
@@ -724,7 +726,6 @@ mod tests {
         process_request("keys a", &dbs, &mut client);
         assert_received(&mut receiver, "keys ,name,name1\n");
     }
-
     #[test]
     fn should_return_keys_contains_with_using_alias() {
         let (mut receiver, dbs, mut client) = create_default_args();
@@ -738,6 +739,66 @@ mod tests {
         process_request("set name1 jose", &dbs, &mut client);
         process_request("ls a", &dbs, &mut client);
         assert_received(&mut receiver, "keys ,name,name1\n");
+    }
+
+    #[test]
+    fn should_not_allow_to_remove_token_key() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("get $$token", &dbs, &mut client);
+        assert_received(&mut receiver, "value test-1\n");
+        let r = process_request("remove $$token", &dbs, &mut client);
+        if let Response::Error { msg: e } = r {
+            assert_eq!(e, "$$token key cannot be removed");
+        } else {
+            panic!("Should return error");
+        }
+    }
+
+    #[test]
+    fn should_not_allow_non_admins_to_remove_secure_keys() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("get $$token", &dbs, &mut client);
+        process_request("set $$jose 1", &dbs, &mut client);
+        assert_received(&mut receiver, "value test-1\n");
+        client.auth.store(false, Ordering::Relaxed); // Unauth
+        let r = process_request("remove $$jose", &dbs, &mut client);
+        if let Response::Error { msg: e } = r {
+            assert_eq!(e, "To read security keys you must auth as an admin!");
+        } else {
+            panic!("Should return error");
+        }
+    }
+
+    #[test]
+    fn should_not_allow_non_admins_to_write_secure_keys() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("get $$token", &dbs, &mut client);
+        assert_received(&mut receiver, "value test-1\n");
+        client.auth.store(false, Ordering::Relaxed); // Unauth
+        let r = process_request("set $$token", &dbs, &mut client);
+        if let Response::Error { msg: e } = r {
+            assert_eq!(e, "To read security keys you must auth as an admin!");
+        } else {
+            panic!("Should return error");
+        }
     }
 
     #[test]

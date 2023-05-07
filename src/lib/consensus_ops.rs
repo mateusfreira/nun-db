@@ -2,7 +2,7 @@ use crate::bo::*;
 use crate::replication_ops::*;
 use std::sync::Arc;
 
-pub const CONFLICTS_KEY: &'static str = "$$conflicts";
+pub const CONFLICTS_KEY: &'static str = "$conflicts";
 pub const RESOLVED_KEY_PREFIX: &'static str = "resolved";
 pub const RESOLVE_KEY_PREFIX: &'static str = "resolve";
 

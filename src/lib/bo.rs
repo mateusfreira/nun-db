@@ -565,50 +565,49 @@ impl Database {
     }
 
     pub fn remove_value(&self, key: String) -> Response {
-        let mut watchers = self.watchers.map.write().unwrap();
-        {
-            if let Some(value) = self.get_value(key.clone()) {
-                // If deleted before the key is in disk remove direct from memory
-                if value.state == ValueStatus::New {
-                    let mut db = self.map.write().unwrap();
-                    db.remove(&key);
-                } else {
-                    // value.
-                    self.set_value_version(
-                        &key,
-                        &String::from("<Empty>"),
-                        value.version + 1,
-                        ValueStatus::Deleted,
-                        value.value_disk_addr,
-                        value.key_disk_addr,
-                        value.opp_id,
-                    );
-                }
-            }
-        } // Release the lock
-        match watchers.get_mut(&key) {
-            Some(senders) => {
-                for sender in senders {
-                    log::debug!("Sending to another client");
-                    match sender
-                        .try_send(format_args!("changed {} <Empty>\n", key.to_string()).to_string())
-                    {
-                        Ok(_n) => (),
-                        Err(e) => log::warn!("Request::Remove sender.send Error: {}", e),
+        match key {
+            key if key == TOKEN_KEY => Response::Error {
+                msg: "$$token key cannot be removed".to_string(),
+            },
+            key => {
+                {
+                    if let Some(value) = self.get_value(key.clone()) {
+                        // If deleted before the key is in disk remove direct from memory
+                        if value.state == ValueStatus::New {
+                            let mut db = self.map.write().unwrap();
+                            db.remove(&key);
+                        } else {
+                            // value.
+                            self.set_value_version(
+                                &key,
+                                &String::from("<Empty>"),
+                                value.version + 1,
+                                ValueStatus::Deleted,
+                                value.value_disk_addr,
+                                value.key_disk_addr,
+                                value.opp_id,
+                            );
+                        }
                     }
-
-                    match sender.clone().try_send(
-                        format_args!("changed-version {} {} <Empty>\n", key.to_string(), -1)
-                            .to_string(),
-                    ) {
-                        Ok(_n) => (),
-                        Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
+                } // Release the lock
+                let mut watchers = self.watchers.map.write().unwrap();
+                match watchers.get_mut(&key) {
+                    Some(senders) => {
+                        for sender in senders {
+                            match sender
+                                .clone()
+                                .try_send(format_args!("removed {}\n", key.to_string()).to_string())
+                            {
+                                Ok(_n) => (),
+                                Err(e) => log::warn!("Request::Set sender.send Error: {}", e),
+                            }
+                        }
                     }
+                    _ => {}
                 }
+                Response::Ok {}
             }
-            _ => {}
         }
-        Response::Ok {}
     }
 
     pub fn get_value(&self, key: String) -> Option<Value> {
