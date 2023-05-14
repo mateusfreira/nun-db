@@ -449,6 +449,5 @@ $connections
 * Key used to register client as arbiter for conflict resolution
 
 ## Secure keys
-
-* All keys prefixed with `$$` will be considered secure by Nun-db and will only allow database admin authentication to `set`, `get`, or `remove` them. These are useful if admins want to store information that should not be leaked to the front-end. 
+* All keys prefixed with `$$` will be considered secure by Nun-db and will only allow database admin authentication to `set`, `get`, or `remove` them. These are useful if admins want to store information that should not be leaked to any client. 
 * The key `$$token` cannot be removed even with admin credentials.
