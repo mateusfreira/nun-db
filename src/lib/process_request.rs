@@ -29,7 +29,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             respose
         }),
 
-        Request::Increment { key, inc } => apply_to_database(&dbs, &client, &|_db| {
+        Request::Increment { key, inc } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             if dbs.is_primary() {
                 _db.inc_value(key.to_string(), inc);
             } else {
@@ -65,21 +65,23 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Ok {}
         }
 
-        Request::Get { key } => apply_to_database(&dbs, &client, &|_db| {
+        Request::Get { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             get_key_value(&key, &client.sender, _db)
         }),
 
-        Request::GetSafe { key } => apply_to_database(&dbs, &client, &|_db| {
+        Request::GetSafe { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             get_key_value_safe(&key, &client.sender, _db)
         }),
 
-        Request::Remove { key } => apply_to_database(&dbs, &client, &|_db| remove_key(&key, _db)),
+        Request::Remove { key } => {
+            apply_if_safe_access(&dbs, &client, &key, &|_db| remove_key(&key, _db))
+        }
 
         Request::Set {
             key,
             value,
             version,
-        } => apply_to_database(&dbs, &client, &|_db| {
+        } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             let respose = set_key_value(key.clone(), value.clone(), version, _db, &dbs);
             if !dbs.is_primary() {
                 let db_name_state = _db.name.clone();
@@ -170,7 +172,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Ok {}
         }),
 
-        Request::Watch { key } => apply_to_database(&dbs, &client, &|_db| {
+        Request::Watch { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             watch_key(&key, &client.sender, _db);
             Response::Ok {}
         }),
@@ -341,6 +343,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Value {
                 key: String::from("cluster-state"),
                 value: String::from(cluster_state_str),
+                version: -1,
             }
         }),
 
@@ -362,6 +365,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Value {
                 key: String::from("oplog-state"),
                 value: String::from(metrics_state),
+                version: -1,
             }
         }),
 
@@ -384,6 +388,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Value {
                 key: String::from("keys"),
                 value: String::from(keys),
+                version: -1,
             }
         }),
         Request::Acknowledge {
@@ -455,24 +460,19 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 }
                 "list-dbs" => {
                     let dbs_name_and_strategy = dbs.get_dbs_name_strategy().join("\n");
-                    match client
-                        .sender
-                        .clone()
-                        .try_send(format_args!("dbs-list \n{}\n", dbs_name_and_strategy).to_string())
-                    {
+                    match client.sender.clone().try_send(
+                        format_args!("dbs-list \n{}\n", dbs_name_and_strategy).to_string(),
+                    ) {
                         Err(e) => log::warn!("Request::dbs-list sender.send Error: {}", e),
                         _ => (),
                     }
-
                 }
 
                 _ => log::info!("Invalid debug command"),
             };
             Response::Ok {}
         }),
-        Request::Arbiter {} => {
-            apply_to_database(&dbs, &client, &|db| db.register_arbiter(&client))
-        }
+        Request::Arbiter {} => apply_to_database(&dbs, &client, &|db| db.register_arbiter(&client)),
         Request::Resolve {
             opp_id,
             db_name,
@@ -645,13 +645,7 @@ mod tests {
 
     #[test]
     fn should_return_only_not_deleted_keys() {
-        let (mut receiver, dbs, mut client) = create_default_args();
-        assert_eq!(client.auth.load(Ordering::SeqCst), false);
-        process_request("auth user token", &dbs, &mut client);
-        assert_received(&mut receiver, "valid auth\n");
-        process_request("create-db test test-1", &dbs, &mut client);
-        assert_received(&mut receiver, "create-db success\n");
-
+        let (mut _receiver, dbs, mut _client) = create_test_db();
         // New client connected without admin auth
         let (mut receiver, _, mut client) = create_default_args();
         process_request("use-db test test-1", &dbs, &mut client);
@@ -666,13 +660,7 @@ mod tests {
 
     #[test]
     fn should_return_secret_keys_if_admin_auth() {
-        let (mut receiver, dbs, mut client) = create_default_args();
-        assert_eq!(client.auth.load(Ordering::SeqCst), false);
-        process_request("auth user token", &dbs, &mut client);
-        assert_received(&mut receiver, "valid auth\n");
-        process_request("create-db test test-1", &dbs, &mut client);
-        assert_received(&mut receiver, "create-db success\n");
-        process_request("use-db test test-1", &dbs, &mut client);
+        let (mut receiver, dbs, mut client) = create_test_db();
         process_request("set name jose", &dbs, &mut client);
         process_request("set name1 jose", &dbs, &mut client);
         process_request("keys", &dbs, &mut client);
@@ -684,13 +672,7 @@ mod tests {
 
     #[test]
     fn should_return_keys_starting_with() {
-        let (mut receiver, dbs, mut client) = create_default_args();
-        assert_eq!(client.auth.load(Ordering::SeqCst), false);
-        process_request("auth user token", &dbs, &mut client);
-        assert_received(&mut receiver, "valid auth\n");
-        process_request("create-db test test-1", &dbs, &mut client);
-        assert_received(&mut receiver, "create-db success\n");
-        process_request("use-db test test-1", &dbs, &mut client);
+        let (mut receiver, dbs, mut client) = create_test_db();
         process_request("set name jose", &dbs, &mut client);
         process_request("set name1 jose", &dbs, &mut client);
         process_request("keys name*", &dbs, &mut client);
@@ -699,13 +681,7 @@ mod tests {
 
     #[test]
     fn should_return_keys_ending_with() {
-        let (mut receiver, dbs, mut client) = create_default_args();
-        assert_eq!(client.auth.load(Ordering::SeqCst), false);
-        process_request("auth user token", &dbs, &mut client);
-        assert_received(&mut receiver, "valid auth\n");
-        process_request("create-db test test-1", &dbs, &mut client);
-        assert_received(&mut receiver, "create-db success\n");
-        process_request("use-db test test-1", &dbs, &mut client);
+        let (mut receiver, dbs, mut client) = create_test_db();
         process_request("set name jose", &dbs, &mut client);
         process_request("set name1 jose", &dbs, &mut client);
         process_request("keys *1", &dbs, &mut client);
@@ -714,21 +690,111 @@ mod tests {
 
     #[test]
     fn should_return_keys_contains_with() {
-        let (mut receiver, dbs, mut client) = create_default_args();
-        assert_eq!(client.auth.load(Ordering::SeqCst), false);
-        process_request("auth user token", &dbs, &mut client);
-        assert_received(&mut receiver, "valid auth\n");
-        process_request("create-db test test-1", &dbs, &mut client);
-        assert_received(&mut receiver, "create-db success\n");
-        process_request("use-db test test-1", &dbs, &mut client);
+        let (mut receiver, dbs, mut client) = create_test_db();
         process_request("set name jose", &dbs, &mut client);
         process_request("set name1 jose", &dbs, &mut client);
         process_request("keys a", &dbs, &mut client);
         assert_received(&mut receiver, "keys ,name,name1\n");
     }
-
     #[test]
     fn should_return_keys_contains_with_using_alias() {
+        let (mut receiver, dbs, mut client) = create_test_db();
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("ls a", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,name,name1\n");
+    }
+
+    #[test]
+    fn should_not_allow_to_remove_token_key() {
+        let (mut receiver, dbs, mut client) = create_test_db();
+        process_request("get $$token", &dbs, &mut client);
+        assert_received(&mut receiver, "value test-1\n");
+        let r = process_request("remove $$token", &dbs, &mut client);
+        if let Response::Error { msg: e } = r {
+            assert_eq!(e, "$$token key cannot be removed");
+        } else {
+            panic!("Should return error");
+        }
+    }
+
+    #[test]
+    fn should_not_allow_non_admins_to_remove_secure_keys() {
+        let (mut receiver, dbs, mut client) = create_test_db();
+        process_request("get $$token", &dbs, &mut client);
+        process_request("set $$jose 1", &dbs, &mut client);
+        assert_received(&mut receiver, "value test-1\n");
+        client.auth.store(false, Ordering::Relaxed); // Unauth
+        let r = process_request("remove $$jose", &dbs, &mut client);
+        if let Response::Error { msg: e } = r {
+            assert_eq!(e, "To read security keys you must auth as an admin!");
+        } else {
+            panic!("Should return error");
+        }
+    }
+
+    #[test]
+    fn should_not_allow_non_admins_to_write_secure_keys() {
+        let (mut receiver, dbs, mut client) = create_test_db();
+        process_request("get $$token", &dbs, &mut client);
+        assert_received(&mut receiver, "value test-1\n");
+        client.auth.store(false, Ordering::Relaxed); // Unauth
+        let r = process_request("set $$token", &dbs, &mut client);
+        if let Response::Error { msg: e } = r {
+            assert_eq!(e, "To read security keys you must auth as an admin!");
+        } else {
+            panic!("Should return error");
+        }
+    }
+
+    #[test]
+    fn should_increment() {
+        let (mut receiver, dbs, mut client) = create_test_db();
+        process_request("increment some", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value 1\n");
+        process_request("increment some", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value 2\n");
+        process_request("increment some -1", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value 1\n");
+
+        process_request("increment some 2", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value 3\n");
+    }
+
+    #[test]
+    fn should_not_increment_private_key_if_not_admin() {
+        let (mut receiver, dbs, mut client) = create_test_db();
+        process_request("increment $$jose", &dbs, &mut client);
+        process_request("get $$jose", &dbs, &mut client);
+        assert_received(&mut receiver, "value 1\n");
+        client.auth.store(false, Ordering::Relaxed); // Unauth
+        let r = process_request("increment $$jose", &dbs, &mut client);
+        if let Response::Error { msg: e } = r {
+            assert_eq!(e, "To read security keys you must auth as an admin!");
+        } else {
+            panic!("Should return error");
+        }
+    }
+
+    #[test]
+    fn should_not_watch_private_key_if_not_admin() {
+        let (mut _receiver, dbs, mut client) = create_test_db();
+        process_request("increment $$jose", &dbs, &mut client);
+        process_request("watch $$jose", &dbs, &mut client);
+        client.auth.store(false, Ordering::Relaxed); // Unauth
+        let r = process_request("watch $$jose", &dbs, &mut client);
+        if let Response::Error { msg: e } = r {
+            assert_eq!(e, "To read security keys you must auth as an admin!");
+        } else {
+            panic!("Should return error");
+        }
+    }
+
+    fn create_test_db() -> (Receiver<String>, Arc<Databases>, Client) {
         let (mut receiver, dbs, mut client) = create_default_args();
         assert_eq!(client.auth.load(Ordering::SeqCst), false);
         process_request("auth user token", &dbs, &mut client);
@@ -736,10 +802,28 @@ mod tests {
         process_request("create-db test test-1", &dbs, &mut client);
         assert_received(&mut receiver, "create-db success\n");
         process_request("use-db test test-1", &dbs, &mut client);
-        process_request("set name jose", &dbs, &mut client);
-        process_request("set name1 jose", &dbs, &mut client);
-        process_request("ls a", &dbs, &mut client);
-        assert_received(&mut receiver, "keys ,name,name1\n");
+        (receiver, dbs, client)
+    }
+
+
+    #[test]
+    fn should_not_allow_non_admins_to_read_secure_keys() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        assert_eq!(client.auth.load(Ordering::SeqCst), false);
+        process_request("auth user token", &dbs, &mut client);
+        assert_received(&mut receiver, "valid auth\n");
+        process_request("create-db test test-1", &dbs, &mut client);
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("get $$token", &dbs, &mut client);
+        assert_received(&mut receiver, "value test-1\n");
+        client.auth.store(false, Ordering::Relaxed); // Unauth
+        let r = process_request("get $$token", &dbs, &mut client);
+        if let Response::Error { msg: e } = r {
+            assert_eq!(e, "To read security keys you must auth as an admin!");
+        } else {
+            panic!("Should return error");
+        }
     }
 
     #[test]

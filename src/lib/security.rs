@@ -1,6 +1,8 @@
 use crate::bo::*;
 use std::sync::Arc;
 
+pub const SECURY_KEYS_PREFIX: &'static str = "$$";
+
 pub fn clean_string_to_log(input: &str, dbs: &Arc<Databases>) -> String {
     let user_replacer: String = format!("{} ", &dbs.user.to_string());
     let pwd_replacer: String = format!("{}", &dbs.pwd.to_string());
