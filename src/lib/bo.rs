@@ -12,6 +12,7 @@ use std::time::UNIX_EPOCH;
 
 use crate::db_ops::*;
 use crate::disk_ops::*;
+use crate::security::SECURY_KEYS_PREFIX;
 
 pub const IN_CONFLICT_RESOLUTION_KEY_VERSION: i32 = -2;
 
@@ -513,7 +514,7 @@ impl Database {
                 .iter()
                 .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
                 .filter(|(key, _v)| query_function(&key, &pattern))
-                .filter(|(key, _v)| list_system_keys || !key.starts_with("$$"))
+                .filter(|(key, _v)| list_system_keys || !key.starts_with(&SECURY_KEYS_PREFIX.to_string()))
                 .map(|(key, _v)| format!("{}", key))
                 .collect()
         };
