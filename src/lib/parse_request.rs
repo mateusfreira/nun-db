@@ -1,53 +1,64 @@
 use crate::bo::*;
+use lazy_static::lazy_static;
 use log;
+use std::collections::HashMap;
+use once_cell::sync::Lazy;
+
+lazy_static! {
+    static ref PARSER_HASH_TABLE: HashMap<&'static str, fn(&mut std::str::SplitN<&str>) -> Result<Request, String>> = {
+        let mut map: HashMap<&str, fn(&mut std::str::SplitN<&str>) -> Result<Request, String>> =
+            HashMap::new();
+        map.insert("ack", parse_ack_command);
+        map.insert("arbiter", parse_arbiter_command);
+        map.insert("auth", parse_auth_command);
+        map.insert("cluster-state", |_| Ok(Request::ClusterState {}));
+
+        map.insert("create-db", parse_create_db_command);
+        map.insert("create-user", parse_create_user_command);
+
+        map.insert("debug", parse_debug_command);
+        map.insert("election", parse_election_command);
+
+        map.insert("get", parse_get_command);
+        map.insert("get-safe", parse_get_safe_command);
+        map.insert("increment", parse_increment_command);
+        map.insert("join", parse_join_command);
+        map.insert("keys", parse_keys_command);
+        map.insert("leave", parse_leave_command);
+        map.insert("ls", parse_keys_command);
+        map.insert("metrics-state", |x| Ok(Request::MetricsState {}));
+        map.insert("remove", parse_remove_command);
+        map.insert("replicate", parse_replicate_command);
+        map.insert("replicate-increment", parse_replicate_increment_command);
+        map.insert("replicate-join", parse_replicate_join_command);
+        map.insert("replicate-leave", parse_replicate_leave_command);
+        map.insert("replicate-remove", parse_replicate_remove_command);
+        map.insert("replicate-since", parse_replicate_since_command);
+        map.insert("replicate-snapshot", parse_replicate_snapshot_command);
+        map.insert("resolve", parse_resolve_command);
+        map.insert("rp", parse_rp_command);
+        map.insert("set", parse_set_command);
+        map.insert("set-primary", parse_set_primary_command);
+        map.insert("set-safe", parse_set_safe_command);
+        map.insert("set-secoundary", parse_set_secoundary_command);
+        map.insert("snapshot", parse_snapshot_command);
+        map.insert("unwatch", parse_unwatch_command);
+        map.insert("unwatch-all", |_| Ok(Request::UnWatchAll {}));
+        map.insert("use", parse_use_command);
+        map.insert("use-db", parse_use_command);
+        map.insert("watch", parse_watch_command);
+        map
+    };
+}
 
 impl Request {
     pub fn parse(input: &str) -> Result<Request, String> {
         let mut command = input.splitn(3, " ");
-        let parsed_command = match command.next() {
-            Some("ack") => parse_ack_command(&mut command),
-            Some("arbiter") => Ok(Request::Arbiter {}),
-            Some("auth") => parse_auth_command(&mut command),
-
-            Some("cluster-state") => Ok(Request::ClusterState {}),
-            Some("create-db") => parse_create_db_command(&mut command),
-            Some("create-user") => parse_create_user_command(&mut command),
-
-            Some("debug") => parse_debug_command(&mut command),
-            Some("election") => parse_election_command(&mut command),
-
-            Some("get") => parse_get_command(&mut command),
-            Some("get-safe") => parse_get_safe_command(&mut command),
-            Some("increment") => parse_increment_command(&mut command),
-            Some("join") => parse_join_command(&mut command),
-            Some("keys") => parse_keys_command(&mut command),
-            Some("leave") => parse_leave_command(&mut command),
-            Some("ls") => parse_keys_command(&mut command),
-            Some("metrics-state") => Ok(Request::MetricsState {}),
-            Some("remove") => parse_remove_command(&mut command),
-            Some("replicate") => parse_replicate_command(&mut command),
-            Some("replicate-increment") => parse_replicate_increment_command(&mut command),
-            Some("replicate-join") => parse_replicate_join_command(&mut command),
-            Some("replicate-leave") => parse_replicate_leave_command(&mut command),
-            Some("replicate-remove") => parse_replicate_remove_command(&mut command),
-            Some("replicate-since") => parse_replicate_since_command(&mut command),
-            Some("replicate-snapshot") => parse_replicate_snapshot_command(&mut command),
-            Some("resolve") => parse_resolve_command(&mut command),
-            Some("rp") => parse_rp_command(&mut command),
-            Some("set") => parse_set_command(&mut command),
-            Some("set-primary") => parse_set_primary_command(&mut command),
-            Some("set-safe") => parse_set_safe_command(&mut command),
-            Some("set-secoundary") => parse_set_secoundary_command(&mut command),
-            Some("snapshot") => parse_snapshot_command(&mut command),
-            Some("unwatch") => parse_unwatch_command(&mut command),
-            Some("unwatch-all") => Ok(Request::UnWatchAll {}),
-            Some("use") => parse_use_command(&mut command),
-            Some("use-db") => parse_use_command(&mut command),
-            Some("watch") => parse_watch_command(&mut command),
-            Some(cmd) => Err(format!("unknown command: {}", cmd)),
-            _ => Err(format!("no command sent")),
-        };
-        parsed_command
+        let cmd = command.next().unwrap_or("");
+        match PARSER_HASH_TABLE.get(cmd) {
+            Some(f) => f(&mut command),
+            None => Err(format!("unknown command: {}", cmd)),
+        }
     }
 }
 
@@ -120,7 +131,7 @@ fn parse_replicate_increment_command(
     Ok(Request::ReplicateIncrement {
         db: db_name.to_string(),
         key: key.to_string(),
-        inc: inc,
+        inc,
     })
 }
 fn parse_increment_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
@@ -345,6 +356,9 @@ fn parse_debug_command(command: &mut std::str::SplitN<&str>) -> Result<Request, 
         command: debug_command,
     })
 }
+fn parse_arbiter_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    Ok(Request::Arbiter {})
+}
 fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     let opp_id: u64 = match command.next() {
         Some(id_str) => match id_str.parse::<u64>() {
@@ -466,7 +480,7 @@ fn parse_replicate_remove_command(command: &mut std::str::SplitN<&str>) -> Resul
     };
     Ok(Request::ReplicateRemove {
         db: db.to_string(),
-        key: key,
+        key
     })
 }
 
@@ -485,7 +499,7 @@ fn parse_replicate_since_command(command: &mut std::str::SplitN<&str>) -> Result
     };
     Ok(Request::ReplicateSince {
         node_name: nome_name,
-        start_at: start_at,
+        start_at
     })
 }
 
@@ -666,6 +680,18 @@ mod tests {
             }
             _ => Err(String::from("get foo sould be parsed to Get command")),
         }
+    }
+
+    #[test]
+    fn should_parse_10000_commands_fast() -> Result<(), String> {
+        let start = std::time::Instant::now();
+        for _ in 0..1000 {
+            Request::parse("use-db foo some-key").unwrap();
+        }
+        let end = std::time::Instant::now();
+        println!("10000 commands took {:?}", end - start);
+        assert!(end - start < std::time::Duration::from_millis(1));
+        Ok(())
     }
 
     #[test]
