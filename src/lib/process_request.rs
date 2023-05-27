@@ -805,7 +805,6 @@ mod tests {
         (receiver, dbs, client)
     }
 
-
     #[test]
     fn should_not_allow_non_admins_to_read_secure_keys() {
         let (mut receiver, dbs, mut client) = create_default_args();

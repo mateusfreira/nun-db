@@ -512,10 +512,12 @@ impl Database {
                 .read()
                 .unwrap()
                 .iter()
-                .filter(|&(_k, v)| v.state != ValueStatus::Deleted)
-                .filter(|(key, _v)| query_function(&key, &pattern))
-                .filter(|(key, _v)| list_system_keys || !key.starts_with(&SECURY_KEYS_PREFIX.to_string()))
-                .map(|(key, _v)| format!("{}", key))
+                .filter(|(key, v)| {
+                    filter_system_keys(list_system_keys, key)
+                        && v.state != ValueStatus::Deleted
+                        && query_function(&key, &pattern)
+                })
+                .map(|(key, _v)| key.to_string())
                 .collect()
         };
         keys.sort();
@@ -771,6 +773,11 @@ impl Database {
         }
     }
 }
+
+fn filter_system_keys(list_system_keys: bool, key: &&String) -> bool {
+    list_system_keys || !key.starts_with(&SECURY_KEYS_PREFIX.to_string())
+}
+
 impl Databases {
     pub fn add_cluster_member(&self, member: ClusterMember) {
         //todo receive the data separated!!!
