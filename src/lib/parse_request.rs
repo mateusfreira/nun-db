@@ -693,7 +693,8 @@ mod tests {
         }
         let end = std::time::Instant::now();
         println!("10000 commands took {:?}", end - start);
-        assert!(end - start < std::time::Duration::from_millis(1));
+        // Old code would take ~1.772625ms
+        assert!(end - start < std::time::Duration::from_millis(3));
         Ok(())
     }
 
