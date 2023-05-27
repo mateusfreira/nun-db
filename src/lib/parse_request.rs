@@ -46,11 +46,16 @@ lazy_static! {
         map.insert("use", parse_use_command);
         map.insert("use-db", parse_use_command);
         map.insert("watch", parse_watch_command);
+        map.insert("list-commands" , parse_list_commands_command);
+
         map
     };
 }
 
 impl Request {
+    pub fn command_list() -> Vec<String> {
+        PARSER_HASH_TABLE.keys().map(|x| x.to_string()).collect()
+    }
     pub fn parse(input: &str) -> Result<Request, String> {
         let mut command = input.splitn(3, " ");
         if let Some(cmd) = command.next() {
@@ -529,6 +534,9 @@ fn parse_snapshot_command(command: &mut std::str::SplitN<&str>) -> Result<Reques
     })
 }
 
+fn parse_list_commands_command(_: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    Ok(Request::ListCommands {})
+}
 fn parse_watch_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     let key = match command.next() {
         Some(key) => key.replace("\n", ""),

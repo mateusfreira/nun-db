@@ -1193,6 +1193,7 @@ pub enum Request {
     Debug {
         command: String,
     },
+    ListCommands {},
     Arbiter {},
     Resolve {
         opp_id: u64,

@@ -583,6 +583,21 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             };
             return Response::Ok {};
         }
+        Request::ListCommands {  } => apply_if_auth(&client.auth, &|| {
+            let commands = Request::command_list();
+            let commands = commands.iter().fold(String::from(""), |current, acc| {
+                format!("{},{}", current, acc)
+            });
+            match client
+                .sender
+                .clone()
+                .try_send(format_args!("commands-list {}\n", commands).to_string())
+            {
+                Err(e) => log::warn!("Request::commands-list sender.send Error: {}", e),
+                _ => (),
+            };
+            Response::Ok {}
+        }),
     }
 }
 
@@ -932,5 +947,14 @@ mod tests {
             &dbs,
             &mut client,
         ));
+    }
+
+    #[test]
+    fn should_list_commands_avaliable() {
+        let (mut r, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        process_request("list-commands", &dbs, &mut client);
+        let result = r.try_next().unwrap().unwrap();
+        assert!(result.contains("create-db"));
     }
 }
