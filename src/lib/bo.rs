@@ -1133,9 +1133,14 @@ pub enum Request {
         name: String,
         strategy: ConsensuStrategy,
     },
+    CreateUser {
+        token: String,
+        user_name: String,
+    },
     UseDb {
         token: String,
         name: String,
+        user_name: Option<String>,
     },
     Snapshot {
         reclaim_space: bool,

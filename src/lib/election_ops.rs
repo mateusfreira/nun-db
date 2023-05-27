@@ -16,10 +16,10 @@ pub fn start_election(dbs: &Arc<Databases>) {
     match dbs
         .replication_sender
         .clone()
-        .try_send(format!("election cadidate {}", dbs.process_id))
+        .try_send(format!("election candidate {}", dbs.process_id))
     {
         Ok(_) => (),
-        Err(_) => log::warn!("Error election cadidate"),
+        Err(_) => log::warn!("Error election candidate"),
     }
     thread::sleep(time::Duration::from_millis(1000));
     if dbs.is_eligible() {

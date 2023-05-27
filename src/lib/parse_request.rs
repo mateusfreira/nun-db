@@ -13,163 +13,24 @@ impl Request {
                 Ok(Request::Watch { key })
             }
             Some("unwatch-all") => Ok(Request::UnWatchAll {}),
-            Some("keys") => {
-                let pattern = match command.next() {
-                    Some(pattren) => pattren.replace("\n", ""),
-                    None => "".to_string(),
-                };
-                Ok(Request::Keys { pattern })
-            }
-            Some("ls") => {
-                let pattern = match command.next() {
-                    Some(pattren) => pattren.replace("\n", ""),
-                    None => "".to_string(),
-                };
-                Ok(Request::Keys { pattern })
-            }
-            Some("snapshot") => {
-                let reclaim_space = command.next().unwrap_or("false");
-                Ok(Request::Snapshot {
-                    reclaim_space: reclaim_space == "true",
-                })
-            }
-            Some("replicate-snapshot") => {
-                let db_name = match command.next() {
-                    Some(db_name) => db_name.replace("\n", ""),
-                    None => return Err(format!("replicate-snapshot must contain a db name")),
-                };
-                let reclaim_space = match command.next() {
-                    Some(reclaim_space) => reclaim_space.replace("\n", "") == "true",
-                    None => false,
-                };
-                Ok(Request::ReplicateSnapshot {
-                    db: db_name,
-                    reclaim_space,
-                })
-            }
-            Some("replicate-since") => {
-                let nome_name = match command.next() {
-                    Some(db_name) => db_name.replace("\n", ""),
-                    None => return Err(format!("replicate-since must contain a node name")),
-                };
-
-                let start_at_str = match command.next() {
-                    Some(start_at_str) => start_at_str.replace("\n", ""),
-                    None => return Err(format!("replicate-since must contain a start at")),
-                };
-
-                let start_at = match start_at_str.parse::<u64>() {
-                    Ok(start_at) => start_at,
-                    Err(_) => return Err(format!("replicate-since start_at must be a u64")),
-                };
-
-                Ok(Request::ReplicateSince {
-                    node_name: nome_name,
-                    start_at: start_at,
-                })
-            }
+            Some("keys") => parse_keys_command(&mut command),
+            Some("ls") => parse_keys_command(&mut command),
+            Some("snapshot") => parse_snapshot_command(&mut command),
+            Some("replicate-snapshot") => parse_replicate_snapshot_command(&mut command),
+            Some("replicate-since") => parse_replicate_since_command(&mut command),
             Some("cluster-state") => Ok(Request::ClusterState {}),
             Some("metrics-state") => Ok(Request::MetricsState {}),
-            Some("election") => match command.next() {
-                Some("win") => Ok(Request::ElectionWin {}),
-                Some("cadidate") => {
-                    let process_id = match command.next() {
-                        Some(id) => id.parse::<u128>().unwrap(),
-                        None => return Err(format!("replicate-snapshot must contain a db name")),
-                    };
-                    Ok(Request::Election { id: process_id })
-                }
-                _ => Ok(Request::ElectionActive {}),
-            },
-            Some("join") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("join must contain a name")),
-                };
-                Ok(Request::Join { name: name })
-            }
-
-            Some("leave") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("leave must contain a name")),
-                };
-                Ok(Request::Leave { name: name })
-            }
-
-            Some("replicate-leave") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("leave must contain a name")),
-                };
-                Ok(Request::ReplicateLeave { name: name })
-            }
-
-            Some("replicate-join") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("join must contain a name")),
-                };
-                Ok(Request::ReplicateJoin { name: name })
-            }
-
-            Some("set-primary") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("set-primary must contain a name")),
-                };
-                Ok(Request::SetPrimary { name: name })
-            }
-
-            Some("set-secoundary") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("set-primary must contain a name")),
-                };
-                Ok(Request::SetScoundary { name: name })
-            }
-            Some("unwatch") => {
-                let key = match command.next() {
-                    Some(key) => key.replace("\n", ""),
-                    None => return Err(format!("unwatch must contain a key")),
-                };
-                Ok(Request::UnWatch { key })
-            }
-            Some("get") => {
-                let key = match command.next() {
-                    Some(key) => key.replace("\n", ""),
-                    None => return Err(format!("get must contain a key")),
-                };
-                Ok(Request::Get { key })
-            }
-            Some("get-safe") => {
-                let key = match command.next() {
-                    Some(key) => key.replace("\n", ""),
-                    None => return Err(format!("get-safe must contain a key")),
-                };
-                Ok(Request::GetSafe { key })
-            }
-            Some("set") => {
-                let key = match command.next() {
-                    Some(key) => key,
-                    None => {
-                        log::debug!("SET must be followed by a key");
-                        ""
-                    }
-                };
-                let value = match command.next() {
-                    Some(value) => value.replace("\n", ""),
-                    None => {
-                        log::debug!("SET needs a value");
-                        "".to_string()
-                    }
-                };
-                Ok(Request::Set {
-                    key: key.to_string(),
-                    value: value.to_string(),
-                    version: -1,
-                })
-            }
+            Some("election") => parse_election_command(&mut command),
+            Some("join") => parse_join_command(&mut command),
+            Some("leave") => parse_leave_command(&mut command),
+            Some("replicate-leave") => parse_replicate_leave_command(&mut command),
+            Some("replicate-join") => parse_replicate_join_command(&mut command),
+            Some("set-primary") => parse_set_primary_command(&mut command),
+            Some("set-secoundary") => parse_set_secoundary_command(&mut command),
+            Some("unwatch") => parse_unwatch_command(&mut command),
+            Some("get") => parse_get_command(&mut command),
+            Some("get-safe") => parse_get_safe_command(&mut command),
+            Some("set") => parse_set_command(&mut command),
             Some("set-safe") => {
                 let key = match command.next() {
                     Some(key) => key,
@@ -298,46 +159,9 @@ impl Request {
                     password: pwd.to_string().replace("\n", ""),
                 })
             }
-            Some("use") => {
-                let name = match command.next() {
-                    Some(name) => name,
-                    None => {
-                        log::debug!("UseDb needs to provide an db name");
-                        ""
-                    }
-                };
-                let token = match command.next() {
-                    Some(key) => String::from(key).replace("\n", ""),
-                    None => {
-                        log::debug!("UseDb needs and token");
-                        "".to_string()
-                    }
-                };
-                Ok(Request::UseDb {
-                    name: name.to_string(),
-                    token: token.to_string(),
-                })
-            }
-            Some("use-db") => {
-                let name = match command.next() {
-                    Some(name) => name,
-                    None => {
-                        log::debug!("UseDb needs to provide an db name");
-                        ""
-                    }
-                };
-                let token = match command.next() {
-                    Some(key) => String::from(key).replace("\n", ""),
-                    None => {
-                        log::debug!("UseDb needs and token");
-                        "".to_string()
-                    }
-                };
-                Ok(Request::UseDb {
-                    name: name.to_string(),
-                    token: token.to_string(),
-                })
-            }
+            Some("use") => parse_use_command(&mut command),
+            Some("use-db") => parse_use_command(&mut command),
+            Some("create-user") => make_create_user_request(&mut command),
             Some("create-db") => {
                 let name = match command.next() {
                     Some(key) => key,
@@ -568,6 +392,223 @@ impl Request {
     }
 }
 
+fn parse_set_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+
+                let key = match command.next() {
+                    Some(key) => key,
+                    None => {
+                        log::debug!("SET must be followed by a key");
+                        ""
+                    }
+                };
+                let value = match command.next() {
+                    Some(value) => value.replace("\n", ""),
+                    None => {
+                        log::debug!("SET needs a value");
+                        "".to_string()
+                    }
+                };
+                Ok(Request::Set {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                    version: -1,
+                })
+}
+fn parse_get_safe_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key.replace("\n", ""),
+        None => return Err(format!("get-safe must contain a key")),
+    };
+    Ok(Request::GetSafe { key })
+}
+fn parse_get_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key.replace("\n", ""),
+        None => return Err(format!("get must contain a key")),
+    };
+    Ok(Request::Get { key })
+}
+fn parse_unwatch_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key.replace("\n", ""),
+        None => return Err(format!("unwatch must contain a key")),
+    };
+    Ok(Request::UnWatch { key })
+}
+fn parse_set_secoundary_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("set-secoundary must contain a name")),
+    };
+    Ok(Request::SetScoundary { name })
+}
+fn parse_set_primary_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("set-primary must contain a name")),
+    };
+    Ok(Request::SetPrimary { name })
+}
+fn parse_replicate_join_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("join must contain a name")),
+    };
+    Ok(Request::ReplicateJoin { name })
+}
+
+fn parse_replicate_leave_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("leave must contain a name")),
+    };
+    Ok(Request::ReplicateLeave { name })
+}
+
+fn parse_leave_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("leave must contain a name")),
+    };
+    Ok(Request::Leave { name })
+}
+
+fn parse_join_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("join must contain a name")),
+    };
+    Ok(Request::Join { name: name })
+}
+
+fn parse_election_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    match command.next() {
+        Some("win") => Ok(Request::ElectionWin {}),
+        Some("candidate") => {
+            let process_id = match command.next() {
+                Some(id) => id.parse::<u128>().unwrap(),
+                None => return Err(format!("replicate-snapshot must contain a db name")),
+            };
+            Ok(Request::Election { id: process_id })
+        }
+        _ => Ok(Request::ElectionActive {}),
+    }
+}
+
+fn parse_replicate_since_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let nome_name = match command.next() {
+        Some(db_name) => db_name.replace("\n", ""),
+        None => return Err(format!("replicate-since must contain a node name")),
+    };
+    let start_at_str = match command.next() {
+        Some(start_at_str) => start_at_str.replace("\n", ""),
+        None => return Err(format!("replicate-since must contain a start at")),
+    };
+    let start_at = match start_at_str.parse::<u64>() {
+        Ok(start_at) => start_at,
+        Err(_) => return Err(format!("replicate-since start_at must be a u64")),
+    };
+    Ok(Request::ReplicateSince {
+        node_name: nome_name,
+        start_at: start_at,
+    })
+}
+
+fn parse_replicate_snapshot_command(
+    command: &mut std::str::SplitN<&str>,
+) -> Result<Request, String> {
+    let db_name = match command.next() {
+        Some(db_name) => db_name.replace("\n", ""),
+        None => return Err(format!("replicate-snapshot must contain a db name")),
+    };
+    let reclaim_space = match command.next() {
+        Some(reclaim_space) => reclaim_space.replace("\n", "") == "true",
+        None => false,
+    };
+    Ok(Request::ReplicateSnapshot {
+        db: db_name,
+        reclaim_space,
+    })
+}
+
+fn parse_snapshot_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let reclaim_space = command.next().unwrap_or("false");
+    Ok(Request::Snapshot {
+        reclaim_space: reclaim_space == "true",
+    })
+}
+
+fn parse_keys_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let pattern = match command.next() {
+        Some(pattren) => pattren.replace("\n", ""),
+        None => "".to_string(),
+    };
+    Ok(Request::Keys { pattern })
+}
+
+fn parse_use_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name,
+        None => {
+            log::debug!("UseDb needs to provide an db name");
+            ""
+        }
+    };
+
+    let mut rest = match command.next() {
+        Some(rest) => rest.splitn(2, " "),
+        None => {
+            log::debug!("set-safe must be followed by a version and a key");
+            return Err(String::from(
+                "set-safe must be followed by a version and key",
+            ));
+        }
+    };
+
+    let token_or_user_name = match rest.next() {
+        Some(key) => String::from(key).replace("\n", ""),
+        None => {
+            log::debug!("UseDb needs and token");
+            "".to_string()
+        }
+    };
+
+    println!("token_or_user_name: {}", token_or_user_name);
+    match rest.next() {
+        Some(token) => Ok(Request::UseDb {
+            name: name.to_string(),
+            token: token.to_string(),
+            user_name: Some(token_or_user_name.to_string()),
+        }),
+        None => Ok(Request::UseDb {
+            name: name.to_string(),
+            token: token_or_user_name.to_string(),
+            user_name: None,
+        }),
+    }
+}
+
+fn make_create_user_request(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let user_name = match command.next() {
+        Some(name) => name,
+        None => {
+            log::debug!("CreateUser needs to provide an user name");
+            ""
+        }
+    };
+    let token = match command.next() {
+        Some(key) => String::from(key).replace("\n", ""),
+        None => {
+            log::debug!("CreateUser needs and token");
+            "".to_string()
+        }
+    };
+    Ok(Request::CreateUser {
+        user_name: user_name.to_string(),
+        token: token.to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -575,8 +616,50 @@ mod tests {
     #[test]
     fn should_parse_use_db() -> Result<(), String> {
         match Request::parse("use-db foo some-key") {
-            Ok(Request::UseDb { token, name }) => {
+            Ok(Request::UseDb {
+                token,
+                name,
+                user_name: _,
+            }) => {
                 if name == "foo" && token == "some-key" {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from("get foo sould be parsed to Get command")),
+        }
+    }
+
+    #[test]
+    fn should_parse_use_db_with_user_name_and_token() -> Result<(), String> {
+        match Request::parse("use foo user-dush some-key") {
+            Ok(Request::UseDb {
+                token,
+                name,
+                user_name,
+            }) => {
+                if name == "foo" && token == "some-key" && user_name == Some("user-dush".to_owned())
+                {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from("get foo sould be parsed to Get command")),
+        }
+    }
+
+    #[test]
+    fn should_parse_use_db_with_user_name_and_token_with_user_db() -> Result<(), String> {
+        match Request::parse("use-db foo user-dush some-key") {
+            Ok(Request::UseDb {
+                token,
+                name,
+                user_name,
+            }) => {
+                if name == "foo" && token == "some-key" && user_name == Some("user-dush".to_owned())
+                {
                     Ok(())
                 } else {
                     Err(String::from("user should be foo and password bar"))
@@ -589,7 +672,11 @@ mod tests {
     #[test]
     fn should_parse_use() -> Result<(), String> {
         match Request::parse("use foo some-key") {
-            Ok(Request::UseDb { token, name }) => {
+            Ok(Request::UseDb {
+                token,
+                name,
+                user_name: _,
+            }) => {
                 if name == "foo" && token == "some-key" {
                     Ok(())
                 } else {
@@ -611,6 +698,22 @@ mod tests {
                 }
             }
             _ => Err(String::from("get-safe was not parsed correctly!")),
+        }
+    }
+
+    #[test]
+    fn should_parse_create_user() -> Result<(), String> {
+        match Request::parse("create-user foo bar") {
+            Ok(Request::CreateUser { user_name, token }) => {
+                if user_name == "foo" && token == "bar" {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from(
+                "create-user foo bar should be parsed to CreateUser command",
+            )),
         }
     }
 
