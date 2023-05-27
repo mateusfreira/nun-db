@@ -25,7 +25,7 @@ lazy_static! {
         map.insert("keys", parse_keys_command);
         map.insert("leave", parse_leave_command);
         map.insert("ls", parse_keys_command);
-        map.insert("metrics-state", |x| Ok(Request::MetricsState {}));
+        map.insert("metrics-state", |_| Ok(Request::MetricsState {}));
         map.insert("remove", parse_remove_command);
         map.insert("replicate", parse_replicate_command);
         map.insert("replicate-increment", parse_replicate_increment_command);
@@ -363,7 +363,7 @@ fn parse_debug_command(command: &mut std::str::SplitN<&str>) -> Result<Request, 
         command: debug_command,
     })
 }
-fn parse_arbiter_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+fn parse_arbiter_command(_: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     Ok(Request::Arbiter {})
 }
 fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
