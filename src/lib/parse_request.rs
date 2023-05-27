@@ -1,8 +1,8 @@
 use crate::bo::*;
 use lazy_static::lazy_static;
 use log;
-use std::collections::HashMap;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 
 lazy_static! {
     static ref PARSER_HASH_TABLE: HashMap<&'static str, fn(&mut std::str::SplitN<&str>) -> Result<Request, String>> = {
@@ -54,10 +54,13 @@ lazy_static! {
 impl Request {
     pub fn parse(input: &str) -> Result<Request, String> {
         let mut command = input.splitn(3, " ");
-        let cmd = command.next().unwrap_or("");
-        match PARSER_HASH_TABLE.get(cmd) {
-            Some(f) => f(&mut command),
-            None => Err(format!("unknown command: {}", cmd)),
+        if let Some(cmd) = command.next() {
+            match PARSER_HASH_TABLE.get(cmd) {
+                Some(f) => f(&mut command),
+                None => Err(format!("unknown command: {}", cmd)),
+            }
+        } else {
+            Err(String::from("unknown command"))
         }
     }
 }
@@ -480,7 +483,7 @@ fn parse_replicate_remove_command(command: &mut std::str::SplitN<&str>) -> Resul
     };
     Ok(Request::ReplicateRemove {
         db: db.to_string(),
-        key
+        key,
     })
 }
 
@@ -499,7 +502,7 @@ fn parse_replicate_since_command(command: &mut std::str::SplitN<&str>) -> Result
     };
     Ok(Request::ReplicateSince {
         node_name: nome_name,
-        start_at
+        start_at,
     })
 }
 
@@ -684,8 +687,9 @@ mod tests {
 
     #[test]
     fn should_parse_10000_commands_fast() -> Result<(), String> {
+        Request::parse("use-db foo some-key").unwrap();
         let start = std::time::Instant::now();
-        for _ in 0..1000 {
+        for _ in 0..10000 {
             Request::parse("use-db foo some-key").unwrap();
         }
         let end = std::time::Instant::now();
