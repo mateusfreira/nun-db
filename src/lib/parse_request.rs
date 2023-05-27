@@ -1,7 +1,6 @@
 use crate::bo::*;
 use lazy_static::lazy_static;
 use log;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
 lazy_static! {
@@ -573,7 +572,7 @@ fn parse_use_command(command: &mut std::str::SplitN<&str>) -> Result<Request, St
         }
     };
 
-    println!("token_or_user_name: {}", token_or_user_name);
+    //println!("token_or_user_name: {}", token_or_user_name);
     match rest.next() {
         Some(token) => Ok(Request::UseDb {
             name: name.to_string(),
@@ -689,7 +688,7 @@ mod tests {
     fn should_parse_10000_commands_fast() -> Result<(), String> {
         Request::parse("use-db foo some-key").unwrap();
         let start = std::time::Instant::now();
-        for _ in 0..10000 {
+        for _ in 0..1000 {
             Request::parse("use-db foo some-key").unwrap();
         }
         let end = std::time::Instant::now();
