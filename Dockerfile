@@ -3,19 +3,20 @@ FROM ekidd/rust-musl-builder:stable as builder
 RUN USER=root cargo new --bin nun-db
 WORKDIR ./nun-db
 
-COPY ./Cargo.toml ./Cargo.toml
-RUN mkdir benches/
-RUN mkdir src/lib/
-RUN mkdir src/bin/
-RUN touch benches/nundb_benchmark.rs
-RUN touch src/lib/lib.rs
-RUN mv src/main.rs src/bin/main.rs
-RUN cargo build --release
-RUN rm src/*.rs
+# COPY ./Cargo.toml ./Cargo.toml
+# RUN mkdir benches/
+# RUN mkdir src/lib/
+# RUN mkdir src/bin/
+# RUN touch benches/nundb_benchmark.rs
+# RUN touch src/lib/lib.rs
+# RUN mv src/main.rs src/bin/main.rs
+# RUN cargo build --release
+# RUN rm src/**/*.rs
+# RUN rm benches/*.rs
 
 ADD . ./
 
-RUN rm ./target/x86_64-unknown-linux-musl/release/deps/nun*
+#RUN rm ./target/x86_64-unknown-linux-musl/release/deps/nun*
 RUN cargo build --release
 
 FROM alpine:3.12.4
