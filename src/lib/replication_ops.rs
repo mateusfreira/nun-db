@@ -203,7 +203,7 @@ pub fn replicate_request(
             }
 
             Request::Election { id } => {
-                replicate_web(replication_sender, format!("election cadidate {}", id));
+                replicate_web(replication_sender, format!("election candidate {}", id));
                 Response::Ok {}
             }
 
@@ -676,7 +676,7 @@ pub async fn start_replication_supervisor(
                             .try_send(format!("set-primary {}", tcp_addr))
                         {
                             Ok(_) => (),
-                            Err(_) => log::warn!("Error election cadidate"),
+                            Err(_) => log::warn!("Error election candidate"),
                         }
                     }
                     Some(n) => {

@@ -1,571 +1,654 @@
 use crate::bo::*;
+use lazy_static::lazy_static;
 use log;
+use std::collections::HashMap;
+
+lazy_static! {
+    static ref PARSER_HASH_TABLE: HashMap<&'static str, fn(&mut std::str::SplitN<&str>) -> Result<Request, String>> = {
+        let mut map: HashMap<&str, fn(&mut std::str::SplitN<&str>) -> Result<Request, String>> =
+            HashMap::new();
+        map.insert("ack", parse_ack_command);
+        map.insert("arbiter", parse_arbiter_command);
+        map.insert("auth", parse_auth_command);
+        map.insert("cluster-state", |_| Ok(Request::ClusterState {}));
+
+        map.insert("create-db", parse_create_db_command);
+        map.insert("create-user", parse_create_user_command);
+
+        map.insert("debug", parse_debug_command);
+        map.insert("election", parse_election_command);
+
+        map.insert("get", parse_get_command);
+        map.insert("get-safe", parse_get_safe_command);
+        map.insert("increment", parse_increment_command);
+        map.insert("join", parse_join_command);
+        map.insert("keys", parse_keys_command);
+        map.insert("leave", parse_leave_command);
+        map.insert("ls", parse_keys_command);
+        map.insert("metrics-state", |_| Ok(Request::MetricsState {}));
+        map.insert("remove", parse_remove_command);
+        map.insert("replicate", parse_replicate_command);
+        map.insert("replicate-increment", parse_replicate_increment_command);
+        map.insert("replicate-join", parse_replicate_join_command);
+        map.insert("replicate-leave", parse_replicate_leave_command);
+        map.insert("replicate-remove", parse_replicate_remove_command);
+        map.insert("replicate-since", parse_replicate_since_command);
+        map.insert("replicate-snapshot", parse_replicate_snapshot_command);
+        map.insert("resolve", parse_resolve_command);
+        map.insert("rp", parse_rp_command);
+        map.insert("set", parse_set_command);
+        map.insert("set-primary", parse_set_primary_command);
+        map.insert("set-safe", parse_set_safe_command);
+        map.insert("set-secoundary", parse_set_secoundary_command);
+        map.insert("snapshot", parse_snapshot_command);
+        map.insert("unwatch", parse_unwatch_command);
+        map.insert("unwatch-all", |_| Ok(Request::UnWatchAll {}));
+        map.insert("use", parse_use_command);
+        map.insert("use-db", parse_use_command);
+        map.insert("watch", parse_watch_command);
+        map.insert("list-commands", parse_list_commands_command);
+
+        map
+    };
+}
 
 impl Request {
+    pub fn command_list() -> Vec<String> {
+        PARSER_HASH_TABLE.keys().map(|x| x.to_string()).collect()
+    }
     pub fn parse(input: &str) -> Result<Request, String> {
         let mut command = input.splitn(3, " ");
-        let parsed_command = match command.next() {
-            Some("watch") => {
-                let key = match command.next() {
-                    Some(key) => key.replace("\n", ""),
-                    None => return Err(format!("watch must contain a key")),
-                };
-                Ok(Request::Watch { key })
+        if let Some(cmd) = command.next() {
+            match PARSER_HASH_TABLE.get(cmd) {
+                Some(f) => f(&mut command),
+                None => Err(format!("unknown command: {}", cmd)),
             }
-            Some("unwatch-all") => Ok(Request::UnWatchAll {}),
-            Some("keys") => {
-                let pattern = match command.next() {
-                    Some(pattren) => pattren.replace("\n", ""),
-                    None => "".to_string(),
-                };
-                Ok(Request::Keys { pattern })
-            }
-            Some("ls") => {
-                let pattern = match command.next() {
-                    Some(pattren) => pattren.replace("\n", ""),
-                    None => "".to_string(),
-                };
-                Ok(Request::Keys { pattern })
-            }
-            Some("snapshot") => {
-                let reclaim_space = command.next().unwrap_or("false");
-                Ok(Request::Snapshot {
-                    reclaim_space: reclaim_space == "true",
-                })
-            }
-            Some("replicate-snapshot") => {
-                let db_name = match command.next() {
-                    Some(db_name) => db_name.replace("\n", ""),
-                    None => return Err(format!("replicate-snapshot must contain a db name")),
-                };
-                let reclaim_space = match command.next() {
-                    Some(reclaim_space) => reclaim_space.replace("\n", "") == "true",
-                    None => false,
-                };
-                Ok(Request::ReplicateSnapshot {
-                    db: db_name,
-                    reclaim_space,
-                })
-            }
-            Some("replicate-since") => {
-                let nome_name = match command.next() {
-                    Some(db_name) => db_name.replace("\n", ""),
-                    None => return Err(format!("replicate-since must contain a node name")),
-                };
-
-                let start_at_str = match command.next() {
-                    Some(start_at_str) => start_at_str.replace("\n", ""),
-                    None => return Err(format!("replicate-since must contain a start at")),
-                };
-
-                let start_at = match start_at_str.parse::<u64>() {
-                    Ok(start_at) => start_at,
-                    Err(_) => return Err(format!("replicate-since start_at must be a u64")),
-                };
-
-                Ok(Request::ReplicateSince {
-                    node_name: nome_name,
-                    start_at: start_at,
-                })
-            }
-            Some("cluster-state") => Ok(Request::ClusterState {}),
-            Some("metrics-state") => Ok(Request::MetricsState {}),
-            Some("election") => match command.next() {
-                Some("win") => Ok(Request::ElectionWin {}),
-                Some("cadidate") => {
-                    let process_id = match command.next() {
-                        Some(id) => id.parse::<u128>().unwrap(),
-                        None => return Err(format!("replicate-snapshot must contain a db name")),
-                    };
-                    Ok(Request::Election { id: process_id })
-                }
-                _ => Ok(Request::ElectionActive {}),
-            },
-            Some("join") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("join must contain a name")),
-                };
-                Ok(Request::Join { name: name })
-            }
-
-            Some("leave") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("leave must contain a name")),
-                };
-                Ok(Request::Leave { name: name })
-            }
-
-            Some("replicate-leave") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("leave must contain a name")),
-                };
-                Ok(Request::ReplicateLeave { name: name })
-            }
-
-            Some("replicate-join") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("join must contain a name")),
-                };
-                Ok(Request::ReplicateJoin { name: name })
-            }
-
-            Some("set-primary") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("set-primary must contain a name")),
-                };
-                Ok(Request::SetPrimary { name: name })
-            }
-
-            Some("set-secoundary") => {
-                let name = match command.next() {
-                    Some(name) => name.replace("\n", ""),
-                    None => return Err(format!("set-primary must contain a name")),
-                };
-                Ok(Request::SetScoundary { name: name })
-            }
-            Some("unwatch") => {
-                let key = match command.next() {
-                    Some(key) => key.replace("\n", ""),
-                    None => return Err(format!("unwatch must contain a key")),
-                };
-                Ok(Request::UnWatch { key })
-            }
-            Some("get") => {
-                let key = match command.next() {
-                    Some(key) => key.replace("\n", ""),
-                    None => return Err(format!("get must contain a key")),
-                };
-                Ok(Request::Get { key })
-            }
-            Some("get-safe") => {
-                let key = match command.next() {
-                    Some(key) => key.replace("\n", ""),
-                    None => return Err(format!("get-safe must contain a key")),
-                };
-                Ok(Request::GetSafe { key })
-            }
-            Some("set") => {
-                let key = match command.next() {
-                    Some(key) => key,
-                    None => {
-                        log::debug!("SET must be followed by a key");
-                        ""
-                    }
-                };
-                let value = match command.next() {
-                    Some(value) => value.replace("\n", ""),
-                    None => {
-                        log::debug!("SET needs a value");
-                        "".to_string()
-                    }
-                };
-                Ok(Request::Set {
-                    key: key.to_string(),
-                    value: value.to_string(),
-                    version: -1,
-                })
-            }
-            Some("set-safe") => {
-                let key = match command.next() {
-                    Some(key) => key,
-                    None => {
-                        log::debug!("SET must be followed by a key");
-                        ""
-                    }
-                };
-                let mut rest = match command.next() {
-                    Some(rest) => rest.splitn(2, " "),
-                    None => {
-                        log::debug!("set-safe must be followed by a version and a key");
-                        return Err(String::from(
-                            "set-safe must be followed by a version and key",
-                        ));
-                    }
-                };
-
-                let version = match rest.next() {
-                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
-                        Ok(n) => n,
-                        _ => -1,
-                    },
-                    None => -1,
-                };
-
-                let value = match rest.next() {
-                    Some(value) => value.replace("\n", ""),
-                    None => return Err(String::from("set-safe must be followed by a key")),
-                };
-
-                Ok(Request::Set {
-                    key: key.to_string(),
-                    value: value.to_string(),
-                    version,
-                })
-            }
-            Some("increment") => {
-                let key = match command.next() {
-                    Some(key) => key,
-                    None => {
-                        log::debug!("increment must be followed by a key");
-                        ""
-                    }
-                };
-                let inc = match command.next() {
-                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
-                        Ok(n) => n,
-                        _ => 1,
-                    },
-                    None => 1,
-                };
-                Ok(Request::Increment {
-                    key: key.to_string(),
-                    inc: inc,
-                })
-            }
-            Some("replicate-increment") => {
-                let db_name = match command.next() {
-                    Some(db_name) => db_name.replace("\n", ""),
-                    None => return Err(format!("replicate-snapshot must contain a db name")),
-                };
-
-                let mut rest = match command.next() {
-                    Some(rest) => rest.splitn(2, " "),
-                    None => {
-                        log::debug!("increment must be followed by a key");
-                        return Err(String::from(
-                            "replicate-increment must be followed by a key",
-                        ));
-                    }
-                };
-
-                let key = match rest.next() {
-                    Some(key) => key,
-                    None => {
-                        return Err(String::from(
-                            "replicate-increment must be followed by a key",
-                        ))
-                    }
-                };
-
-                let inc = match rest.next() {
-                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
-                        Ok(n) => n,
-                        _ => 1,
-                    },
-                    None => 1,
-                };
-                Ok(Request::ReplicateIncrement {
-                    db: db_name.to_string(),
-                    key: key.to_string(),
-                    inc: inc,
-                })
-            }
-
-            Some("remove") => {
-                let key = match command.next() {
-                    Some(key) => key,
-                    None => {
-                        log::debug!("REMOVE must be followed by a key");
-                        ""
-                    }
-                };
-                Ok(Request::Remove {
-                    key: key.to_string(),
-                })
-            }
-            Some("auth") => {
-                let user = match command.next() {
-                    Some(key) => key,
-                    None => {
-                        log::debug!("Auth needs to provide an user");
-                        ""
-                    }
-                };
-                let pwd = match command.next() {
-                    Some(pwd) => pwd.to_string(),
-                    None => {
-                        log::debug!("Auth needs and password");
-                        "".to_string()
-                    }
-                };
-                Ok(Request::Auth {
-                    user: user.to_string(),
-                    password: pwd.to_string().replace("\n", ""),
-                })
-            }
-            Some("use") => {
-                let name = match command.next() {
-                    Some(name) => name,
-                    None => {
-                        log::debug!("UseDb needs to provide an db name");
-                        ""
-                    }
-                };
-                let token = match command.next() {
-                    Some(key) => String::from(key).replace("\n", ""),
-                    None => {
-                        log::debug!("UseDb needs and token");
-                        "".to_string()
-                    }
-                };
-                Ok(Request::UseDb {
-                    name: name.to_string(),
-                    token: token.to_string(),
-                })
-            }
-            Some("use-db") => {
-                let name = match command.next() {
-                    Some(name) => name,
-                    None => {
-                        log::debug!("UseDb needs to provide an db name");
-                        ""
-                    }
-                };
-                let token = match command.next() {
-                    Some(key) => String::from(key).replace("\n", ""),
-                    None => {
-                        log::debug!("UseDb needs and token");
-                        "".to_string()
-                    }
-                };
-                Ok(Request::UseDb {
-                    name: name.to_string(),
-                    token: token.to_string(),
-                })
-            }
-            Some("create-db") => {
-                let name = match command.next() {
-                    Some(key) => key,
-                    None => {
-                        log::debug!("CreateDb needs to provide an db name");
-                        ""
-                    }
-                };
-                let mut rest = match command.next() {
-                    Some(rest) => rest.splitn(2, " "),
-                    None => {
-                        log::debug!("create-db needs token and strategy");
-                        return Err(String::from("create-db must be followed by a token"));
-                    }
-                };
-
-                let token = match rest.next() {
-                    Some(key) => String::from(key).replace("\n", ""),
-                    None => {
-                        log::debug!("CreateDb needs and token");
-                        "".to_string()
-                    }
-                };
-
-                let strategy = match rest.next() {
-                    Some(s) => String::from(s).replace("\n", ""),
-                    None => "none".to_string(),
-                };
-
-                Ok(Request::CreateDb {
-                    name: name.to_string(),
-                    token: token.to_string(),
-                    strategy: ConsensuStrategy::from(strategy),
-                })
-            }
-
-            Some("replicate-remove") => {
-                let db = match command.next() {
-                    Some(key) => key,
-                    None => {
-                        log::debug!("replicate-remove needs to provide an db name");
-                        ""
-                    }
-                };
-
-                let key = match command.next() {
-                    Some(key) => String::from(key).replace("\n", ""),
-                    None => {
-                        log::debug!("replicate remove needs key");
-                        "".to_string()
-                    }
-                };
-                Ok(Request::ReplicateRemove {
-                    db: db.to_string(),
-                    key: key,
-                })
-            }
-            Some("replicate") => {
-                let db = match command.next() {
-                    Some(key) => key,
-                    None => {
-                        log::debug!("replicate needs to provide an db name");
-                        ""
-                    }
-                };
-                return match command.next() {
-                    Some(command_value) => {
-                        let mut command = command_value.splitn(3, " ");
-                        let name = match command.next() {
-                            Some(key) => String::from(key).replace("\n", ""),
-                            None => {
-                                log::debug!("ReplicateSet needs name");
-                                "".to_string()
-                            }
-                        };
-
-                        let version = match command.next() {
-                            Some(value) => {
-                                match i32::from_str_radix(&value.replace("\n", ""), 10) {
-                                    Ok(n) => n,
-                                    _ => -1,
-                                }
-                            }
-                            None => -1,
-                        };
-
-                        let value = match command.next() {
-                            Some(key) => String::from(key).replace("\n", ""),
-                            None => {
-                                log::debug!("ReplicateSet needs value");
-                                "".to_string()
-                            }
-                        };
-                        Ok(Request::ReplicateSet {
-                            db: db.to_string(),
-                            key: name.to_string(),
-                            value: value.to_string(),
-                            version,
-                        })
-                    }
-                    None => {
-                        log::debug!("replicate needs to provide an db name");
-                        Err(format!("no command sent"))
-                    }
-                };
-            }
-            Some("rp") => {
-                let opp_id: u64 = match command.next() {
-                    Some(id_str) => match id_str.parse::<u64>() {
-                        Ok(id) => id,
-                        Err(_) => {
-                            return Err(format!("Invalid request Id"));
-                        }
-                    },
-                    None => {
-                        return Err(format!("Invalid request Id"));
-                    }
-                };
-
-                let request_str: String = String::from(match command.next() {
-                    Some(request_str) => request_str,
-                    None => "",
-                });
-
-                if request_str == "" {
-                    return Err(format!("Invalid replication request str"));
-                }
-
-                Ok(Request::ReplicateRequest {
-                    opp_id,
-                    request_str,
-                })
-            }
-            Some("ack") => {
-                let opp_id: u64 = match command.next() {
-                    Some(id_str) => match id_str.parse::<u64>() {
-                        Ok(id) => id,
-                        Err(_) => {
-                            return Err(format!("Invalid request Id"));
-                        }
-                    },
-                    None => {
-                        return Err(format!("Invalid request Id"));
-                    }
-                };
-
-                let server_name: String = String::from(match command.next() {
-                    Some(request_str) => request_str,
-                    None => "",
-                });
-
-                if server_name == "" {
-                    return Err(format!("Invalid server name"));
-                }
-
-                Ok(Request::Acknowledge {
-                    opp_id,
-                    server_name,
-                })
-            }
-            Some("debug") => {
-                let debug_command = match command.next() {
-                    Some(command) => command.to_string(),
-                    None => {
-                        return Err(format!("command is mandatory"));
-                    }
-                };
-
-                Ok(Request::Debug {
-                    command: debug_command,
-                })
-            }
-            Some("arbiter") => Ok(Request::Arbiter {}),
-
-            Some("resolve") => {
-                let opp_id = match command.next() {
-                    Some(opp_id) => match opp_id.parse::<u64>() {
-                        Ok(opp_id) => opp_id,
-                        Err(_) => return Err(format!("Invalid opp_id")),
-                    },
-                    None => return Err(format!("opp id mandatory")),
-                };
-                let mut rest = match command.next() {
-                    Some(rest) => rest.splitn(4, " "),
-                    None => {
-                        log::debug!("resolve missing params");
-                        return Err(String::from(
-                            "resoved must be followed by db_name, key version and value",
-                        ));
-                    }
-                };
-
-                let db_name = match rest.next() {
-                    Some(db_name) => db_name.replace("\n", ""),
-                    None => return Err(String::from("db_name must be provided")),
-                };
-
-                let key = match rest.next() {
-                    Some(key) => key.replace("\n", ""),
-                    None => return Err(String::from("key must be provided")),
-                };
-
-                let version = match rest.next() {
-                    Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
-                        Ok(n) => n,
-                        _ => -1,
-                    },
-                    None => -1,
-                };
-
-                let value = match rest.next() {
-                    Some(value) => value.replace("\n", ""),
-                    None => return Err(String::from("set-safe must be followed by a key")),
-                };
-
-                Ok(Request::Resolve {
-                    key: key.to_string(),
-                    value: value.to_string(),
-                    version,
-                    db_name,
-                    opp_id,
-                })
-            }
-            Some(cmd) => Err(format!("unknown command: {}", cmd)),
-            _ => Err(format!("no command sent")),
-        };
-        parsed_command
+        } else {
+            Err(String::from("unknown command"))
+        }
     }
+}
+
+fn parse_auth_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let user = match command.next() {
+        Some(key) => key,
+        None => {
+            log::debug!("Auth needs to provide an user");
+            ""
+        }
+    };
+    let pwd = match command.next() {
+        Some(pwd) => pwd.to_string(),
+        None => {
+            log::debug!("Auth needs and password");
+            "".to_string()
+        }
+    };
+    Ok(Request::Auth {
+        user: user.to_string(),
+        password: pwd.to_string().replace("\n", ""),
+    })
+}
+fn parse_remove_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key,
+        None => {
+            log::debug!("REMOVE must be followed by a key");
+            ""
+        }
+    };
+    Ok(Request::Remove {
+        key: key.to_string(),
+    })
+}
+fn parse_replicate_increment_command(
+    command: &mut std::str::SplitN<&str>,
+) -> Result<Request, String> {
+    let db_name = match command.next() {
+        Some(db_name) => db_name.replace("\n", ""),
+        None => return Err(format!("replicate-snapshot must contain a db name")),
+    };
+
+    let mut rest = match command.next() {
+        Some(rest) => rest.splitn(2, " "),
+        None => {
+            log::debug!("increment must be followed by a key");
+            return Err(String::from(
+                "replicate-increment must be followed by a key",
+            ));
+        }
+    };
+
+    let key = match rest.next() {
+        Some(key) => key,
+        None => {
+            return Err(String::from(
+                "replicate-increment must be followed by a key",
+            ))
+        }
+    };
+
+    let inc = match rest.next() {
+        Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+            Ok(n) => n,
+            _ => 1,
+        },
+        None => 1,
+    };
+    Ok(Request::ReplicateIncrement {
+        db: db_name.to_string(),
+        key: key.to_string(),
+        inc,
+    })
+}
+fn parse_increment_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key,
+        None => {
+            log::debug!("increment must be followed by a key");
+            ""
+        }
+    };
+    let inc = match command.next() {
+        Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+            Ok(n) => n,
+            _ => 1,
+        },
+        None => 1,
+    };
+    Ok(Request::Increment {
+        key: key.to_string(),
+        inc,
+    })
+}
+fn parse_set_safe_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key,
+        None => {
+            log::debug!("SET must be followed by a key");
+            ""
+        }
+    };
+    let mut rest = match command.next() {
+        Some(rest) => rest.splitn(2, " "),
+        None => {
+            log::debug!("set-safe must be followed by a version and a key");
+            return Err(String::from(
+                "set-safe must be followed by a version and key",
+            ));
+        }
+    };
+
+    let version = match rest.next() {
+        Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+            Ok(n) => n,
+            _ => -1,
+        },
+        None => -1,
+    };
+
+    let value = match rest.next() {
+        Some(value) => value.replace("\n", ""),
+        None => return Err(String::from("set-safe must be followed by a key")),
+    };
+
+    Ok(Request::Set {
+        key: key.to_string(),
+        value: value.to_string(),
+        version,
+    })
+}
+
+fn parse_set_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key,
+        None => {
+            log::debug!("SET must be followed by a key");
+            ""
+        }
+    };
+    let value = match command.next() {
+        Some(value) => value.replace("\n", ""),
+        None => {
+            log::debug!("SET needs a value");
+            "".to_string()
+        }
+    };
+    Ok(Request::Set {
+        key: key.to_string(),
+        value: value.to_string(),
+        version: -1,
+    })
+}
+fn parse_get_safe_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key.replace("\n", ""),
+        None => return Err(format!("get-safe must contain a key")),
+    };
+    Ok(Request::GetSafe { key })
+}
+fn parse_get_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key.replace("\n", ""),
+        None => return Err(format!("get must contain a key")),
+    };
+    Ok(Request::Get { key })
+}
+fn parse_unwatch_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key.replace("\n", ""),
+        None => return Err(format!("unwatch must contain a key")),
+    };
+    Ok(Request::UnWatch { key })
+}
+fn parse_set_secoundary_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("set-secoundary must contain a name")),
+    };
+    Ok(Request::SetScoundary { name })
+}
+fn parse_set_primary_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("set-primary must contain a name")),
+    };
+    Ok(Request::SetPrimary { name })
+}
+fn parse_replicate_join_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("join must contain a name")),
+    };
+    Ok(Request::ReplicateJoin { name })
+}
+
+fn parse_replicate_leave_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("leave must contain a name")),
+    };
+    Ok(Request::ReplicateLeave { name })
+}
+
+fn parse_leave_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("leave must contain a name")),
+    };
+    Ok(Request::Leave { name })
+}
+
+fn parse_join_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name.replace("\n", ""),
+        None => return Err(format!("join must contain a name")),
+    };
+    Ok(Request::Join { name: name })
+}
+
+fn parse_election_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    match command.next() {
+        Some("win") => Ok(Request::ElectionWin {}),
+        Some("candidate") => {
+            let process_id = match command.next() {
+                Some(id) => id.parse::<u128>().unwrap(),
+                None => return Err(format!("replicate-snapshot must contain a db name")),
+            };
+            Ok(Request::Election { id: process_id })
+        }
+        _ => Ok(Request::ElectionActive {}),
+    }
+}
+
+fn parse_resolve_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let opp_id = match command.next() {
+        Some(opp_id) => match opp_id.parse::<u64>() {
+            Ok(opp_id) => opp_id,
+            Err(_) => return Err(format!("Invalid opp_id")),
+        },
+        None => return Err(format!("opp id mandatory")),
+    };
+    let mut rest = match command.next() {
+        Some(rest) => rest.splitn(4, " "),
+        None => {
+            log::debug!("resolve missing params");
+            return Err(String::from(
+                "resoved must be followed by db_name, key version and value",
+            ));
+        }
+    };
+
+    let db_name = match rest.next() {
+        Some(db_name) => db_name.replace("\n", ""),
+        None => return Err(String::from("db_name must be provided")),
+    };
+
+    let key = match rest.next() {
+        Some(key) => key.replace("\n", ""),
+        None => return Err(String::from("key must be provided")),
+    };
+
+    let version = match rest.next() {
+        Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+            Ok(n) => n,
+            _ => -1,
+        },
+        None => -1,
+    };
+
+    let value = match rest.next() {
+        Some(value) => value.replace("\n", ""),
+        None => return Err(String::from("set-safe must be followed by a key")),
+    };
+
+    Ok(Request::Resolve {
+        key: key.to_string(),
+        value: value.to_string(),
+        version,
+        db_name,
+        opp_id,
+    })
+}
+
+fn parse_debug_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let debug_command = match command.next() {
+        Some(command) => command.to_string(),
+        None => {
+            return Err(format!("command is mandatory"));
+        }
+    };
+
+    Ok(Request::Debug {
+        command: debug_command,
+    })
+}
+fn parse_arbiter_command(_: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    Ok(Request::Arbiter {})
+}
+fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let opp_id: u64 = match command.next() {
+        Some(id_str) => match id_str.parse::<u64>() {
+            Ok(id) => id,
+            Err(_) => {
+                return Err(format!("Invalid request Id"));
+            }
+        },
+        None => {
+            return Err(format!("Invalid request Id"));
+        }
+    };
+
+    let server_name: String = String::from(match command.next() {
+        Some(request_str) => request_str,
+        None => "",
+    });
+
+    if server_name == "" {
+        return Err(format!("Invalid server name"));
+    }
+
+    Ok(Request::Acknowledge {
+        opp_id,
+        server_name,
+    })
+}
+fn parse_rp_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let opp_id: u64 = match command.next() {
+        Some(id_str) => match id_str.parse::<u64>() {
+            Ok(id) => id,
+            Err(_) => {
+                return Err(format!("Invalid request Id"));
+            }
+        },
+        None => {
+            return Err(format!("Invalid request Id"));
+        }
+    };
+
+    let request_str: String = String::from(match command.next() {
+        Some(request_str) => request_str,
+        None => "",
+    });
+
+    if request_str == "" {
+        return Err(format!("Invalid replication request str"));
+    }
+
+    Ok(Request::ReplicateRequest {
+        opp_id,
+        request_str,
+    })
+}
+
+fn parse_replicate_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let db = match command.next() {
+        Some(key) => key,
+        None => {
+            log::debug!("replicate needs to provide an db name");
+            ""
+        }
+    };
+    return match command.next() {
+        Some(command_value) => {
+            let mut command = command_value.splitn(3, " ");
+            let name = match command.next() {
+                Some(key) => String::from(key).replace("\n", ""),
+                None => {
+                    log::debug!("ReplicateSet needs name");
+                    "".to_string()
+                }
+            };
+
+            let version = match command.next() {
+                Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+                    Ok(n) => n,
+                    _ => -1,
+                },
+                None => -1,
+            };
+
+            let value = match command.next() {
+                Some(key) => String::from(key).replace("\n", ""),
+                None => {
+                    log::debug!("ReplicateSet needs value");
+                    "".to_string()
+                }
+            };
+            Ok(Request::ReplicateSet {
+                db: db.to_string(),
+                key: name.to_string(),
+                value: value.to_string(),
+                version,
+            })
+        }
+        None => {
+            log::debug!("replicate needs to provide an db name");
+            Err(format!("no command sent"))
+        }
+    };
+}
+
+fn parse_replicate_remove_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let db = match command.next() {
+        Some(key) => key,
+        None => {
+            log::debug!("replicate-remove needs to provide an db name");
+            ""
+        }
+    };
+
+    let key = match command.next() {
+        Some(key) => String::from(key).replace("\n", ""),
+        None => {
+            log::debug!("replicate remove needs key");
+            "".to_string()
+        }
+    };
+    Ok(Request::ReplicateRemove {
+        db: db.to_string(),
+        key,
+    })
+}
+
+fn parse_replicate_since_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let nome_name = match command.next() {
+        Some(db_name) => db_name.replace("\n", ""),
+        None => return Err(format!("replicate-since must contain a node name")),
+    };
+    let start_at_str = match command.next() {
+        Some(start_at_str) => start_at_str.replace("\n", ""),
+        None => return Err(format!("replicate-since must contain a start at")),
+    };
+    let start_at = match start_at_str.parse::<u64>() {
+        Ok(start_at) => start_at,
+        Err(_) => return Err(format!("replicate-since start_at must be a u64")),
+    };
+    Ok(Request::ReplicateSince {
+        node_name: nome_name,
+        start_at,
+    })
+}
+
+fn parse_replicate_snapshot_command(
+    command: &mut std::str::SplitN<&str>,
+) -> Result<Request, String> {
+    let db_name = match command.next() {
+        Some(db_name) => db_name.replace("\n", ""),
+        None => return Err(format!("replicate-snapshot must contain a db name")),
+    };
+    let reclaim_space = match command.next() {
+        Some(reclaim_space) => reclaim_space.replace("\n", "") == "true",
+        None => false,
+    };
+    Ok(Request::ReplicateSnapshot {
+        db: db_name,
+        reclaim_space,
+    })
+}
+
+fn parse_snapshot_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let reclaim_space = command.next().unwrap_or("false");
+    Ok(Request::Snapshot {
+        reclaim_space: reclaim_space == "true",
+    })
+}
+
+fn parse_list_commands_command(_: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    Ok(Request::ListCommands {})
+}
+fn parse_watch_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let key = match command.next() {
+        Some(key) => key.replace("\n", ""),
+        None => return Err(format!("watch must contain a key")),
+    };
+    Ok(Request::Watch { key })
+}
+
+fn parse_keys_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let pattern = match command.next() {
+        Some(pattren) => pattren.replace("\n", ""),
+        None => "".to_string(),
+    };
+    Ok(Request::Keys { pattern })
+}
+
+fn parse_use_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(name) => name,
+        None => {
+            log::debug!("UseDb needs to provide an db name");
+            ""
+        }
+    };
+
+    let mut rest = match command.next() {
+        Some(rest) => rest.splitn(2, " "),
+        None => {
+            log::debug!("set-safe must be followed by a version and a key");
+            return Err(String::from(
+                "set-safe must be followed by a version and key",
+            ));
+        }
+    };
+
+    let token_or_user_name = match rest.next() {
+        Some(key) => String::from(key).replace("\n", ""),
+        None => {
+            log::debug!("UseDb needs and token");
+            "".to_string()
+        }
+    };
+
+    //println!("token_or_user_name: {}", token_or_user_name);
+    match rest.next() {
+        Some(token) => Ok(Request::UseDb {
+            name: name.to_string(),
+            token: token.to_string(),
+            user_name: Some(token_or_user_name.to_string()),
+        }),
+        None => Ok(Request::UseDb {
+            name: name.to_string(),
+            token: token_or_user_name.to_string(),
+            user_name: None,
+        }),
+    }
+}
+
+fn parse_create_db_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let name = match command.next() {
+        Some(key) => key,
+        None => {
+            log::debug!("CreateDb needs to provide an db name");
+            ""
+        }
+    };
+    let mut rest = match command.next() {
+        Some(rest) => rest.splitn(2, " "),
+        None => {
+            log::debug!("create-db needs token and strategy");
+            return Err(String::from("create-db must be followed by a token"));
+        }
+    };
+
+    let token = match rest.next() {
+        Some(key) => String::from(key).replace("\n", ""),
+        None => {
+            log::debug!("CreateDb needs and token");
+            "".to_string()
+        }
+    };
+
+    let strategy = match rest.next() {
+        Some(s) => String::from(s).replace("\n", ""),
+        None => "none".to_string(),
+    };
+
+    Ok(Request::CreateDb {
+        name: name.to_string(),
+        token: token.to_string(),
+        strategy: ConsensuStrategy::from(strategy),
+    })
+}
+fn parse_create_user_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let user_name = match command.next() {
+        Some(name) => name,
+        None => {
+            log::debug!("CreateUser needs to provide an user name");
+            ""
+        }
+    };
+    let token = match command.next() {
+        Some(key) => String::from(key).replace("\n", ""),
+        None => {
+            log::debug!("CreateUser needs and token");
+            "".to_string()
+        }
+    };
+    Ok(Request::CreateUser {
+        user_name: user_name.to_string(),
+        token: token.to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -575,8 +658,64 @@ mod tests {
     #[test]
     fn should_parse_use_db() -> Result<(), String> {
         match Request::parse("use-db foo some-key") {
-            Ok(Request::UseDb { token, name }) => {
+            Ok(Request::UseDb {
+                token,
+                name,
+                user_name: _,
+            }) => {
                 if name == "foo" && token == "some-key" {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from("get foo sould be parsed to Get command")),
+        }
+    }
+
+    #[test]
+    fn should_parse_use_db_with_user_name_and_token() -> Result<(), String> {
+        match Request::parse("use foo user-dush some-key") {
+            Ok(Request::UseDb {
+                token,
+                name,
+                user_name,
+            }) => {
+                if name == "foo" && token == "some-key" && user_name == Some("user-dush".to_owned())
+                {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from("get foo sould be parsed to Get command")),
+        }
+    }
+
+    #[test]
+    fn should_parse_10000_commands_fast() -> Result<(), String> {
+        Request::parse("use-db foo some-key").unwrap();
+        let start = std::time::Instant::now();
+        for _ in 0..1000 {
+            Request::parse("use-db foo some-key").unwrap();
+        }
+        let end = std::time::Instant::now();
+        println!("10000 commands took {:?}", end - start);
+        // Old code would take ~1.772625ms
+        assert!(end - start < std::time::Duration::from_millis(3));
+        Ok(())
+    }
+
+    #[test]
+    fn should_parse_use_db_with_user_name_and_token_with_user_db() -> Result<(), String> {
+        match Request::parse("use-db foo user-dush some-key") {
+            Ok(Request::UseDb {
+                token,
+                name,
+                user_name,
+            }) => {
+                if name == "foo" && token == "some-key" && user_name == Some("user-dush".to_owned())
+                {
                     Ok(())
                 } else {
                     Err(String::from("user should be foo and password bar"))
@@ -589,7 +728,11 @@ mod tests {
     #[test]
     fn should_parse_use() -> Result<(), String> {
         match Request::parse("use foo some-key") {
-            Ok(Request::UseDb { token, name }) => {
+            Ok(Request::UseDb {
+                token,
+                name,
+                user_name: _,
+            }) => {
                 if name == "foo" && token == "some-key" {
                     Ok(())
                 } else {
@@ -611,6 +754,22 @@ mod tests {
                 }
             }
             _ => Err(String::from("get-safe was not parsed correctly!")),
+        }
+    }
+
+    #[test]
+    fn should_parse_create_user() -> Result<(), String> {
+        match Request::parse("create-user foo bar") {
+            Ok(Request::CreateUser { user_name, token }) => {
+                if user_name == "foo" && token == "bar" {
+                    Ok(())
+                } else {
+                    Err(String::from("user should be foo and password bar"))
+                }
+            }
+            _ => Err(String::from(
+                "create-user foo bar should be parsed to CreateUser command",
+            )),
         }
     }
 

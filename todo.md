@@ -48,6 +48,10 @@
 - [x] Read https://www.microsoft.com/en-us/research/uploads/prod/2018/03/faster-sigmod18.pdf
 - [x] Reduce the size of the docker image
 - [ ] Implement read only user.
+    - [ ] Implement user registration and permission to read only user..
+    - [ ] User that  has no access to read all keys
+    - [ ] Key level access per user.
+[./user-management.md]
 - [ ] Implement key value security
 - [x] Clean unused dataset
 - [ ] Add example https://mateusfreira.github.io/nun-db-js/examples/data-analysis/
