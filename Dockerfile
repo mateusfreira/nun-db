@@ -5,7 +5,11 @@ WORKDIR ./nun-db
 
 COPY ./Cargo.toml ./Cargo.toml
 RUN mkdir benches/
-RUN cp src/main.rs benches/nundb_benchmark.rs
+RUN mkdir src/lib/
+RUN mkdir src/bin/
+RUN touch benches/nundb_benchmark.rs
+RUN touch src/lib/lib.rs
+RUN mv src/main.rs src/bin/main.rs
 RUN cargo build --release
 RUN rm src/*.rs
 
