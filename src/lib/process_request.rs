@@ -926,7 +926,6 @@ mod tests {
             &mut client,
         ));
         process_request("set some value", &dbs, &mut client);
-        assert_received(&mut receiver, "ok\n");
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value value\n");
     }

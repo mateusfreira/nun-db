@@ -706,6 +706,7 @@ mod tests {
         Ok(())
     }
 
+
     #[test]
     fn should_parse_use_db_with_user_name_and_token_with_user_db() -> Result<(), String> {
         match Request::parse("use-db foo user-dush some-key") {
@@ -1339,4 +1340,6 @@ mod tests {
             _ => Err(String::from("Invalid parsing")),
         }
     }
+
+
 }

@@ -42,7 +42,7 @@ const U32_SIZE: usize = 4;
 
 const VERSION_DELETED: i32 = -1;
 
-use crate::lib::configuration::NUN_DBS_DIR;
+use crate::configuration::NUN_DBS_DIR;
 
 pub fn get_dir_name() -> String {
     NUN_DBS_DIR.to_string()

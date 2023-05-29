@@ -34,8 +34,8 @@ fn expect_env_var(name: &str, _default: &str, required: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::lib::configuration::expect_env_var;
-    use crate::lib::configuration::optional_env_var;
+    use crate::configuration::expect_env_var;
+    use crate::configuration::optional_env_var;
 
     #[test]
     fn run_mode_should_get_empty_but_debug_mode_got_value() {

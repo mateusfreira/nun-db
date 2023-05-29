@@ -1,9 +1,8 @@
-mod lib;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
 use futures::join;
-use lib::*;
+use nundb::*;
 use log;
 use signal_hook::{consts::SIGINT, iterator::Signals};
 use std::thread;
@@ -13,7 +12,7 @@ use std::sync::Arc;
 use clap::ArgMatches;
 use env_logger::{Builder, Env, Target};
 
-use crate::lib::configuration::{
+use nundb::configuration::{
     NUN_HTTP_ADDR, NUN_LOG_LEVEL, NUN_PWD, NUN_REPLICATE_ADDR, NUN_TCP_ADDR, NUN_USER, NUN_WS_ADDR,
 };
 
@@ -29,7 +28,7 @@ fn init_logger() {
 fn main() -> Result<(), String> {
     init_logger();
     log::info!("nundb starting!");
-    let matches: ArgMatches<'_> = lib::commad_line::commands::prepare_args();
+    let matches: ArgMatches<'_> = nundb::commad_line::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
         return start_db(
             matches.value_of("user").unwrap_or(NUN_USER.as_str()),
@@ -48,7 +47,7 @@ fn main() -> Result<(), String> {
                 .unwrap_or(NUN_REPLICATE_ADDR.as_str()),
         );
     } else {
-        return lib::commad_line::commands::exec_command(&matches);
+        return nundb::commad_line::commands::exec_command(&matches);
     }
 }
 
@@ -81,7 +80,7 @@ fn start_db(
         disk_ops::clean_op_log_metadata_files();
     }
 
-    let dbs = lib::db_ops::create_init_dbs(
+    let dbs = nundb::db_ops::create_init_dbs(
         user.to_string(),
         pwd.to_string(),
         tcp_address.to_string(),
@@ -109,14 +108,14 @@ fn start_db(
      * to ping it too fast
      */
     let tcp_thread = thread::spawn(move || {
-        lib::network::tcp_ops::start_tcp_client(dbs_tcp, &tcp_address_to_thread)
+        nundb::network::tcp_ops::start_tcp_client(dbs_tcp, &tcp_address_to_thread)
     });
 
     let db_replication_start = dbs.clone();
     let tcp_address_to_relication = Arc::new(tcp_address.to_string());
     let replication_thread_creator = async {
-        log::debug!("lib::replication_ops::start_replication_supervisor");
-        lib::replication_ops::start_replication_supervisor(
+        log::debug!("nundb::replication_ops::start_replication_supervisor");
+        nundb::replication_ops::start_replication_supervisor(
             replication_supervisor_receiver,
             db_replication_start,
             tcp_address_to_relication,
@@ -126,7 +125,7 @@ fn start_db(
 
     let db_replication = dbs.clone();
     let replication_thread = async {
-        lib::replication_ops::start_replication_thread(replication_receiver, db_replication).await
+        nundb::replication_ops::start_replication_thread(replication_receiver, db_replication).await
     };
 
     let replicate_address_to_thread = Arc::new(replicate_address.to_string());
@@ -134,19 +133,19 @@ fn start_db(
     let dbs_self_election = dbs.clone();
     let tcp_address_to_election = Arc::new(tcp_address.to_string());
     let join_thread = thread::spawn(move || {
-        lib::replication_ops::ask_to_join_all_replicas(
+        nundb::replication_ops::ask_to_join_all_replicas(
             &replicate_address_to_thread,
             &tcp_address_to_election.to_string(),
             &dbs_self_election.user.to_string(),
             &dbs_self_election.pwd.to_string(),
         );
-        lib::election_ops::start_inital_election(dbs_self_election)
+        nundb::election_ops::start_inital_election(dbs_self_election)
     });
 
     let timer = timer::Timer::new();
     let db_snap = dbs.clone();
     // Disck thread
-    let _snapshot_thread = thread::spawn(|| lib::disk_ops::start_snap_shot_timer(timer, db_snap));
+    let _snapshot_thread = thread::spawn(|| nundb::disk_ops::start_snap_shot_timer(timer, db_snap));
 
     let db_socket = dbs.clone();
     let db_http = dbs.clone();
@@ -156,10 +155,10 @@ fn start_db(
 
     // Netwotk threds
     let ws_thread =
-        thread::spawn(move || lib::network::ws_ops::start_web_socket_client(db_socket, ws_address));
+        thread::spawn(move || nundb::network::ws_ops::start_web_socket_client(db_socket, ws_address));
 
     let _http_thread =
-        thread::spawn(|| lib::network::http_ops::start_http_client(db_http, http_address));
+        thread::spawn(|| nundb::network::http_ops::start_http_client(db_http, http_address));
 
     let join_all_promises = async {
         join!(replication_thread_creator, replication_thread);
