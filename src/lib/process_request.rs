@@ -583,7 +583,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             };
             return Response::Ok {};
         }
-        Request::ListCommands {  } => apply_if_auth(&client.auth, &|| {
+        Request::ListCommands {} => apply_if_auth(&client.auth, &|| {
             let commands = Request::command_list();
             let commands = commands.iter().fold(String::from(""), |current, acc| {
                 format!("{},{}", current, acc)

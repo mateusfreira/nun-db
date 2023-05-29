@@ -1,9 +1,8 @@
-
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
 use futures::join;
-use nundb::*;
 use log;
+use nundb::*;
 use signal_hook::{consts::SIGINT, iterator::Signals};
 use std::thread;
 
@@ -154,8 +153,9 @@ fn start_db(
     let ws_address = Arc::new(ws_address.to_string());
 
     // Netwotk threds
-    let ws_thread =
-        thread::spawn(move || nundb::network::ws_ops::start_web_socket_client(db_socket, ws_address));
+    let ws_thread = thread::spawn(move || {
+        nundb::network::ws_ops::start_web_socket_client(db_socket, ws_address)
+    });
 
     let _http_thread =
         thread::spawn(|| nundb::network::http_ops::start_http_client(db_http, http_address));

@@ -46,7 +46,7 @@ lazy_static! {
         map.insert("use", parse_use_command);
         map.insert("use-db", parse_use_command);
         map.insert("watch", parse_watch_command);
-        map.insert("list-commands" , parse_list_commands_command);
+        map.insert("list-commands", parse_list_commands_command);
 
         map
     };
@@ -706,7 +706,6 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
     fn should_parse_use_db_with_user_name_and_token_with_user_db() -> Result<(), String> {
         match Request::parse("use-db foo user-dush some-key") {
@@ -1340,6 +1339,4 @@ mod tests {
             _ => Err(String::from("Invalid parsing")),
         }
     }
-
-
 }

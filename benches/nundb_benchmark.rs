@@ -2,13 +2,20 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use nundb::bo::*;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("Parse use-db", |b| b.iter(|| Request::parse("use-db jose jose")));
-    c.bench_function("Parse use-db old parse", |b| b.iter(|| parse_old("use-db jose jose")));
+    c.bench_function("Parse use-db", |b| {
+        b.iter(|| Request::parse("use-db jose jose"))
+    });
+    c.bench_function("Parse use-db old parse", |b| {
+        b.iter(|| parse_old("use-db jose jose"))
+    });
 
-    c.bench_function("Parse invalid command", |b| b.iter(|| Request::parse("none jose")));
-    c.bench_function("Parse invalid command old parse", |b| b.iter(|| parse_old("none jose")));
+    c.bench_function("Parse invalid command", |b| {
+        b.iter(|| Request::parse("none jose"))
+    });
+    c.bench_function("Parse invalid command old parse", |b| {
+        b.iter(|| parse_old("none jose"))
+    });
 }
-
 
 pub fn parse_old(input: &str) -> Result<Request, String> {
     let mut command = input.splitn(3, " ");
@@ -191,7 +198,7 @@ pub fn parse_old(input: &str) -> Result<Request, String> {
                 None => {
                     log::debug!("set-safe must be followed by a version and a key");
                     return Err(String::from(
-                            "set-safe must be followed by a version and key",
+                        "set-safe must be followed by a version and key",
                     ));
                 }
             };
@@ -246,7 +253,7 @@ pub fn parse_old(input: &str) -> Result<Request, String> {
                 None => {
                     log::debug!("increment must be followed by a key");
                     return Err(String::from(
-                            "replicate-increment must be followed by a key",
+                        "replicate-increment must be followed by a key",
                     ));
                 }
             };
@@ -255,7 +262,7 @@ pub fn parse_old(input: &str) -> Result<Request, String> {
                 Some(key) => key,
                 None => {
                     return Err(String::from(
-                            "replicate-increment must be followed by a key",
+                        "replicate-increment must be followed by a key",
                     ))
                 }
             };
@@ -324,7 +331,7 @@ pub fn parse_old(input: &str) -> Result<Request, String> {
             Ok(Request::UseDb {
                 name: name.to_string(),
                 token: token.to_string(),
-                user_name: None
+                user_name: None,
             })
         }
         Some("use-db") => {
@@ -345,7 +352,7 @@ pub fn parse_old(input: &str) -> Result<Request, String> {
             Ok(Request::UseDb {
                 name: name.to_string(),
                 token: token.to_string(),
-                user_name: None
+                user_name: None,
             })
         }
         Some("create-db") => {
@@ -425,12 +432,10 @@ pub fn parse_old(input: &str) -> Result<Request, String> {
                     };
 
                     let version = match command.next() {
-                        Some(value) => {
-                            match i32::from_str_radix(&value.replace("\n", ""), 10) {
-                                Ok(n) => n,
-                                _ => -1,
-                            }
-                        }
+                        Some(value) => match i32::from_str_radix(&value.replace("\n", ""), 10) {
+                            Ok(n) => n,
+                            _ => -1,
+                        },
                         None => -1,
                     };
 
@@ -535,7 +540,7 @@ pub fn parse_old(input: &str) -> Result<Request, String> {
                 None => {
                     log::debug!("resolve missing params");
                     return Err(String::from(
-                            "resoved must be followed by db_name, key version and value",
+                        "resoved must be followed by db_name, key version and value",
                     ));
                 }
             };
@@ -579,5 +584,3 @@ pub fn parse_old(input: &str) -> Result<Request, String> {
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);
-
-
