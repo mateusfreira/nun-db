@@ -700,14 +700,14 @@ impl Database {
     /// # Examples
     ///
     /// ```
-    /// let change1 = Change::new(String::from("key"), String::from("foo"), 0);
+    /// let change1 = nundb::bo::Change::new(String::from("key"), String::from("foo"), 0);
     ///
-    /// let db = Database::new(
+    /// let db = nundb::bo::Database::new(
     ///     String::from("some"),
-    ///     DatabaseMataData::new(1, ConsensuStrategy::Newer),
+    ///     nundb::bo::DatabaseMataData::new(1, nundb::bo::ConsensuStrategy::Newer),
     /// );
     /// db.set_value(&change1);
-    /// let v = db.get_value(String::from("key"))
+    /// let v = db.get_value(String::from("key")).unwrap();
     /// assert_eq!(v.value, "foo");
     /// assert_eq!(v.version, 1);
     /// ```
@@ -1133,9 +1133,14 @@ pub enum Request {
         name: String,
         strategy: ConsensuStrategy,
     },
+    CreateUser {
+        token: String,
+        user_name: String,
+    },
     UseDb {
         token: String,
         name: String,
+        user_name: Option<String>,
     },
     Snapshot {
         reclaim_space: bool,
@@ -1188,6 +1193,7 @@ pub enum Request {
     Debug {
         command: String,
     },
+    ListCommands {},
     Arbiter {},
     Resolve {
         opp_id: u64,

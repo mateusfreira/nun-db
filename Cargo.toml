@@ -5,6 +5,14 @@ version = "0.0.1"
 authors = [ "Mateus Freira <mateus.freira@gmail.com>" ]
 edition = "2018"
 
+[lib]
+name = "nundb"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "nun-db"
+path = "src/bin/main.rs"
+
 [dependencies]
 tokio = "1.19.2"
 futures = "0.3.1"
@@ -28,3 +36,11 @@ lazy_static = "1.4.0"
 tokio-test = "*"
 assert_cmd = "0.10"
 predicates = "1"
+criterion = { version = "0.4", features = ["html_reports"] }
+
+
+[[bench]]
+name = "nundb_benchmark"
+harness = false
+
+

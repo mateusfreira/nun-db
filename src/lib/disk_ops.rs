@@ -42,7 +42,7 @@ const U32_SIZE: usize = 4;
 
 const VERSION_DELETED: i32 = -1;
 
-use crate::lib::configuration::NUN_DBS_DIR;
+use crate::configuration::NUN_DBS_DIR;
 
 pub fn get_dir_name() -> String {
     NUN_DBS_DIR.to_string()
@@ -878,11 +878,11 @@ fn remove_old_db_file(db_name: &String) {
 /// # Examples
 ///
 /// ```
-/// let (k_name, v_name) = get_key_value_files_name_from_file_name("jose.nun.data");
+/// let (k_name, v_name) = nundb::disk_ops::get_key_value_files_name_from_file_name(String::from("jose.nun.data"));
 /// assert_eq!(k_name, "jose.nun.data.keys");
-/// assert_eq!(k_name, "jose.nun.data.value");
+/// assert_eq!(v_name, "jose.nun.data.values");
 /// ```
-fn get_key_value_files_name_from_file_name(file_name: String) -> (String, String) {
+pub fn get_key_value_files_name_from_file_name(file_name: String) -> (String, String) {
     let keys_file_name = format!("{}.keys", file_name);
     let values_file_name = format!("{}.values", file_name);
     (keys_file_name, values_file_name)

@@ -177,19 +177,39 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Ok {}
         }),
 
-        Request::UseDb { name, token } => {
+        Request::UseDb {
+            name,
+            token,
+            user_name,
+        } => {
             let mut db_name_state = client.selected_db.name.write().unwrap();
             let dbs_map = dbs.map.read().expect("Could not lock the mao mutex");
             let respose: Response = match dbs_map.get(&name.to_string()) {
                 Some(db) => {
-                    if is_valid_token(&token, db) {
-                        let _ = std::mem::replace(&mut *db_name_state, name.clone());
-                        db.inc_connections(); //Increment the number of connections
-                        set_connection_counter(db, &dbs);
-                        Response::Ok {}
-                    } else {
-                        Response::Error {
-                            msg: "Invalid token".to_string(),
+                    match user_name {
+                        Some(user_name) => {
+                            if is_valid_user_token(&token, &user_name, db) {
+                                let _ = std::mem::replace(&mut *db_name_state, name.clone());
+                                db.inc_connections(); //Increment the number of connections
+                                set_connection_counter(db, &dbs);
+                                Response::Ok {}
+                            } else {
+                                Response::Error {
+                                    msg: "Invalid token".to_string(),
+                                }
+                            }
+                        }
+                        None => {
+                            if is_valid_token(&token, db) {
+                                let _ = std::mem::replace(&mut *db_name_state, name.clone());
+                                db.inc_connections(); //Increment the number of connections
+                                set_connection_counter(db, &dbs);
+                                Response::Ok {}
+                            } else {
+                                Response::Error {
+                                    msg: "Invalid token".to_string(),
+                                }
+                            }
                         }
                     }
                 }
@@ -201,6 +221,30 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 }
             };
             respose
+        }
+        Request::CreateUser { token, user_name } => {
+            apply_if_safe_access(&dbs, &client, &String::from("$$user_"), &|_db| {
+                let key = String::from(format!("$$user_{}", user_name));
+                let respose = set_key_value(key.to_string(), token.to_string(), -1, _db, &dbs);
+                match respose {
+                    Response::Set { .. } => {
+                        if !dbs.is_primary() {
+                            let db_name_state = _db.name.clone();
+                            send_message_to_primary(
+                                get_replicate_message(
+                                    db_name_state.to_string(),
+                                    key,
+                                    token.to_string(),
+                                    -1,
+                                ),
+                                dbs,
+                            );
+                        }
+                        Response::Ok {}
+                    }
+                    _ => respose,
+                }
+            })
         }
 
         Request::CreateDb {
@@ -539,6 +583,21 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             };
             return Response::Ok {};
         }
+        Request::ListCommands {} => apply_if_auth(&client.auth, &|| {
+            let commands = Request::command_list();
+            let commands = commands.iter().fold(String::from(""), |current, acc| {
+                format!("{},{}", current, acc)
+            });
+            match client
+                .sender
+                .clone()
+                .try_send(format_args!("commands-list {}\n", commands).to_string())
+            {
+                Err(e) => log::warn!("Request::commands-list sender.send Error: {}", e),
+                _ => (),
+            };
+            Response::Ok {}
+        }),
     }
 }
 
@@ -842,6 +901,36 @@ mod tests {
     }
 
     #[test]
+    fn should_create_user_in_a_db() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        assert_valid_request(process_request(
+            "create-user my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        // No longer an admin
+        client.auth.store(false, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "use my-db my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+        process_request("set some value", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value value\n");
+    }
+
+    #[test]
     fn should_not_create_db_if_already_exist() {
         let (_, dbs, mut client) = create_default_args();
         client.auth.store(true, Ordering::Relaxed);
@@ -855,5 +944,14 @@ mod tests {
             &dbs,
             &mut client,
         ));
+    }
+
+    #[test]
+    fn should_list_commands_avaliable() {
+        let (mut r, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        process_request("list-commands", &dbs, &mut client);
+        let result = r.try_next().unwrap().unwrap();
+        assert!(result.contains("create-db"));
     }
 }

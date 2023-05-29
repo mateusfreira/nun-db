@@ -204,6 +204,17 @@ pub fn is_valid_token(token: &String, db: &Database) -> bool {
     }
 }
 
+pub fn is_valid_user_token(token: &String, user_name: &String, db: &Database) -> bool {
+    let db = db.map.read().unwrap();
+    match db.get(&format!("$$user_{}", user_name)) {
+        Some(value) => {
+            log::debug!("[is_valid_token] Token {} value {}", value, token);
+            value == token
+        }
+        None => false,
+    }
+}
+
 pub fn set_connection_counter(db: &Database, dbs: &Arc<Databases>) -> Response {
     let value = db.connections_count().to_string();
     return set_key_value(CONNECTIONS_KEY.to_string(), value, -1, db, &dbs);
