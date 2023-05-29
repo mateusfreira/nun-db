@@ -4,6 +4,7 @@ RUN USER=root cargo new --bin nun-db
 WORKDIR ./nun-db
 
 COPY ./Cargo.toml ./Cargo.toml
+RUN cp src/main.rs benches/nundb_benchmark.rs
 RUN cargo build --release
 RUN rm src/*.rs
 
