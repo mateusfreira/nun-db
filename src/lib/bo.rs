@@ -60,6 +60,7 @@ impl Client {
             cluster_member: Mutex::new(None),
             selected_db: Arc::new(SelectedDatabase {
                 name: RwLock::new("init".to_string()),
+                user_name: RwLock::new(None),
             }),
             sender,
         }
@@ -76,6 +77,14 @@ impl Client {
             name.clone()
         };
         db_name
+    }
+
+    pub fn selected_db_user_name(&self) -> Option<String> {
+        let user_name = {
+            let name = self.selected_db.user_name.read().unwrap();
+            name.clone()
+        };
+        user_name
     }
 }
 
@@ -211,6 +220,7 @@ pub struct ClusterState {
 
 pub struct SelectedDatabase {
     pub name: RwLock<String>,
+    pub user_name: RwLock<Option<String>>,
 }
 
 pub struct DatabaseMataData {
@@ -1083,10 +1093,31 @@ impl OpLogRecord {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum PermissionKind {
+    Allow,
+    Deny,
+    // Arbiter,
+}
+
+impl fmt::Display for PermissionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            PermissionKind::Allow => write!(f, "Allow"),
+            PermissionKind::Deny => write!(f, "Deny"),
+            // PermissionKind::Arbiter => write!(f, "Arbiter"),
+        }
+    }
+}
+pub struct Permission {
+    pub kind: PermissionKind,
+    pub keys: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     SetPermissions {
         user: String,
-        kind: String,
+        kind: PermissionKind,
         keys: Vec<String>,
     },
     Get {

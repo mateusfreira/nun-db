@@ -14,3 +14,8 @@
 * e.g `set-permissions $user_name $type` command
 * e.g `set-permissions jose deny test`
 
+
+
+## Open problems
+- [ ] Permission to became arbiter
+- [ ] Read and write different permission

@@ -182,14 +182,20 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             token,
             user_name,
         } => {
-            let mut db_name_state = client.selected_db.name.write().unwrap();
             let dbs_map = dbs.map.read().expect("Could not lock the mao mutex");
             let respose: Response = match dbs_map.get(&name.to_string()) {
                 Some(db) => {
                     match user_name {
                         Some(user_name) => {
+                            let mut db_name_state = client.selected_db.name.write().unwrap();
+                            let mut user_name_state = client.selected_db.user_name.write().unwrap();
+
                             if is_valid_user_token(&token, &user_name, db) {
                                 let _ = std::mem::replace(&mut *db_name_state, name.clone());
+                                let _ = std::mem::replace(
+                                    &mut *user_name_state,
+                                    Some(user_name.clone()),
+                                );
                                 db.inc_connections(); //Increment the number of connections
                                 set_connection_counter(db, &dbs);
                                 Response::Ok {}
@@ -201,6 +207,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                         }
                         None => {
                             if is_valid_token(&token, db) {
+                                let mut db_name_state = client.selected_db.name.write().unwrap();
                                 let _ = std::mem::replace(&mut *db_name_state, name.clone());
                                 db.inc_connections(); //Increment the number of connections
                                 set_connection_counter(db, &dbs);
@@ -598,29 +605,31 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             };
             Response::Ok {}
         }),
-        Request::SetPermissions { user, kind, keys } => apply_if_safe_access(&dbs, &client, &String::from("$$permission_"), &|_db| {
-            let key = String::from(format!("$$permission_${}", user));
-            let value = String::from(format!("{} {}", kind, keys.join(",")));
-            let respose = set_key_value(key.to_string(), value.to_string(), -1, _db, &dbs);
-            match respose {
-                Response::Set { .. } => {
-                    if !dbs.is_primary() {
-                        let db_name_state = _db.name.clone();
-                        send_message_to_primary(
-                            get_replicate_message(
-                                db_name_state.to_string(),
-                                key,
-                                value.to_string(),
-                                -1,
-                            ),
-                            dbs,
-                        );
+        Request::SetPermissions { user, kind, keys } => {
+            apply_if_safe_access(&dbs, &client, &String::from("$$permission_"), &|_db| {
+                let key = String::from(format!("$$permission_${}", user));
+                let value = String::from(format!("{} {}", kind, keys.join(",")));
+                let respose = set_key_value(key.to_string(), value.to_string(), -1, _db, &dbs);
+                match respose {
+                    Response::Set { .. } => {
+                        if !dbs.is_primary() {
+                            let db_name_state = _db.name.clone();
+                            send_message_to_primary(
+                                get_replicate_message(
+                                    db_name_state.to_string(),
+                                    key,
+                                    value.to_string(),
+                                    -1,
+                                ),
+                                dbs,
+                            );
+                        }
+                        Response::Ok {}
                     }
-                    Response::Ok {}
+                    _ => respose,
                 }
-                _ => respose,
-            }
-        }),
+            })
+        }
     }
 }
 
@@ -995,11 +1004,7 @@ mod tests {
             &mut client,
         ));
         // Connect to db as admin
-        assert_valid_request(process_request(
-            "use my-db my-token",
-            &dbs,
-            &mut client,
-        ));
+        assert_valid_request(process_request("use my-db my-token", &dbs, &mut client));
 
         // Set permission
         assert_valid_request(process_request(
@@ -1020,8 +1025,7 @@ mod tests {
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value value\n");
 
-        process_request("set some test-jose", &dbs, &mut client);
+        process_request("set test-jose jose", &dbs, &mut client);
         assert_received(&mut receiver, "permission denied\n");
-
     }
 }

@@ -376,13 +376,26 @@ fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result
             return Err(format!("user is mandatory"));
         }
     };
-    let kind = match command.next() {
+    let rest_str = match command.next() {
         Some(kind) => kind.to_string(),
         None => {
             return Err(format!("kind is mandatory"));
         }
     };
-    let keys = match command.next() {
+    let mut rest = rest_str.splitn(2, " ");
+    let kind = match rest.next() {
+        Some(kind) => match kind {
+            "deny" => PermissionKind::Deny,
+            "allow" => PermissionKind::Allow,
+            _ => {
+                return Err(format!("kind must be deny or allow"));
+            }
+        },
+        None => {
+            return Err(format!("kind is mandatory"));
+        }
+    };
+    let keys = match rest.next() {
         Some(keys) => keys.to_string().split(",").map(|s| s.to_string()).collect(),
         None => {
             return Err(format!("keys is mandatory"));
@@ -391,6 +404,7 @@ fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result
 
     Ok(Request::SetPermissions { kind, user, keys })
 }
+
 fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     let opp_id: u64 = match command.next() {
         Some(id_str) => match id_str.parse::<u64>() {
@@ -1357,7 +1371,7 @@ mod tests {
             Ok(Request::SetPermissions { user, kind, keys }) => {
                 if user != "jose" {
                     Err(String::from("Invalid user"))
-                } else if kind != "deny" {
+                } else if kind != PermissionKind::Deny {
                     Err(String::from("Invalid kind"))
                 } else if keys.first().unwrap() != "test" {
                     Err(String::from("Invalid keys"))
@@ -1365,7 +1379,10 @@ mod tests {
                     Ok(())
                 }
             }
-            _ => Err(String::from("Invalid parsing")),
+            e => {
+                println!("{:?}", e);
+                Err(String::from("Invalid parsing"))
+            }
         }
     }
 }
