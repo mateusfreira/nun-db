@@ -1085,9 +1085,9 @@ impl OpLogRecord {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     SetPermissions {
-        user: String, 
-        kind: String, 
-        keys: String
+        user: String,
+        kind: String,
+        keys: Vec<String>,
     },
     Get {
         key: String,

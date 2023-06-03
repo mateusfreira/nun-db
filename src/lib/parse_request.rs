@@ -47,6 +47,7 @@ lazy_static! {
         map.insert("use-db", parse_use_command);
         map.insert("watch", parse_watch_command);
         map.insert("list-commands", parse_list_commands_command);
+        map.insert("set-permissions", parse_set_permissions_command);
 
         map
     };
@@ -363,8 +364,32 @@ fn parse_debug_command(command: &mut std::str::SplitN<&str>) -> Result<Request, 
         command: debug_command,
     })
 }
+
 fn parse_arbiter_command(_: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     Ok(Request::Arbiter {})
+}
+
+fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let user = match command.next() {
+        Some(user) => user.to_string(),
+        None => {
+            return Err(format!("user is mandatory"));
+        }
+    };
+    let kind = match command.next() {
+        Some(kind) => kind.to_string(),
+        None => {
+            return Err(format!("kind is mandatory"));
+        }
+    };
+    let keys = match command.next() {
+        Some(keys) => keys.to_string().split(",").map(|s| s.to_string()).collect(),
+        None => {
+            return Err(format!("keys is mandatory"));
+        }
+    };
+
+    Ok(Request::SetPermissions { kind, user, keys })
 }
 fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     let opp_id: u64 = match command.next() {
@@ -1329,17 +1354,17 @@ mod tests {
     #[test]
     fn should_parse_set_permission_command() -> Result<(), String> {
         match Request::parse("set-permissions jose deny test") {
-            Ok(Request::SetPermissions {user, kind, keys })=> {
+            Ok(Request::SetPermissions { user, kind, keys }) => {
                 if user != "jose" {
                     Err(String::from("Invalid user"))
                 } else if kind != "deny" {
                     Err(String::from("Invalid kind"))
-                } else if keys != "test" {
+                } else if keys.first().unwrap() != "test" {
                     Err(String::from("Invalid keys"))
                 } else {
                     Ok(())
                 }
-            },
+            }
             _ => Err(String::from("Invalid parsing")),
         }
     }

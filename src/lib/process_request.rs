@@ -598,6 +598,29 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             };
             Response::Ok {}
         }),
+        Request::SetPermissions { user, kind, keys } => apply_if_safe_access(&dbs, &client, &String::from("$$permission_"), &|_db| {
+            let key = String::from(format!("$$permission_${}", user));
+            let value = String::from(format!("{} {}", kind, keys.join(",")));
+            let respose = set_key_value(key.to_string(), value.to_string(), -1, _db, &dbs);
+            match respose {
+                Response::Set { .. } => {
+                    if !dbs.is_primary() {
+                        let db_name_state = _db.name.clone();
+                        send_message_to_primary(
+                            get_replicate_message(
+                                db_name_state.to_string(),
+                                key,
+                                value.to_string(),
+                                -1,
+                            ),
+                            dbs,
+                        );
+                    }
+                    Response::Ok {}
+                }
+                _ => respose,
+            }
+        }),
     }
 }
 
@@ -953,5 +976,52 @@ mod tests {
         process_request("list-commands", &dbs, &mut client);
         let result = r.try_next().unwrap().unwrap();
         assert!(result.contains("create-db"));
+    }
+
+    #[test]
+    fn shoud_set_permission_to_user_correctly() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        assert_valid_request(process_request(
+            "create-user my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+        // Connect to db as admin
+        assert_valid_request(process_request(
+            "use my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        // Set permission
+        assert_valid_request(process_request(
+            "set-permissions my-user deny test*",
+            &dbs,
+            &mut client,
+        ));
+
+        // No longer an admin
+        client.auth.store(false, Ordering::Relaxed);
+        // Connect as user
+        assert_valid_request(process_request(
+            "use my-db my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+        process_request("set some value", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value value\n");
+
+        process_request("set some test-jose", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+
     }
 }
