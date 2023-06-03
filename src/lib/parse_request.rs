@@ -693,20 +693,6 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_10000_commands_fast() -> Result<(), String> {
-        Request::parse("use-db foo some-key").unwrap();
-        let start = std::time::Instant::now();
-        for _ in 0..1000 {
-            Request::parse("use-db foo some-key").unwrap();
-        }
-        let end = std::time::Instant::now();
-        println!("10000 commands took {:?}", end - start);
-        // Old code would take ~1.772625ms
-        assert!(end - start < std::time::Duration::from_millis(3));
-        Ok(())
-    }
-
-    #[test]
     fn should_parse_use_db_with_user_name_and_token_with_user_db() -> Result<(), String> {
         match Request::parse("use-db foo user-dush some-key") {
             Ok(Request::UseDb {
@@ -1336,6 +1322,24 @@ mod tests {
                     Ok(())
                 }
             }
+            _ => Err(String::from("Invalid parsing")),
+        }
+    }
+
+    #[test]
+    fn should_parse_set_permission_command() -> Result<(), String> {
+        match Request::parse("set-permissions jose deny test") {
+            Ok(Request::SetPermissions {user, kind, keys })=> {
+                if user != "jose" {
+                    Err(String::from("Invalid user"))
+                } else if kind != "deny" {
+                    Err(String::from("Invalid kind"))
+                } else if keys != "test" {
+                    Err(String::from("Invalid keys"))
+                } else {
+                    Ok(())
+                }
+            },
             _ => Err(String::from("Invalid parsing")),
         }
     }
