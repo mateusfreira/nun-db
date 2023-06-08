@@ -379,24 +379,25 @@ fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result
     let rest_str = match command.next() {
         Some(kind) => kind.to_string(),
         None => {
-            return Err(format!("kind is mandatory"));
+            return Err(format!("permission list is mandatory"));
         }
     };
-    let mut rest = rest_str.splitn(2, " ");
-    let kinds = match rest.next() {
-        Some(kind) => kind.chars().map(|c| PermissionKind::from(c)).collect(), //PermissionKind::from(kind.to_string()),
-        None => {
-            return Err(format!("kind is mandatory"));
-        }
-    };
-    let keys = match rest.next() {
-        Some(keys) => keys.to_string().split(",").map(|s| s.to_string()).collect(),
-        None => {
-            return Err(format!("keys is mandatory"));
-        }
-    };
+    let mut permisions = rest_str.split("|");
+    let permissions = permisions.map(|permision_str| {
+        let mut permision = permision_str.to_string().splitn(2," ");
+        let kinds = match permision.next() {
+            Some(kind) => kind.to_string().chars().map(|c| PermissionKind::from(c)).collect(), 
+            None => vec![PermissionKind::Read],
+        };
+        let keys = match permision.next() {
+            Some(keys) => keys.to_string().split(",").map(|s| s.to_string()).collect(),
+            None => vec![],
+        };
+        Permission { kinds, keys }
+    }).collect();
 
-    Ok(Request::SetPermissions { kinds, user, keys })
+
+    Ok(Request::SetPermissions { user, permissions })
 }
 
 fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
@@ -1362,7 +1363,10 @@ mod tests {
     #[test]
     fn should_parse_set_permission_command() -> Result<(), String> {
         match Request::parse("set-permissions jose r test") {
-            Ok(Request::SetPermissions { user, kinds, keys }) => {
+            Ok(Request::SetPermissions { user, permissions }) => {
+                let permision = permissions[0];
+                let kinds = permision.kinds;
+                let keys = permision.keys;
                 if user != "jose" {
                     Err(String::from("Invalid user"))
                 } else if kinds[0] != PermissionKind::Read {
@@ -1383,7 +1387,40 @@ mod tests {
     #[test]
     fn should_parse_set_permission_command_as_write() -> Result<(), String> {
         match Request::parse("set-permissions jose rwix test") {
-            Ok(Request::SetPermissions { user, kinds, keys }) => {
+            Ok(Request::SetPermissions { user, permissions }) => {
+                let permision = permissions[0];
+                let kinds = permision.kinds;
+                let keys = permision.keys;
+
+                if user != "jose" {
+                    Err(String::from("Invalid user"))
+                } else if kinds[0] != PermissionKind::Read
+                    || kinds[1] != PermissionKind::Write
+                    || kinds[2] != PermissionKind::Increment
+                    || kinds[3] != PermissionKind::Remove
+                {
+                    Err(String::from("Invalid kind"))
+                } else if keys.first().unwrap() != "test" {
+                    Err(String::from("Invalid keys"))
+                } else {
+                    Ok(())
+                }
+            }
+            e => {
+                println!("{:?}", e);
+                Err(String::from("Invalid parsing"))
+            }
+        }
+    }
+
+    #[test]
+    fn should_parse_set_permission_with_multiple_permissions_set() -> Result<(), String> {
+        match Request::parse("set-permissions jose rwix test|r $connection|i date*") {
+            Ok(Request::SetPermissions { user, permissions }) => {
+                let permision = permissions[0];
+                let kinds = permision.kinds;
+                let keys = permision.keys;
+
                 if user != "jose" {
                     Err(String::from("Invalid user"))
                 } else if kinds[0] != PermissionKind::Read

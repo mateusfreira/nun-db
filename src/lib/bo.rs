@@ -1139,17 +1139,32 @@ impl fmt::Display for PermissionKind {
         }
     }
 }
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Permission {
     pub kinds: Vec<PermissionKind>,
     pub keys: Vec<String>,
 }
+impl fmt::Display for Permission {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f,format!("{} {}",
+            self.kinds
+                .iter()
+                .map(|k| k.to_string())
+                .collect::<Vec<String>>()
+                .join(""),
+            self.keys.join(",")
+            )
+        )
+    }
+}
+
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     SetPermissions {
         user: String,
-        kinds: Vec<PermissionKind>,
-        keys: Vec<String>,
+        permissions: Vec<Permission>,
     },
     Get {
         key: String,

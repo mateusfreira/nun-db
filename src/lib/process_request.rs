@@ -605,7 +605,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             };
             Response::Ok {}
         }),
-        Request::SetPermissions { user, kinds, keys } => {
+        Request::SetPermissions { user,  permissions } => {
             apply_if_safe_access(&dbs, &client, &String::from("$$permission_"), &|_db| {
                 let key = String::from(format!("$$permission_${}", user));
                 let kinds_as_str = kinds
