@@ -383,14 +383,8 @@ fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result
         }
     };
     let mut rest = rest_str.splitn(2, " ");
-    let kind = match rest.next() {
-        Some(kind) => match kind {
-            "deny" => PermissionKind::Deny,
-            "allow" => PermissionKind::Allow,
-            _ => {
-                return Err(format!("kind must be deny or allow"));
-            }
-        },
+    let kinds = match rest.next() {
+        Some(kind) => kind.chars().map(|c| PermissionKind::from(c)).collect(), //PermissionKind::from(kind.to_string()),
         None => {
             return Err(format!("kind is mandatory"));
         }
@@ -402,7 +396,7 @@ fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result
         }
     };
 
-    Ok(Request::SetPermissions { kind, user, keys })
+    Ok(Request::SetPermissions { kinds, user, keys })
 }
 
 fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
@@ -1367,11 +1361,36 @@ mod tests {
 
     #[test]
     fn should_parse_set_permission_command() -> Result<(), String> {
-        match Request::parse("set-permissions jose deny test") {
-            Ok(Request::SetPermissions { user, kind, keys }) => {
+        match Request::parse("set-permissions jose r test") {
+            Ok(Request::SetPermissions { user, kinds, keys }) => {
                 if user != "jose" {
                     Err(String::from("Invalid user"))
-                } else if kind != PermissionKind::Deny {
+                } else if kinds[0] != PermissionKind::Read {
+                    Err(String::from("Invalid kind"))
+                } else if keys.first().unwrap() != "test" {
+                    Err(String::from("Invalid keys"))
+                } else {
+                    Ok(())
+                }
+            }
+            e => {
+                println!("{:?}", e);
+                Err(String::from("Invalid parsing"))
+            }
+        }
+    }
+
+    #[test]
+    fn should_parse_set_permission_command_as_write() -> Result<(), String> {
+        match Request::parse("set-permissions jose rwix test") {
+            Ok(Request::SetPermissions { user, kinds, keys }) => {
+                if user != "jose" {
+                    Err(String::from("Invalid user"))
+                } else if kinds[0] != PermissionKind::Read
+                    || kinds[1] != PermissionKind::Write
+                    || kinds[2] != PermissionKind::Increment
+                    || kinds[3] != PermissionKind::Remove
+                {
                     Err(String::from("Invalid kind"))
                 } else if keys.first().unwrap() != "test" {
                     Err(String::from("Invalid keys"))

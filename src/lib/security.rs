@@ -21,6 +21,7 @@ pub fn apply_if_safe_access(
     client: &Client,
     key: &String,
     opp: &dyn Fn(&Database) -> Response,
+    permission_required: PermissionKind
 ) -> Response {
     if key.starts_with(SECURY_KEYS_PREFIX) && !client.is_admin_auth() {
         Response::Error {
@@ -28,52 +29,46 @@ pub fn apply_if_safe_access(
         }
     } else {
         let db_name = client.selected_db_name();
-        apply_to_database_name_if_has_permission(&dbs, &client, &db_name, opp, Some(key))
+        apply_to_database_name_if_has_permission(&dbs, &client, &db_name, opp, Some(key), &permission_required)
     }
 }
 
 fn parse_permission(permision: &str) -> Permission {
     let parts = permision.splitn(2, " ").collect::<Vec<&str>>();
     Permission {
-        kind: (match parts[0] {
-            "allow" => PermissionKind::Allow,
-            _ => PermissionKind::Deny,
-        }),
+        kinds: parts[0].to_string().chars().map(|x| PermissionKind::from(x)).collect(),
         keys: parts[1].split(",").map(|x| x.to_string()).collect(),
     }
 }
-fn has_permission(client: &Client, key: &String, db: &Database) -> bool {
+fn has_permission(
+    client: &Client,
+    key: &String,
+    db: &Database,
+    required_permission: &PermissionKind,
+) -> bool {
     if key.starts_with(SECURY_KEYS_PREFIX) {
         client.is_admin_auth()
     } else {
+        let selected_db_user_name = client.selected_db_user_name().unwrap_or("all".to_string());
         let permisions = db.get_value(String::from(format!(
             "$$permission_${}",
-            client
-                .selected_db_user_name()
-                .unwrap_or(String::from("all"))
+            selected_db_user_name
         )));
         log::debug!("permisions: {:?}", permisions);
+        //println!("permisions: {:?} {}", permisions, selected_db_user_name);
         match permisions {
             Some(permisions) => {
                 let permision = parse_permission(&permisions.value);
-                match permision.kind {
-                    PermissionKind::Deny => {
-                        log::debug!("deny permisions: {}, key: {}", permisions, key);
-                        let is_allowed = permision
-                            .keys
-                            .into_iter()
-                            .any(|x| get_function_by_pattern(&x)(key, &x));
-                        !is_allowed
-                    }
-                    PermissionKind::Allow => {
-                        let is_allowed = permision
-                            .keys
-                            .into_iter()
-                            .any(|x| get_function_by_pattern(&x)(key, &x));
-                        is_allowed
-                    }
-                    //_ => false,
+                println!("permisions_parsed: {:?}", permision.kinds);
+                let kinds = permision.kinds.clone();
+                if !kinds.contains(&required_permission) {
+                    return false;
                 }
+                let is_allowed = permision
+                    .keys
+                    .into_iter()
+                    .any(|x| get_function_by_pattern(&x)(key, &x));
+                is_allowed
             }
             None => true,
         }
@@ -85,8 +80,9 @@ pub fn apply_to_database_name(
     client: &Client,
     db_name: &String,
     opp: &dyn Fn(&Database) -> Response,
+    permission_required: &PermissionKind,
 ) -> Response {
-    apply_to_database_name_if_has_permission(&dbs, &client, &db_name, &opp, None)
+    apply_to_database_name_if_has_permission(&dbs, &client, &db_name, &opp, None, &permission_required)
 }
 
 pub fn apply_to_database_name_if_has_permission(
@@ -95,11 +91,12 @@ pub fn apply_to_database_name_if_has_permission(
     db_name: &String,
     opp: &dyn Fn(&Database) -> Response,
     key: Option<&String>,
+    permission_required: &PermissionKind,
 ) -> Response {
     let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => {
-            if key == None || has_permission(client, key.unwrap(), db) {
+            if key == None || has_permission(client, key.unwrap(), db, &permission_required) {
                 opp(db)
             } else {
                 match client
@@ -138,7 +135,7 @@ pub fn apply_to_database(
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
     let db_name = client.selected_db_name();
-    apply_to_database_name(dbs, client, &db_name, opp)
+    apply_to_database_name(dbs, client, &db_name, opp, &PermissionKind::Read)
 }
 
 pub fn clean_string_to_log(input: &str, dbs: &Arc<Databases>) -> String {

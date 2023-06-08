@@ -45,7 +45,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 );
             }
             Response::Ok {}
-        }),
+        }, PermissionKind::Increment),
         Request::Auth { user, password } => {
             let valid_user = dbs.user.clone();
             let valid_pwd = dbs.pwd.clone();
@@ -67,14 +67,14 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
 
         Request::Get { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             get_key_value(&key, &client.sender, _db)
-        }),
+        }, PermissionKind::Read),
 
         Request::GetSafe { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             get_key_value_safe(&key, &client.sender, _db)
-        }),
+        }, PermissionKind::Read),
 
         Request::Remove { key } => {
-            apply_if_safe_access(&dbs, &client, &key, &|_db| remove_key(&key, _db))
+            apply_if_safe_access(&dbs, &client, &key, &|_db| remove_key(&key, _db), PermissionKind::Remove)
         }
 
         Request::Set {
@@ -96,7 +96,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 );
             }
             respose
-        }),
+        }, PermissionKind::Write),
 
         Request::ReplicateRemove { db: name, key } => apply_if_auth(&client.auth, &|| {
             let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
@@ -175,7 +175,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         Request::Watch { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
             watch_key(&key, &client.sender, _db);
             Response::Ok {}
-        }),
+        }, PermissionKind::Read),
 
         Request::UseDb {
             name,
@@ -251,7 +251,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                     }
                     _ => respose,
                 }
-            })
+            }, PermissionKind::Write)
         }
 
         Request::CreateDb {
@@ -559,7 +559,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                         );
                         Response::Ok {}
                     }
-                });
+                }, &PermissionKind::Read);
             } else {
                 apply_to_database(&dbs, &client, &|db| {
                     if dbs.is_primary() {
@@ -605,10 +605,16 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             };
             Response::Ok {}
         }),
-        Request::SetPermissions { user, kind, keys } => {
+        Request::SetPermissions { user, kinds, keys } => {
             apply_if_safe_access(&dbs, &client, &String::from("$$permission_"), &|_db| {
                 let key = String::from(format!("$$permission_${}", user));
-                let value = String::from(format!("{} {}", kind, keys.join(",")));
+                let kinds_as_str = kinds
+                    .clone()
+                    .into_iter()
+                    .map(|r| r.to_string())
+                    .collect::<Vec<String>>()
+                    .join("");
+                let value = String::from(format!("{} {}", kinds_as_str, keys.join(",")));
                 let respose = set_key_value(key.to_string(), value.to_string(), -1, _db, &dbs);
                 match respose {
                     Response::Set { .. } => {
@@ -628,7 +634,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                     }
                     _ => respose,
                 }
-            })
+            }, PermissionKind::Write)
         }
     }
 }
@@ -1008,7 +1014,7 @@ mod tests {
 
         // Set permission
         assert_valid_request(process_request(
-            "set-permissions my-user deny test*",
+            "set-permissions my-user wr some*",
             &dbs,
             &mut client,
         ));
@@ -1028,4 +1034,67 @@ mod tests {
         process_request("set test-jose jose", &dbs, &mut client);
         assert_received(&mut receiver, "permission denied\n");
     }
+
+    #[test]
+    fn shoud_set_allow_reading_by_default() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+        // No longer an admin
+        client.auth.store(false, Ordering::Relaxed);
+
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        process_request("set some value", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value value\n");
+
+        process_request("set test-jose jose", &dbs, &mut client);
+        process_request("get test-jose", &dbs, &mut client);
+        assert_received(&mut receiver, "value jose\n");
+    }
+
+
+    #[test]
+    fn should_deny_access_to_users_by_default() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        assert_valid_request(process_request(
+            "create-user my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        // Connect to db as admin
+        assert_valid_request(process_request("use my-db my-token", &dbs, &mut client));
+
+        // No longer an admin
+        client.auth.store(false, Ordering::Relaxed);
+        // Connect as user
+        assert_valid_request(process_request(
+            "use my-db my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+        process_request("set some value", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value value\n");
+
+        process_request("set test-jose jose", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+    }
+
+
 }

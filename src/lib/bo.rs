@@ -1094,22 +1094,53 @@ impl OpLogRecord {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum PermissionKind {
-    Allow,
-    Deny,
-    // Arbiter,
+    Read,
+    Write,
+    Increment,
+    Decrement,
+    Remove,
+}
+
+impl From<char> for PermissionKind {
+    fn from(val: char) -> Self {
+        use self::PermissionKind::*;
+        match val {
+            'r' => Read,
+            'w' => Write,
+            'i' => Increment,
+            'd' => Decrement,
+            'x' => Remove,
+            _ => Read,
+        }
+    }
+}
+impl From<String> for PermissionKind {
+    fn from(val: String) -> Self {
+        use self::PermissionKind::*;
+        match val.as_str() {
+            "read" => Read,
+            "write" => Write,
+            "increment" => Increment,
+            "decrement" => Decrement,
+            "remove" => Remove,
+            _ => Read,
+        }
+    }
 }
 
 impl fmt::Display for PermissionKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            PermissionKind::Allow => write!(f, "Allow"),
-            PermissionKind::Deny => write!(f, "Deny"),
-            // PermissionKind::Arbiter => write!(f, "Arbiter"),
+            PermissionKind::Read => write!(f, "r"),
+            PermissionKind::Write => write!(f, "w"),
+            PermissionKind::Increment => write!(f, "i"),
+            PermissionKind::Decrement => write!(f, "d"),
+            PermissionKind::Remove => write!(f, "x"),
         }
     }
 }
 pub struct Permission {
-    pub kind: PermissionKind,
+    pub kinds: Vec<PermissionKind>,
     pub keys: Vec<String>,
 }
 
@@ -1117,7 +1148,7 @@ pub struct Permission {
 pub enum Request {
     SetPermissions {
         user: String,
-        kind: PermissionKind,
+        kinds: Vec<PermissionKind>,
         keys: Vec<String>,
     },
     Get {
