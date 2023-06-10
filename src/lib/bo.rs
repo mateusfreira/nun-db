@@ -1147,6 +1147,12 @@ pub struct Permission {
 }
 
 impl Permission {
+    pub fn permissions_from_str(permision_str: &str) -> Vec<Permission> {
+        permision_str
+            .split("|")
+            .map(Permission::from)
+            .collect()
+    }
     pub fn from(permision_str: &str) -> Permission {
         let mut permision = permision_str.splitn(2, " ");
         let kinds = match permision.next() {

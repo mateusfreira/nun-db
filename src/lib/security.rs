@@ -40,15 +40,6 @@ pub fn apply_if_safe_access(
     }
 }
 
-fn parse_permission(permision: &str) -> Vec<Permission> {
-    let permissions = permision.split("|").collect::<Vec<&str>>();
-    permissions
-        .iter()
-        .map(|x| {
-            Permission::from(x.trim())
-        })
-        .collect()
-}
 fn has_permission(
     client: &Client,
     key: &String,
@@ -70,7 +61,7 @@ fn has_permission(
         );
         match permisions {
             Some(permisions) => {
-                let permisions = parse_permission(&permisions.value);
+                let permisions = Permission::permissions_from_str(permisions.value.as_str());
 
                 permisions.into_iter().any(|permision| {
                     println!("permisions_parsed: {:?}", permision.kinds);

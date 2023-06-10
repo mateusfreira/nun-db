@@ -382,10 +382,7 @@ fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result
             return Err(format!("permission list is mandatory"));
         }
     };
-    let permisions = rest_str.split("|");
-    let permissions = permisions
-        .map(Permission::from)
-        .collect();
+    let permissions = Permission::permissions_from_str(rest_str.as_str());
 
     Ok(Request::SetPermissions { user, permissions })
 }
