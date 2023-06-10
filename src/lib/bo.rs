@@ -1146,6 +1146,27 @@ pub struct Permission {
     pub keys: Vec<String>,
 }
 
+impl Permission {
+    pub fn from(permision_str: &str) -> Permission {
+        let mut permision = permision_str.splitn(2, " ");
+        let kinds = match permision.next() {
+            Some(kind) => kind
+                .to_string()
+                .chars()
+                .map(|c| PermissionKind::from(c))
+                .collect(),
+            None => vec![PermissionKind::Read],
+        };
+        let keys = match permision.next() {
+            Some(keys) => keys.to_string().split(",").map(|s| s.to_string()).collect(),
+            None => vec![],
+        };
+        Permission { kinds, keys }
+
+    }
+}
+
+
 impl fmt::Display for Permission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

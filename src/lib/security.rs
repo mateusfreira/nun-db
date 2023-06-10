@@ -45,15 +45,7 @@ fn parse_permission(permision: &str) -> Vec<Permission> {
     permissions
         .iter()
         .map(|x| {
-            let parts = x.splitn(2, " ").collect::<Vec<&str>>();
-            Permission {
-                kinds: parts[0]
-                    .to_string()
-                    .chars()
-                    .map(|x| PermissionKind::from(x))
-                    .collect(),
-                keys: parts[1].split(",").map(|x| x.to_string()).collect(),
-            }
+            Permission::from(x.trim())
         })
         .collect()
 }
