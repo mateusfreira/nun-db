@@ -384,7 +384,8 @@ fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result
     };
     let mut permisions = rest_str.split("|");
     let permissions = permisions.map(|permision_str| {
-        let mut permision = permision_str.to_string().splitn(2," ");
+        let permision_str = permision_str.trim();
+        let mut permision = permision_str.splitn(2," ");
         let kinds = match permision.next() {
             Some(kind) => kind.to_string().chars().map(|c| PermissionKind::from(c)).collect(), 
             None => vec![PermissionKind::Read],
@@ -1364,7 +1365,7 @@ mod tests {
     fn should_parse_set_permission_command() -> Result<(), String> {
         match Request::parse("set-permissions jose r test") {
             Ok(Request::SetPermissions { user, permissions }) => {
-                let permision = permissions[0];
+                let permision = permissions[0].clone();
                 let kinds = permision.kinds;
                 let keys = permision.keys;
                 if user != "jose" {
@@ -1388,7 +1389,7 @@ mod tests {
     fn should_parse_set_permission_command_as_write() -> Result<(), String> {
         match Request::parse("set-permissions jose rwix test") {
             Ok(Request::SetPermissions { user, permissions }) => {
-                let permision = permissions[0];
+                let permision = permissions[0].clone();
                 let kinds = permision.kinds;
                 let keys = permision.keys;
 
@@ -1417,7 +1418,7 @@ mod tests {
     fn should_parse_set_permission_with_multiple_permissions_set() -> Result<(), String> {
         match Request::parse("set-permissions jose rwix test|r $connection|i date*") {
             Ok(Request::SetPermissions { user, permissions }) => {
-                let permision = permissions[0];
+                let permision = permissions[0].clone();
                 let kinds = permision.kinds;
                 let keys = permision.keys;
 

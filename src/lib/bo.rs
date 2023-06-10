@@ -1145,16 +1145,15 @@ pub struct Permission {
     pub kinds: Vec<PermissionKind>,
     pub keys: Vec<String>,
 }
+
 impl fmt::Display for Permission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f,format!("{} {}",
-            self.kinds
+        write!(f,"{} {}" , self.kinds
                 .iter()
                 .map(|k| k.to_string())
                 .collect::<Vec<String>>()
                 .join(""),
             self.keys.join(",")
-            )
         )
     }
 }

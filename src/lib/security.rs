@@ -55,7 +55,7 @@ fn has_permission(
             selected_db_user_name
         )));
         log::debug!("permisions: {:?}", permisions);
-        //println!("permisions: {:?} {}", permisions, selected_db_user_name);
+        println!("permisions: {:?} user: {:?}", permisions, selected_db_user_name);
         match permisions {
             Some(permisions) => {
                 let permision = parse_permission(&permisions.value);
@@ -70,7 +70,7 @@ fn has_permission(
                     .any(|x| get_function_by_pattern(&x)(key, &x));
                 is_allowed
             }
-            None => true,
+            None => selected_db_user_name == "all",
         }
     }
 }
