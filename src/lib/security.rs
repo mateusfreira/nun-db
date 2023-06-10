@@ -55,21 +55,17 @@ fn has_permission(
             selected_db_user_name
         )));
         log::debug!("permisions: {:?}", permisions);
-        println!(
-            "permisions: {:?} user: {:?}",
-            permisions, selected_db_user_name
-        );
         match permisions {
             Some(permisions) => {
                 let permisions = Permission::permissions_from_str(permisions.value.as_str());
 
                 permisions.into_iter().any(|permision| {
-                    println!("permisions_parsed: {:?}", permision.kinds);
+                    log::debug!("permisions_parsed: {:?}", permision.kinds);
                     let kinds = permision.kinds.clone();
                     if !kinds.contains(&required_permission) {
                         return false;
                     }
-                    println!("Has kind: {:?}", permision.keys);
+                    log::debug!("Has kind: {:?}", permision.keys);
                     let is_allowed = permision
                         .keys
                         .into_iter()

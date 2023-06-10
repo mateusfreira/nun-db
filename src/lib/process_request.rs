@@ -632,6 +632,31 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 }
             }, PermissionKind::Write)
         }
+        Request::ReplicateCreateUser { db_name, token, user_name } => {
+            apply_to_database_name(dbs, client, &db_name, &|db| {
+                let key = String::from(format!("$$user_{}", user_name));
+                let respose = set_key_value(key.to_string(), token.to_string(), -1, db, &dbs);
+                match respose {
+                    Response::Set { .. } => {
+                        if !dbs.is_primary() {
+                            let db_name_state = db.name.clone();
+                            send_message_to_primary(
+                                get_replicate_message(
+                                    db_name_state.to_string(),
+                                    key,
+                                    token.to_string(),
+                                    -1,
+                                ),
+                                dbs,
+                            );
+                        }
+                        Response::Ok {}
+                    }
+                    _ => respose,
+                }
+
+            }, &PermissionKind::Write)
+        }
     }
 }
 

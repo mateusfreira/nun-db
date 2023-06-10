@@ -1188,6 +1188,7 @@ impl fmt::Display for Permission {
     }
 }
 
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     SetPermissions {
@@ -1244,6 +1245,11 @@ pub enum Request {
         strategy: ConsensuStrategy,
     },
     CreateUser {
+        token: String,
+        user_name: String,
+    },
+    ReplicateCreateUser {
+        db_name: String,
         token: String,
         user_name: String,
     },

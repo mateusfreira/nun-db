@@ -5,6 +5,41 @@ mod tests {
     use predicates::prelude::*; // Used for writing assertions
 
     #[test]
+    fn should_replicate_user_creation() -> Result<(), Box<dyn std::error::Error>> {
+        helpers::clean_env();
+        let replicas_processes = helpers::start_3_replicas();
+        helpers::nundb_exec(
+            &helpers::PRIMARY_HTTP_URI.to_string(),
+            &String::from("create-db test test-pwd;"),
+        )
+        .success()
+        .stdout(predicate::str::contains("create-db success")); // Empty is the expected response here
+        helpers::wait_seconds(10); //Wait 1s to the replication
+                                   //
+        helpers::nundb_exec(
+            &helpers::PRIMARY_HTTP_URI.to_string(),
+            &String::from("use-db test test-pwd; create-user foo bar; set-safe name 0 mateus;"),
+        )
+        .success()
+        .stdout(predicate::str::contains("empty")); // Empty is the expected response here
+        helpers::nundb_exec(
+            &helpers::SECOUNDAR_HTTP_URI.to_string(),
+            &String::from("use-db test foo bar;get name"),
+        )
+        .success()
+        .stdout(predicate::str::contains("value mateus"));
+        helpers::nundb_exec(
+            &helpers::SECOUNDAR2_HTTP_URI.to_string(),
+            &String::from("use-db test foo bar;get name"),
+        )
+        .success()
+        .stdout(predicate::str::contains("value mateus"));
+        helpers::kill_replicas(replicas_processes)?;
+        Ok(())
+    }
+
+
+    #[test]
     fn should_replicate_as_expected() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
         let replicas_processes = helpers::start_3_replicas();

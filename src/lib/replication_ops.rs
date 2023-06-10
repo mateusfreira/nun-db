@@ -232,6 +232,13 @@ pub fn replicate_request(
                 );
                 Response::Ok {}
             }
+            Request::CreateUser { token, user_name } => {
+                replicate_web(
+                    replication_sender,
+                    format!("create-user-repliate {} {} {}", db_name, token, user_name),
+                );
+                Response::Ok {}
+            }
             _ => response,
         },
     }
