@@ -934,8 +934,9 @@ mod tests {
             .expect("my-db should exists");
     }
 
+
     #[test]
-    fn should_create_user_in_a_db() {
+    fn should_handle_mult_statemente_permission() {
         let (mut receiver, dbs, mut client) = create_default_args();
         client.auth.store(true, Ordering::Relaxed);
         assert_valid_request(process_request(
@@ -951,7 +952,7 @@ mod tests {
             &dbs,
             &mut client,
         ));
-        process_request("set-permissions my-user rw *", &dbs, &mut client);
+        process_request("set-permissions my-user rw some|id incjose|r test", &dbs, &mut client);
 
         // No longer an admin
         client.auth.store(false, Ordering::Relaxed);
@@ -963,6 +964,18 @@ mod tests {
         process_request("set some value", &dbs, &mut client);
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value value\n");
+        process_request("increment some", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+
+        assert_valid_request(process_request("increment incjose", &dbs, &mut client));
+        process_request("get incjose", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+
+        process_request("get test", &dbs, &mut client);
+        assert_received(&mut receiver, "value <Empty>\n");
+        process_request("set test value", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+
     }
 
     #[test]

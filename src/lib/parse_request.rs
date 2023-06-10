@@ -382,21 +382,26 @@ fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result
             return Err(format!("permission list is mandatory"));
         }
     };
-    let mut permisions = rest_str.split("|");
-    let permissions = permisions.map(|permision_str| {
-        let permision_str = permision_str.trim();
-        let mut permision = permision_str.splitn(2," ");
-        let kinds = match permision.next() {
-            Some(kind) => kind.to_string().chars().map(|c| PermissionKind::from(c)).collect(), 
-            None => vec![PermissionKind::Read],
-        };
-        let keys = match permision.next() {
-            Some(keys) => keys.to_string().split(",").map(|s| s.to_string()).collect(),
-            None => vec![],
-        };
-        Permission { kinds, keys }
-    }).collect();
-
+    let permisions = rest_str.split("|");
+    let permissions = permisions
+        .map(|permision_str| {
+            let permision_str = permision_str.trim();
+            let mut permision = permision_str.splitn(2, " ");
+            let kinds = match permision.next() {
+                Some(kind) => kind
+                    .to_string()
+                    .chars()
+                    .map(|c| PermissionKind::from(c))
+                    .collect(),
+                None => vec![PermissionKind::Read],
+            };
+            let keys = match permision.next() {
+                Some(keys) => keys.to_string().split(",").map(|s| s.to_string()).collect(),
+                None => vec![],
+            };
+            Permission { kinds, keys }
+        })
+        .collect();
 
     Ok(Request::SetPermissions { user, permissions })
 }

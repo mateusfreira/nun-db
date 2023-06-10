@@ -1148,7 +1148,10 @@ pub struct Permission {
 
 impl fmt::Display for Permission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f,"{} {}" , self.kinds
+        write!(
+            f,
+            "{} {}",
+            self.kinds
                 .iter()
                 .map(|k| k.to_string())
                 .collect::<Vec<String>>()
@@ -1157,7 +1160,6 @@ impl fmt::Display for Permission {
         )
     }
 }
-
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {

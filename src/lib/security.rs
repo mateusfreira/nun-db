@@ -21,7 +21,7 @@ pub fn apply_if_safe_access(
     client: &Client,
     key: &String,
     opp: &dyn Fn(&Database) -> Response,
-    permission_required: PermissionKind
+    permission_required: PermissionKind,
 ) -> Response {
     if key.starts_with(SECURY_KEYS_PREFIX) && !client.is_admin_auth() {
         Response::Error {
@@ -29,16 +29,33 @@ pub fn apply_if_safe_access(
         }
     } else {
         let db_name = client.selected_db_name();
-        apply_to_database_name_if_has_permission(&dbs, &client, &db_name, opp, Some(key), &permission_required)
+        apply_to_database_name_if_has_permission(
+            &dbs,
+            &client,
+            &db_name,
+            opp,
+            Some(key),
+            &permission_required,
+        )
     }
 }
 
-fn parse_permission(permision: &str) -> Permission {
-    let parts = permision.splitn(2, " ").collect::<Vec<&str>>();
-    Permission {
-        kinds: parts[0].to_string().chars().map(|x| PermissionKind::from(x)).collect(),
-        keys: parts[1].split(",").map(|x| x.to_string()).collect(),
-    }
+fn parse_permission(permision: &str) -> Vec<Permission> {
+    let permissions = permision.split("|").collect::<Vec<&str>>();
+    permissions
+        .iter()
+        .map(|x| {
+            let parts = x.splitn(2, " ").collect::<Vec<&str>>();
+            Permission {
+                kinds: parts[0]
+                    .to_string()
+                    .chars()
+                    .map(|x| PermissionKind::from(x))
+                    .collect(),
+                keys: parts[1].split(",").map(|x| x.to_string()).collect(),
+            }
+        })
+        .collect()
 }
 fn has_permission(
     client: &Client,
@@ -55,20 +72,27 @@ fn has_permission(
             selected_db_user_name
         )));
         log::debug!("permisions: {:?}", permisions);
-        println!("permisions: {:?} user: {:?}", permisions, selected_db_user_name);
+        println!(
+            "permisions: {:?} user: {:?}",
+            permisions, selected_db_user_name
+        );
         match permisions {
             Some(permisions) => {
-                let permision = parse_permission(&permisions.value);
-                println!("permisions_parsed: {:?}", permision.kinds);
-                let kinds = permision.kinds.clone();
-                if !kinds.contains(&required_permission) {
-                    return false;
-                }
-                let is_allowed = permision
-                    .keys
-                    .into_iter()
-                    .any(|x| get_function_by_pattern(&x)(key, &x));
-                is_allowed
+                let permisions = parse_permission(&permisions.value);
+
+                permisions.into_iter().any(|permision| {
+                    println!("permisions_parsed: {:?}", permision.kinds);
+                    let kinds = permision.kinds.clone();
+                    if !kinds.contains(&required_permission) {
+                        return false;
+                    }
+                    println!("Has kind: {:?}", permision.keys);
+                    let is_allowed = permision
+                        .keys
+                        .into_iter()
+                        .any(|x| get_function_by_pattern(&x)(key, &x));
+                    is_allowed
+                })
             }
             None => selected_db_user_name == "all",
         }
@@ -82,7 +106,14 @@ pub fn apply_to_database_name(
     opp: &dyn Fn(&Database) -> Response,
     permission_required: &PermissionKind,
 ) -> Response {
-    apply_to_database_name_if_has_permission(&dbs, &client, &db_name, &opp, None, &permission_required)
+    apply_to_database_name_if_has_permission(
+        &dbs,
+        &client,
+        &db_name,
+        &opp,
+        None,
+        &permission_required,
+    )
 }
 
 pub fn apply_to_database_name_if_has_permission(
