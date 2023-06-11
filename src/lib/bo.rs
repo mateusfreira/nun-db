@@ -1148,14 +1148,15 @@ pub struct Permission {
 
 impl Permission {
     pub fn permissions_from_str(permision_str: &str) -> Vec<Permission> {
-        permision_str
-            .split("|")
-            .map(Permission::from)
-            .collect()
+        permision_str.split("|").map(Permission::from).collect()
     }
 
-    pub fn permissions_to_str_value(permissions: &Vec<Permission>) -> String{
-        let permisions_as_str : Vec<String> = permissions.clone().into_iter().map(|a|a.to_string()).collect();
+    pub fn permissions_to_str_value(permissions: &Vec<Permission>) -> String {
+        let permisions_as_str: Vec<String> = permissions
+            .clone()
+            .into_iter()
+            .map(|a| a.to_string())
+            .collect();
         permisions_as_str.join("|")
     }
 
@@ -1174,10 +1175,8 @@ impl Permission {
             None => vec![],
         };
         Permission { kinds, keys }
-
     }
 }
-
 
 impl fmt::Display for Permission {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

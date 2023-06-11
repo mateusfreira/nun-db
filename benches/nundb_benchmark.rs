@@ -1,7 +1,13 @@
+use nundb::process_request::process_request;
 use criterion::{criterion_group, criterion_main, Criterion};
+use futures::channel::mpsc::{channel, Receiver, Sender};
 use nundb::bo::*;
+use std::collections::HashMap;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 fn criterion_benchmark(c: &mut Criterion) {
+
     c.bench_function("Parse use-db", |b| {
         b.iter(|| Request::parse("use-db jose jose"))
     });
@@ -15,6 +21,53 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("Parse invalid command old parse", |b| {
         b.iter(|| parse_old("none jose"))
     });
+
+    c.bench_function("Process request", |b| {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("auth user token", &dbs, &mut client);
+        receiver.try_next().unwrap();
+        process_request("create-db test test-1", &dbs, &mut client);
+        receiver.try_next().unwrap();
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("create-user foo bar", &dbs, &mut client);
+        process_request("set-permissions foo rw key-*|rwix nure-*", &dbs, &mut client);
+        client.auth.store(false, Ordering::Relaxed);
+        process_request("use-db test foo bar", &dbs, &mut client);
+
+        b.iter(||{
+            let thread_id = std::thread::current().id();
+            let key = format!("key-{:?}", thread_id).to_string();
+            let command = format!("set {} jose", key).to_string();
+            process_request(&command, &dbs, &mut client);
+            process_request(&format!("get {}", key), &dbs, &mut client);
+            let response = receiver.try_next().unwrap();
+            println!("response: {:?}", response);
+        });
+        //todo!()
+    });
+}
+pub fn create_default_args() -> (Receiver<String>, Arc<Databases>, Client) {
+    let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+    let (sender2, _receiver): (Sender<String>, Receiver<String>) = channel(100);
+    let keys_map = HashMap::new();
+    let dbs = Arc::new(Databases::new(
+        String::from("user"),
+        String::from("token"),
+        String::from(""),
+        sender1,
+        sender2,
+        keys_map,
+        1 as u128,
+        true,
+    ));
+
+    dbs.node_state
+        .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+
+    let (client, receiver) = Client::new_empty_and_receiver();
+
+    return (receiver, dbs, client);
 }
 
 pub fn parse_old(input: &str) -> Result<Request, String> {

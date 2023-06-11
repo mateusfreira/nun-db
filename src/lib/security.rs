@@ -158,15 +158,13 @@ pub fn clean_string_to_log(input: &str, dbs: &Arc<Databases>) -> String {
         .replace(&pwd_replacer.to_string(), "****");
 }
 
-
 pub fn user_name_key_from_user_name(user_name: &String) -> String {
     String::from(format!("{}_{}", USER_NAME_KEYS_PREFIX, user_name))
 }
 
-pub fn permissions_key_from_user_name(user_name: &String) -> String{
+pub fn permissions_key_from_user_name(user_name: &String) -> String {
     String::from(format!("{}{}", PERMISSION_KEYS_PREFIX, user_name))
- }
-
+}
 
 #[cfg(test)]
 mod tests {

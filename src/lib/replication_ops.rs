@@ -237,7 +237,11 @@ pub fn replicate_request(
             Request::CreateUser { token, user_name } => {
                 let key = user_name_key_from_user_name(&user_name);
                 let value = token.to_string();
-                log::debug!("Will replicate user creating set of the key {} to {} ", key, value);
+                log::debug!(
+                    "Will replicate user creating set of the key {} to {} ",
+                    key,
+                    value
+                );
                 replicate_web(
                     replication_sender,
                     get_replicate_message(db_name.to_string(), key, value, -1),
@@ -247,7 +251,11 @@ pub fn replicate_request(
             Request::SetPermissions { user, permissions } => {
                 let key = permissions_key_from_user_name(&user);
                 let value = Permission::permissions_to_str_value(&permissions);
-                log::debug!("Will replicate user set-permission set of the key {} to {} ", key, value);
+                log::debug!(
+                    "Will replicate user set-permission set of the key {} to {} ",
+                    key,
+                    value
+                );
                 replicate_web(
                     replication_sender,
                     get_replicate_message(db_name.to_string(), key, value, -1),

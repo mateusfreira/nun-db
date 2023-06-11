@@ -651,8 +651,6 @@ fn parse_create_db_command(command: &mut std::str::SplitN<&str>) -> Result<Reque
     })
 }
 
-
-
 fn parse_create_user_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     let user_name = match command.next() {
         Some(name) => name,
@@ -673,7 +671,6 @@ fn parse_create_user_command(command: &mut std::str::SplitN<&str>) -> Result<Req
         token: token.to_string(),
     })
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1367,9 +1364,7 @@ mod tests {
                     Ok(())
                 }
             }
-            _ => {
-                Err(String::from("Invalid parsing"))
-            }
+            _ => Err(String::from("Invalid parsing")),
         }
     }
 
@@ -1395,9 +1390,7 @@ mod tests {
                     Ok(())
                 }
             }
-            _ => {
-                Err(String::from("Invalid parsing"))
-            }
+            _ => Err(String::from("Invalid parsing")),
         }
     }
 
@@ -1423,9 +1416,7 @@ mod tests {
                     Ok(())
                 }
             }
-            _ => {
-                Err(String::from("Invalid parsing"))
-            }
+            _ => Err(String::from("Invalid parsing")),
         }
     }
 }
