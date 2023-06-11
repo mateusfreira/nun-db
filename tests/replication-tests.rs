@@ -14,15 +14,15 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains("create-db success")); // Empty is the expected response here
-        helpers::wait_seconds(10); //Wait 1s to the replication
-                                   //
         helpers::nundb_exec(
             &helpers::PRIMARY_HTTP_URI.to_string(),
-            &String::from("use-db test test-pwd; create-user foo bar; set-safe name 0 mateus;"),
+            &String::from("use-db test test-pwd; create-user foo bar;set-permissions foo rw *; set-safe name 0 mateus;"),
         )
         .success()
         .stdout(predicate::str::contains("empty")); // Empty is the expected response here
+        helpers::wait_seconds(3);
         helpers::nundb_exec(
+            //&helpers::PRIMARY_HTTP_URI.to_string(),
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
             &String::from("use-db test foo bar;get name"),
         )
@@ -37,7 +37,6 @@ mod tests {
         helpers::kill_replicas(replicas_processes)?;
         Ok(())
     }
-
 
     #[test]
     fn should_replicate_as_expected() -> Result<(), Box<dyn std::error::Error>> {

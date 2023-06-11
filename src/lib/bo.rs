@@ -1153,6 +1153,12 @@ impl Permission {
             .map(Permission::from)
             .collect()
     }
+
+    pub fn permissions_to_str_value(permissions: &Vec<Permission>) -> String{
+        let permisions_as_str : Vec<String> = permissions.clone().into_iter().map(|a|a.to_string()).collect();
+        permisions_as_str.join("|")
+    }
+
     pub fn from(permision_str: &str) -> Permission {
         let mut permision = permision_str.splitn(2, " ");
         let kinds = match permision.next() {
@@ -1187,7 +1193,6 @@ impl fmt::Display for Permission {
         )
     }
 }
-
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
@@ -1245,11 +1250,6 @@ pub enum Request {
         strategy: ConsensuStrategy,
     },
     CreateUser {
-        token: String,
-        user_name: String,
-    },
-    ReplicateCreateUser {
-        db_name: String,
         token: String,
         user_name: String,
     },

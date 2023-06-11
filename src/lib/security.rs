@@ -5,6 +5,8 @@ use crate::bo::*;
 use std::sync::Arc;
 
 pub const SECURY_KEYS_PREFIX: &'static str = "$$";
+pub const USER_NAME_KEYS_PREFIX: &'static str = "$$user";
+pub const PERMISSION_KEYS_PREFIX: &'static str = "$$permission_$";
 
 pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Response {
     if auth.load(Ordering::SeqCst) {
@@ -155,6 +157,16 @@ pub fn clean_string_to_log(input: &str, dbs: &Arc<Databases>) -> String {
         .replace(&user_replacer.to_string(), "**** ")
         .replace(&pwd_replacer.to_string(), "****");
 }
+
+
+pub fn user_name_key_from_user_name(user_name: &String) -> String {
+    String::from(format!("{}_{}", USER_NAME_KEYS_PREFIX, user_name))
+}
+
+pub fn permissions_key_from_user_name(user_name: &String) -> String{
+    String::from(format!("{}{}", PERMISSION_KEYS_PREFIX, user_name))
+ }
+
 
 #[cfg(test)]
 mod tests {

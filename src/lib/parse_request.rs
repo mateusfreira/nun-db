@@ -14,7 +14,6 @@ lazy_static! {
 
         map.insert("create-db", parse_create_db_command);
         map.insert("create-user", parse_create_user_command);
-        map.insert("replicate-create-user", parse_replicate_create_user_command);
 
         map.insert("debug", parse_debug_command);
         map.insert("election", parse_election_command);
@@ -652,43 +651,6 @@ fn parse_create_db_command(command: &mut std::str::SplitN<&str>) -> Result<Reque
     })
 }
 
-
-fn parse_replicate_create_user_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
-    let db_name = match command.next() {
-        Some(name) => name,
-        None => {
-            log::debug!("CreateUser needs to provide an db name");
-            ""
-        }
-    };
-    let mut rest = match command.next() {
-        Some(rest) => rest.splitn(2, " "),
-        None => {
-            log::debug!("create-user needs username and token");
-            return Err(String::from("create-user must be followed by a token"));
-        }
-    };
-
-    let user_name = match rest.next() {
-        Some(name) => name,
-        None => {
-            log::debug!("CreateUser needs to provide an user name");
-            ""
-        }
-    };
-    let token = match rest.next() {
-        Some(key) => String::from(key).replace("\n", ""),
-        None => {
-            log::debug!("CreateUser needs and token");
-            "".to_string()
-        }
-    };
-    Ok(Request::ReplicateCreateUser {
-        db_name: db_name.to_string(),
-        user_name: user_name.to_string(),
-        token: token.to_string(),
-    })
-}
 
 
 fn parse_create_user_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {

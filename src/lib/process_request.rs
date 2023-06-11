@@ -230,8 +230,8 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             respose
         }
         Request::CreateUser { token, user_name } => {
-            apply_if_safe_access(&dbs, &client, &String::from("$$user_"), &|_db| {
-                let key = String::from(format!("$$user_{}", user_name));
+            apply_if_safe_access(&dbs, &client, &String::from(USER_NAME_KEYS_PREFIX), &|_db| {
+                let key = user_name_key_from_user_name(&user_name);
                 let respose = set_key_value(key.to_string(), token.to_string(), -1, _db, &dbs);
                 match respose {
                     Response::Set { .. } => {
@@ -606,10 +606,9 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Ok {}
         }),
         Request::SetPermissions { user,  permissions } => {
-            apply_if_safe_access(&dbs, &client, &String::from("$$permission_"), &|_db| {
-                let key = String::from(format!("$$permission_${}", user));
-                let permisions_as_str : Vec<String> = permissions.clone().into_iter().map(|a|a.to_string()).collect();
-                let value = permisions_as_str.join("|");
+            apply_if_safe_access(&dbs, &client, &String::from(PERMISSION_KEYS_PREFIX), &|_db| {
+                let key = permissions_key_from_user_name(&user);
+                let value = Permission::permissions_to_str_value(&permissions);
 
                 let respose = set_key_value(key.to_string(), value.to_string(), -1, _db, &dbs);
                 match respose {
@@ -631,31 +630,6 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                     _ => respose,
                 }
             }, PermissionKind::Write)
-        }
-        Request::ReplicateCreateUser { db_name, token, user_name } => {
-            apply_to_database_name(dbs, client, &db_name, &|db| {
-                let key = String::from(format!("$$user_{}", user_name));
-                let respose = set_key_value(key.to_string(), token.to_string(), -1, db, &dbs);
-                match respose {
-                    Response::Set { .. } => {
-                        if !dbs.is_primary() {
-                            let db_name_state = db.name.clone();
-                            send_message_to_primary(
-                                get_replicate_message(
-                                    db_name_state.to_string(),
-                                    key,
-                                    token.to_string(),
-                                    -1,
-                                ),
-                                dbs,
-                            );
-                        }
-                        Response::Ok {}
-                    }
-                    _ => respose,
-                }
-
-            }, &PermissionKind::Write)
         }
     }
 }

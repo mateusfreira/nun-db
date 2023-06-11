@@ -1,3 +1,5 @@
+use crate::security::permissions_key_from_user_name;
+use crate::security::user_name_key_from_user_name;
 use std::fs::File;
 use std::net::TcpStream;
 use std::thread;
@@ -233,9 +235,22 @@ pub fn replicate_request(
                 Response::Ok {}
             }
             Request::CreateUser { token, user_name } => {
+                let key = user_name_key_from_user_name(&user_name);
+                let value = token.to_string();
+                log::debug!("Will replicate user creating set of the key {} to {} ", key, value);
                 replicate_web(
                     replication_sender,
-                    format!("create-user-repliate {} {} {}", db_name, token, user_name),
+                    get_replicate_message(db_name.to_string(), key, value, -1),
+                );
+                Response::Ok {}
+            }
+            Request::SetPermissions { user, permissions } => {
+                let key = permissions_key_from_user_name(&user);
+                let value = Permission::permissions_to_str_value(&permissions);
+                log::debug!("Will replicate user set-permission set of the key {} to {} ", key, value);
+                replicate_web(
+                    replication_sender,
+                    get_replicate_message(db_name.to_string(), key, value, -1),
                 );
                 Response::Ok {}
             }
