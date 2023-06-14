@@ -995,7 +995,7 @@ mod tests {
             &mut client,
         ));
         process_request(
-            "set-permissions my-user rw some|id incjose|r test",
+            "set-permissions my-user rw some|i incjose|r test",
             &dbs,
             &mut client,
         );

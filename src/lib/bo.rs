@@ -1097,7 +1097,6 @@ pub enum PermissionKind {
     Read,
     Write,
     Increment,
-    Decrement,
     Remove,
 }
 
@@ -1108,7 +1107,6 @@ impl From<char> for PermissionKind {
             'r' => Read,
             'w' => Write,
             'i' => Increment,
-            'd' => Decrement,
             'x' => Remove,
             _ => Read,
         }
@@ -1121,7 +1119,6 @@ impl From<String> for PermissionKind {
             "read" => Read,
             "write" => Write,
             "increment" => Increment,
-            "decrement" => Decrement,
             "remove" => Remove,
             _ => Read,
         }
@@ -1134,7 +1131,6 @@ impl fmt::Display for PermissionKind {
             PermissionKind::Read => write!(f, "r"),
             PermissionKind::Write => write!(f, "w"),
             PermissionKind::Increment => write!(f, "i"),
-            PermissionKind::Decrement => write!(f, "d"),
             PermissionKind::Remove => write!(f, "x"),
         }
     }
