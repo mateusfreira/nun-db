@@ -8,6 +8,9 @@ pub const SECURY_KEYS_PREFIX: &'static str = "$$";
 pub const USER_NAME_KEYS_PREFIX: &'static str = "$$user";
 pub const PERMISSION_KEYS_PREFIX: &'static str = "$$permission_$";
 
+const PERMISSION_DENIED_MESSAGE: &'static str = "permission denied\n";
+const NO_DB_SELECTED_MESSAGE: &'static str = "error no-db-selected\n";
+
 pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Response {
     if auth.load(Ordering::SeqCst) {
         opp()
@@ -105,36 +108,24 @@ pub fn apply_to_database_name_if_has_permission(
     key: Option<&String>,
     permission_required: &PermissionKind,
 ) -> Response {
-    let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
+    let dbs = dbs.acquire_dbs_read_lock();
     let result: Response = match dbs.get(&db_name.to_string()) {
         Some(db) => {
             if key == None || has_permission(client, key.unwrap(), db, &permission_required) {
                 opp(db)
             } else {
-                match client
-                    .sender
-                    .clone()
-                    .try_send(String::from("permission denied\n"))
-                {
-                    Ok(_) => {}
-                    Err(e) => log::warn!("apply_to_database::try_send {}", e),
-                };
+                let msg = String::from(PERMISSION_DENIED_MESSAGE);
+                client.send_message(&msg);
                 Response::Error {
-                    msg: "permission denied".to_string(),
+                    msg,
                 }
             }
         }
         None => {
-            match client
-                .sender
-                .clone()
-                .try_send(String::from("error no-db-selected\n"))
-            {
-                Ok(_) => {}
-                Err(e) => log::warn!("apply_to_database::try_send {}", e),
-            }
+            let msg = String::from(NO_DB_SELECTED_MESSAGE);
+            client.send_message(&msg);
             return Response::Error {
-                msg: "No database found!".to_string(),
+                msg,
             };
         }
     };

@@ -1,3 +1,4 @@
+use std::sync::RwLockReadGuard;
 use atomic_float::*;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
@@ -85,6 +86,17 @@ impl Client {
             name.clone()
         };
         user_name
+    }
+
+    pub fn send_message(&self, msg: &String) {
+        match self
+            .sender
+            .clone()
+            .try_send(msg.clone())
+        {
+            Ok(_) => {}
+            Err(e) => log::warn!("send_message::try_send {}", e),
+        };
     }
 }
 
@@ -420,6 +432,7 @@ pub struct Databases {
 }
 
 impl Database {
+
     #[cfg(test)]
     pub fn to_string_hash(&self) -> HashMap<String, String> {
         let data = self.map.read().expect("Error getting the db.map.read");
@@ -789,6 +802,10 @@ fn filter_system_keys(list_system_keys: bool, key: &&String) -> bool {
 }
 
 impl Databases {
+
+    pub fn acquire_dbs_read_lock(&self) -> RwLockReadGuard<HashMap<String, Database>> {
+        self.map.read().expect("Error getting the db.map.read")
+    }
     pub fn add_cluster_member(&self, member: ClusterMember) {
         //todo receive the data separated!!!
         let cluster_state = (*self).cluster_state.lock().unwrap();

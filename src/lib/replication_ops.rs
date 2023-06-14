@@ -317,7 +317,7 @@ pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
 }
 
 fn get_db_id(db_name: String, dbs: &Arc<Databases>) -> u64 {
-    dbs.map.read().unwrap().get(&db_name).unwrap().metadata.id as u64
+    dbs.acquire_dbs_read_lock().get(&db_name).unwrap().metadata.id as u64
 }
 
 fn generate_key_id(
@@ -1068,7 +1068,7 @@ mod tests {
         });
 
         {
-            let map = dbs.map.read().unwrap();
+            let map = dbs.acquire_dbs_read_lock();
             let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
             set_key_value("key".to_string(), "value1".to_string(), -1, db, &dbs);
             set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);
