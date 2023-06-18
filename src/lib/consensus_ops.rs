@@ -228,7 +228,7 @@ impl Database {
                 .iter()
                 .map(|key| self.get_value(key.clone()).unwrap().value)
                 .collect::<Vec<_>>();
-            println!(
+            log::debug!(
                 "has_pendding_conflict conflict change key: {} version : {}, list: {}",
                 change.key,
                 change.version,

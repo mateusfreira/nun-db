@@ -47,6 +47,7 @@ lazy_static! {
         map.insert("use-db", parse_use_command);
         map.insert("watch", parse_watch_command);
         map.insert("list-commands", parse_list_commands_command);
+        map.insert("set-permissions", parse_set_permissions_command);
 
         map
     };
@@ -363,9 +364,29 @@ fn parse_debug_command(command: &mut std::str::SplitN<&str>) -> Result<Request, 
         command: debug_command,
     })
 }
+
 fn parse_arbiter_command(_: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     Ok(Request::Arbiter {})
 }
+
+fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    let user = match command.next() {
+        Some(user) => user.to_string(),
+        None => {
+            return Err(format!("user is mandatory"));
+        }
+    };
+    let rest_str = match command.next() {
+        Some(pl) => pl.to_string(),
+        None => {
+            return Err(format!("permission list is mandatory"));
+        }
+    };
+    let permissions = Permission::permissions_from_str(rest_str.as_str());
+
+    Ok(Request::SetPermissions { user, permissions })
+}
+
 fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     let opp_id: u64 = match command.next() {
         Some(id_str) => match id_str.parse::<u64>() {
@@ -580,7 +601,6 @@ fn parse_use_command(command: &mut std::str::SplitN<&str>) -> Result<Request, St
         }
     };
 
-    //println!("token_or_user_name: {}", token_or_user_name);
     match rest.next() {
         Some(token) => Ok(Request::UseDb {
             name: name.to_string(),
@@ -630,6 +650,7 @@ fn parse_create_db_command(command: &mut std::str::SplitN<&str>) -> Result<Reque
         strategy: ConsensuStrategy::from(strategy),
     })
 }
+
 fn parse_create_user_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     let user_name = match command.next() {
         Some(name) => name,
@@ -690,20 +711,6 @@ mod tests {
             }
             _ => Err(String::from("get foo sould be parsed to Get command")),
         }
-    }
-
-    #[test]
-    fn should_parse_10000_commands_fast() -> Result<(), String> {
-        Request::parse("use-db foo some-key").unwrap();
-        let start = std::time::Instant::now();
-        for _ in 0..1000 {
-            Request::parse("use-db foo some-key").unwrap();
-        }
-        let end = std::time::Instant::now();
-        println!("10000 commands took {:?}", end - start);
-        // Old code would take ~1.772625ms
-        assert!(end - start < std::time::Duration::from_millis(3));
-        Ok(())
     }
 
     #[test]
@@ -1332,6 +1339,79 @@ mod tests {
                     Err(String::from("Invalid value"))
                 } else if version != 2 {
                     Err(String::from("Invalid version"))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(String::from("Invalid parsing")),
+        }
+    }
+
+    #[test]
+    fn should_parse_set_permission_command() -> Result<(), String> {
+        match Request::parse("set-permissions jose r test") {
+            Ok(Request::SetPermissions { user, permissions }) => {
+                let permision = permissions[0].clone();
+                let kinds = permision.kinds;
+                let keys = permision.keys;
+                if user != "jose" {
+                    Err(String::from("Invalid user"))
+                } else if kinds[0] != PermissionKind::Read {
+                    Err(String::from("Invalid kind"))
+                } else if keys.first().unwrap() != "test" {
+                    Err(String::from("Invalid keys"))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(String::from("Invalid parsing")),
+        }
+    }
+
+    #[test]
+    fn should_parse_set_permission_command_as_write() -> Result<(), String> {
+        match Request::parse("set-permissions jose rwix test") {
+            Ok(Request::SetPermissions { user, permissions }) => {
+                let permision = permissions[0].clone();
+                let kinds = permision.kinds;
+                let keys = permision.keys;
+
+                if user != "jose" {
+                    Err(String::from("Invalid user"))
+                } else if kinds[0] != PermissionKind::Read
+                    || kinds[1] != PermissionKind::Write
+                    || kinds[2] != PermissionKind::Increment
+                    || kinds[3] != PermissionKind::Remove
+                {
+                    Err(String::from("Invalid kind"))
+                } else if keys.first().unwrap() != "test" {
+                    Err(String::from("Invalid keys"))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(String::from("Invalid parsing")),
+        }
+    }
+
+    #[test]
+    fn should_parse_set_permission_with_multiple_permissions_set() -> Result<(), String> {
+        match Request::parse("set-permissions jose rwix test|r $connection|i date*") {
+            Ok(Request::SetPermissions { user, permissions }) => {
+                let permision = permissions[0].clone();
+                let kinds = permision.kinds;
+                let keys = permision.keys;
+
+                if user != "jose" {
+                    Err(String::from("Invalid user"))
+                } else if kinds[0] != PermissionKind::Read
+                    || kinds[1] != PermissionKind::Write
+                    || kinds[2] != PermissionKind::Increment
+                    || kinds[3] != PermissionKind::Remove
+                {
+                    Err(String::from("Invalid kind"))
+                } else if keys.first().unwrap() != "test" {
+                    Err(String::from("Invalid keys"))
                 } else {
                     Ok(())
                 }

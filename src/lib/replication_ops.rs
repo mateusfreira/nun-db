@@ -1,3 +1,5 @@
+use crate::security::permissions_key_from_user_name;
+use crate::security::user_name_key_from_user_name;
 use std::fs::File;
 use std::net::TcpStream;
 use std::thread;
@@ -232,6 +234,34 @@ pub fn replicate_request(
                 );
                 Response::Ok {}
             }
+            Request::CreateUser { token, user_name } => {
+                let key = user_name_key_from_user_name(&user_name);
+                let value = token.to_string();
+                log::debug!(
+                    "Will replicate user creating set of the key {} to {} ",
+                    key,
+                    value
+                );
+                replicate_web(
+                    replication_sender,
+                    get_replicate_message(db_name.to_string(), key, value, -1),
+                );
+                Response::Ok {}
+            }
+            Request::SetPermissions { user, permissions } => {
+                let key = permissions_key_from_user_name(&user);
+                let value = Permission::permissions_to_str_value(&permissions);
+                log::debug!(
+                    "Will replicate user set-permission set of the key {} to {} ",
+                    key,
+                    value
+                );
+                replicate_web(
+                    replication_sender,
+                    get_replicate_message(db_name.to_string(), key, value, -1),
+                );
+                Response::Ok {}
+            }
             _ => response,
         },
     }
@@ -287,7 +317,7 @@ pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
 }
 
 fn get_db_id(db_name: String, dbs: &Arc<Databases>) -> u64 {
-    dbs.map.read().unwrap().get(&db_name).unwrap().metadata.id as u64
+    dbs.acquire_dbs_read_lock().get(&db_name).unwrap().metadata.id as u64
 }
 
 fn generate_key_id(
@@ -1038,7 +1068,7 @@ mod tests {
         });
 
         {
-            let map = dbs.map.read().unwrap();
+            let map = dbs.acquire_dbs_read_lock();
             let db = map.get(&SAMPLE_NAME.to_string()).unwrap();
             set_key_value("key".to_string(), "value1".to_string(), -1, db, &dbs);
             set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);

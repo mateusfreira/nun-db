@@ -1,3 +1,4 @@
+use std::sync::RwLockReadGuard;
 use atomic_float::*;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
@@ -60,6 +61,7 @@ impl Client {
             cluster_member: Mutex::new(None),
             selected_db: Arc::new(SelectedDatabase {
                 name: RwLock::new("init".to_string()),
+                user_name: RwLock::new(None),
             }),
             sender,
         }
@@ -76,6 +78,25 @@ impl Client {
             name.clone()
         };
         db_name
+    }
+
+    pub fn selected_db_user_name(&self) -> Option<String> {
+        let user_name = {
+            let name = self.selected_db.user_name.read().unwrap();
+            name.clone()
+        };
+        user_name
+    }
+
+    pub fn send_message(&self, msg: &String) {
+        match self
+            .sender
+            .clone()
+            .try_send(msg.clone())
+        {
+            Ok(_) => {}
+            Err(e) => log::warn!("send_message::try_send {}", e),
+        };
     }
 }
 
@@ -211,6 +232,7 @@ pub struct ClusterState {
 
 pub struct SelectedDatabase {
     pub name: RwLock<String>,
+    pub user_name: RwLock<Option<String>>,
 }
 
 pub struct DatabaseMataData {
@@ -410,6 +432,7 @@ pub struct Databases {
 }
 
 impl Database {
+
     #[cfg(test)]
     pub fn to_string_hash(&self) -> HashMap<String, String> {
         let data = self.map.read().expect("Error getting the db.map.read");
@@ -779,6 +802,10 @@ fn filter_system_keys(list_system_keys: bool, key: &&String) -> bool {
 }
 
 impl Databases {
+
+    pub fn acquire_dbs_read_lock(&self) -> RwLockReadGuard<HashMap<String, Database>> {
+        self.map.read().expect("Error getting the db.map.read")
+    }
     pub fn add_cluster_member(&self, member: ClusterMember) {
         //todo receive the data separated!!!
         let cluster_state = (*self).cluster_state.lock().unwrap();
@@ -1083,7 +1110,108 @@ impl OpLogRecord {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum PermissionKind {
+    Read,
+    Write,
+    Increment,
+    Remove,
+}
+
+impl From<char> for PermissionKind {
+    fn from(val: char) -> Self {
+        use self::PermissionKind::*;
+        match val {
+            'r' => Read,
+            'w' => Write,
+            'i' => Increment,
+            'x' => Remove,
+            _ => Read,
+        }
+    }
+}
+impl From<String> for PermissionKind {
+    fn from(val: String) -> Self {
+        use self::PermissionKind::*;
+        match val.as_str() {
+            "read" => Read,
+            "write" => Write,
+            "increment" => Increment,
+            "remove" => Remove,
+            _ => Read,
+        }
+    }
+}
+
+impl fmt::Display for PermissionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            PermissionKind::Read => write!(f, "r"),
+            PermissionKind::Write => write!(f, "w"),
+            PermissionKind::Increment => write!(f, "i"),
+            PermissionKind::Remove => write!(f, "x"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Permission {
+    pub kinds: Vec<PermissionKind>,
+    pub keys: Vec<String>,
+}
+
+impl Permission {
+    pub fn permissions_from_str(permision_str: &str) -> Vec<Permission> {
+        permision_str.split("|").map(Permission::from).collect()
+    }
+
+    pub fn permissions_to_str_value(permissions: &Vec<Permission>) -> String {
+        let permisions_as_str: Vec<String> = permissions
+            .clone()
+            .into_iter()
+            .map(|a| a.to_string())
+            .collect();
+        permisions_as_str.join("|")
+    }
+
+    pub fn from(permision_str: &str) -> Permission {
+        let mut permision = permision_str.splitn(2, " ");
+        let kinds = match permision.next() {
+            Some(kind) => kind
+                .to_string()
+                .chars()
+                .map(|c| PermissionKind::from(c))
+                .collect(),
+            None => vec![PermissionKind::Read],
+        };
+        let keys = match permision.next() {
+            Some(keys) => keys.to_string().split(",").map(|s| s.to_string()).collect(),
+            None => vec![],
+        };
+        Permission { kinds, keys }
+    }
+}
+
+impl fmt::Display for Permission {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} {}",
+            self.kinds
+                .iter()
+                .map(|k| k.to_string())
+                .collect::<Vec<String>>()
+                .join(""),
+            self.keys.join(",")
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Request {
+    SetPermissions {
+        user: String,
+        permissions: Vec<Permission>,
+    },
     Get {
         key: String,
     },

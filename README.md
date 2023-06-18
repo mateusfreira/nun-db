@@ -432,6 +432,36 @@ arbiter
 ok|error
 ```
 
+### CreateUser
+#### Context
+- [x] Require admin auth
+- [x] Require db auth
+- [x] Replicate? How? (Set command to security key)
+- [x] Register Oplog? How? (As key value)
+
+Creates a user for the selected user
+e.gs
+```
+create-user $user $token
+```
+
+
+### SetPermission
+#### Context
+- [x] Require admin auth
+- [x] Require db auth
+- [x] Replicate? How? (Set command to security key)
+- [x] Register Oplog? How? (As key value)
+
+Creates a user for the selected user
+e.gs
+```
+set-permissions $user_name $permissions $key_pattern|$permissions $key_pattern;
+
+set-permissions foo rw test-*|rwi count;
+# Grant permission to user called foo to read and write keys starting with test-, and read write and increment count key.
+```
+
 
 ## Special keys
 

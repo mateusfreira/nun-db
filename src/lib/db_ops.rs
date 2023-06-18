@@ -1,8 +1,6 @@
-use crate::security::SECURY_KEYS_PREFIX;
 use futures::channel::mpsc::Sender;
 use log;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -10,66 +8,6 @@ use crate::bo::*;
 use crate::disk_ops::*;
 
 pub const CONNECTIONS_KEY: &'static str = "$connections";
-
-pub fn apply_to_database_name(
-    dbs: &Arc<Databases>,
-    client: &Client,
-    db_name: &String,
-    opp: &dyn Fn(&Database) -> Response,
-) -> Response {
-    let dbs = dbs.map.read().expect("Error getting the dbs.map.lock");
-    let result: Response = match dbs.get(&db_name.to_string()) {
-        Some(db) => opp(db),
-        None => {
-            match client
-                .sender
-                .clone()
-                .try_send(String::from("error no-db-selected\n"))
-            {
-                Ok(_) => {}
-                Err(e) => log::warn!("apply_to_database::try_send {}", e),
-            }
-            return Response::Error {
-                msg: "No database found!".to_string(),
-            };
-        }
-    };
-    return result;
-}
-
-pub fn apply_to_database(
-    dbs: &Arc<Databases>,
-    client: &Client,
-    opp: &dyn Fn(&Database) -> Response,
-) -> Response {
-    let db_name = client.selected_db_name();
-    apply_to_database_name(dbs, client, &db_name, opp)
-}
-
-pub fn apply_if_safe_access(
-    dbs: &Arc<Databases>,
-    client: &Client,
-    key: &String,
-    opp: &dyn Fn(&Database) -> Response,
-) -> Response {
-    if key.starts_with(SECURY_KEYS_PREFIX) && !client.is_admin_auth() {
-        Response::Error {
-            msg: "To read security keys you must auth as an admin!".to_string(),
-        }
-    } else {
-        apply_to_database(dbs, client, opp)
-    }
-}
-
-pub fn apply_if_auth(auth: &Arc<AtomicBool>, opp: &dyn Fn() -> Response) -> Response {
-    if auth.load(Ordering::SeqCst) {
-        opp()
-    } else {
-        Response::Error {
-            msg: "Not auth".to_string(),
-        }
-    }
-}
 
 pub fn create_db(
     name: &String,
@@ -372,6 +310,7 @@ pub fn contains(key: &String, pattern: &String) -> bool {
 mod tests {
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
+    use std::sync::atomic::Ordering;
 
     pub const SAMPLE_NAME: &'static str = "sample";
 

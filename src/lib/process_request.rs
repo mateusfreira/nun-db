@@ -29,23 +29,29 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             respose
         }),
 
-        Request::Increment { key, inc } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
-            if dbs.is_primary() {
-                _db.inc_value(key.to_string(), inc);
-            } else {
-                let db_name_state = _db.name.clone();
-                // This is wrong
-                send_message_to_primary(
-                    get_replicate_increment_message(
-                        db_name_state.to_string(),
-                        key.clone(),
-                        inc.to_string(),
-                    ),
-                    dbs,
-                );
-            }
-            Response::Ok {}
-        }),
+        Request::Increment { key, inc } => apply_if_safe_access(
+            &dbs,
+            &client,
+            &key,
+            &|_db| {
+                if dbs.is_primary() {
+                    _db.inc_value(key.to_string(), inc);
+                } else {
+                    let db_name_state = _db.name.clone();
+                    // This is wrong
+                    send_message_to_primary(
+                        get_replicate_increment_message(
+                            db_name_state.to_string(),
+                            key.clone(),
+                            inc.to_string(),
+                        ),
+                        dbs,
+                    );
+                }
+                Response::Ok {}
+            },
+            PermissionKind::Increment,
+        ),
         Request::Auth { user, password } => {
             let valid_user = dbs.user.clone();
             let valid_pwd = dbs.pwd.clone();
@@ -65,38 +71,56 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Ok {}
         }
 
-        Request::Get { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
-            get_key_value(&key, &client.sender, _db)
-        }),
+        Request::Get { key } => apply_if_safe_access(
+            &dbs,
+            &client,
+            &key,
+            &|_db| get_key_value(&key, &client.sender, _db),
+            PermissionKind::Read,
+        ),
 
-        Request::GetSafe { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
-            get_key_value_safe(&key, &client.sender, _db)
-        }),
+        Request::GetSafe { key } => apply_if_safe_access(
+            &dbs,
+            &client,
+            &key,
+            &|_db| get_key_value_safe(&key, &client.sender, _db),
+            PermissionKind::Read,
+        ),
 
-        Request::Remove { key } => {
-            apply_if_safe_access(&dbs, &client, &key, &|_db| remove_key(&key, _db))
-        }
+        Request::Remove { key } => apply_if_safe_access(
+            &dbs,
+            &client,
+            &key,
+            &|_db| remove_key(&key, _db),
+            PermissionKind::Remove,
+        ),
 
         Request::Set {
             key,
             value,
             version,
-        } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
-            let respose = set_key_value(key.clone(), value.clone(), version, _db, &dbs);
-            if !dbs.is_primary() {
-                let db_name_state = _db.name.clone();
-                send_message_to_primary(
-                    get_replicate_message(
-                        db_name_state.to_string(),
-                        key.clone(),
-                        value.clone(),
-                        version,
-                    ),
-                    dbs,
-                );
-            }
-            respose
-        }),
+        } => apply_if_safe_access(
+            &dbs,
+            &client,
+            &key,
+            &|_db| {
+                let respose = set_key_value(key.clone(), value.clone(), version, _db, &dbs);
+                if !dbs.is_primary() {
+                    let db_name_state = _db.name.clone();
+                    send_message_to_primary(
+                        get_replicate_message(
+                            db_name_state.to_string(),
+                            key.clone(),
+                            value.clone(),
+                            version,
+                        ),
+                        dbs,
+                    );
+                }
+                respose
+            },
+            PermissionKind::Write,
+        ),
 
         Request::ReplicateRemove { db: name, key } => apply_if_auth(&client.auth, &|| {
             let dbs = dbs.map.read().expect("Could not lock the dbs mutex");
@@ -172,24 +196,36 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             Response::Ok {}
         }),
 
-        Request::Watch { key } => apply_if_safe_access(&dbs, &client, &key, &|_db| {
-            watch_key(&key, &client.sender, _db);
-            Response::Ok {}
-        }),
+        Request::Watch { key } => apply_if_safe_access(
+            &dbs,
+            &client,
+            &key,
+            &|_db| {
+                watch_key(&key, &client.sender, _db);
+                Response::Ok {}
+            },
+            PermissionKind::Read,
+        ),
 
         Request::UseDb {
             name,
             token,
             user_name,
         } => {
-            let mut db_name_state = client.selected_db.name.write().unwrap();
             let dbs_map = dbs.map.read().expect("Could not lock the mao mutex");
             let respose: Response = match dbs_map.get(&name.to_string()) {
                 Some(db) => {
                     match user_name {
                         Some(user_name) => {
+                            let mut db_name_state = client.selected_db.name.write().unwrap();
+                            let mut user_name_state = client.selected_db.user_name.write().unwrap();
+
                             if is_valid_user_token(&token, &user_name, db) {
                                 let _ = std::mem::replace(&mut *db_name_state, name.clone());
+                                let _ = std::mem::replace(
+                                    &mut *user_name_state,
+                                    Some(user_name.clone()),
+                                );
                                 db.inc_connections(); //Increment the number of connections
                                 set_connection_counter(db, &dbs);
                                 Response::Ok {}
@@ -201,6 +237,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                         }
                         None => {
                             if is_valid_token(&token, db) {
+                                let mut db_name_state = client.selected_db.name.write().unwrap();
                                 let _ = std::mem::replace(&mut *db_name_state, name.clone());
                                 db.inc_connections(); //Increment the number of connections
                                 set_connection_counter(db, &dbs);
@@ -222,9 +259,12 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             };
             respose
         }
-        Request::CreateUser { token, user_name } => {
-            apply_if_safe_access(&dbs, &client, &String::from("$$user_"), &|_db| {
-                let key = String::from(format!("$$user_{}", user_name));
+        Request::CreateUser { token, user_name } => apply_if_safe_access(
+            &dbs,
+            &client,
+            &String::from(USER_NAME_KEYS_PREFIX),
+            &|_db| {
+                let key = user_name_key_from_user_name(&user_name);
                 let respose = set_key_value(key.to_string(), token.to_string(), -1, _db, &dbs);
                 match respose {
                     Response::Set { .. } => {
@@ -244,8 +284,9 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                     }
                     _ => respose,
                 }
-            })
-        }
+            },
+            PermissionKind::Write,
+        ),
 
         Request::CreateDb {
             name,
@@ -527,32 +568,38 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             log::info!("Processing resolve for {} to {} ", key, value);
             // Replica set or admin auth resolving
             if client.auth.load(Ordering::SeqCst) {
-                apply_to_database_name(dbs, client, &db_name, &|db| {
-                    if dbs.is_primary() {
-                        db.resolve_conflit(
-                            Change {
-                                key: key.clone(),
-                                value: value.clone(),
-                                version,
-                                opp_id,
-                                resolve_conflict: true,
-                            },
-                            &dbs,
-                        )
-                    } else {
-                        send_message_to_primary(
-                            get_resolve_message(
-                                opp_id,
-                                db_name.to_string(),
-                                key.clone(),
-                                value.clone(),
-                                version,
-                            ),
-                            dbs,
-                        );
-                        Response::Ok {}
-                    }
-                });
+                apply_to_database_name(
+                    dbs,
+                    client,
+                    &db_name,
+                    &|db| {
+                        if dbs.is_primary() {
+                            db.resolve_conflit(
+                                Change {
+                                    key: key.clone(),
+                                    value: value.clone(),
+                                    version,
+                                    opp_id,
+                                    resolve_conflict: true,
+                                },
+                                &dbs,
+                            )
+                        } else {
+                            send_message_to_primary(
+                                get_resolve_message(
+                                    opp_id,
+                                    db_name.to_string(),
+                                    key.clone(),
+                                    value.clone(),
+                                    version,
+                                ),
+                                dbs,
+                            );
+                            Response::Ok {}
+                        }
+                    },
+                    &PermissionKind::Read,
+                );
             } else {
                 apply_to_database(&dbs, &client, &|db| {
                     if dbs.is_primary() {
@@ -598,6 +645,36 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             };
             Response::Ok {}
         }),
+        Request::SetPermissions { user, permissions } => apply_if_safe_access(
+            &dbs,
+            &client,
+            &String::from(PERMISSION_KEYS_PREFIX),
+            &|_db| {
+                let key = permissions_key_from_user_name(&user);
+                let value = Permission::permissions_to_str_value(&permissions);
+
+                let respose = set_key_value(key.to_string(), value.to_string(), -1, _db, &dbs);
+                match respose {
+                    Response::Set { .. } => {
+                        if !dbs.is_primary() {
+                            let db_name_state = _db.name.clone();
+                            send_message_to_primary(
+                                get_replicate_message(
+                                    db_name_state.to_string(),
+                                    key,
+                                    value.to_string(),
+                                    -1,
+                                ),
+                                dbs,
+                            );
+                        }
+                        Response::Ok {}
+                    }
+                    _ => respose,
+                }
+            },
+            PermissionKind::Write,
+        ),
     }
 }
 
@@ -646,7 +723,7 @@ mod tests {
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::collections::HashMap;
 
-    fn create_default_args() -> (Receiver<String>, Arc<Databases>, Client) {
+    pub fn create_default_args() -> (Receiver<String>, Arc<Databases>, Client) {
         let (sender1, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         let (sender2, _receiver): (Sender<String>, Receiver<String>) = channel(100);
         let keys_map = HashMap::new();
@@ -901,7 +978,7 @@ mod tests {
     }
 
     #[test]
-    fn should_create_user_in_a_db() {
+    fn should_handle_mult_statemente_permission() {
         let (mut receiver, dbs, mut client) = create_default_args();
         client.auth.store(true, Ordering::Relaxed);
         assert_valid_request(process_request(
@@ -917,6 +994,11 @@ mod tests {
             &dbs,
             &mut client,
         ));
+        process_request(
+            "set-permissions my-user rw some|i incjose|r test",
+            &dbs,
+            &mut client,
+        );
 
         // No longer an admin
         client.auth.store(false, Ordering::Relaxed);
@@ -928,6 +1010,17 @@ mod tests {
         process_request("set some value", &dbs, &mut client);
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value value\n");
+        process_request("increment some", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+
+        assert_valid_request(process_request("increment incjose", &dbs, &mut client));
+        process_request("get incjose", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+
+        process_request("get test", &dbs, &mut client);
+        assert_received(&mut receiver, "value <Empty>\n");
+        process_request("set test value", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
     }
 
     #[test]
@@ -953,5 +1046,134 @@ mod tests {
         process_request("list-commands", &dbs, &mut client);
         let result = r.try_next().unwrap().unwrap();
         assert!(result.contains("create-db"));
+    }
+
+    #[test]
+    fn shoud_set_permission_to_user_correctly() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        assert_valid_request(process_request(
+            "create-user my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+        // Connect to db as admin
+        assert_valid_request(process_request("use my-db my-token", &dbs, &mut client));
+
+        // Set permission
+        assert_valid_request(process_request(
+            "set-permissions my-user wr some*",
+            &dbs,
+            &mut client,
+        ));
+
+        // No longer an admin
+        client.auth.store(false, Ordering::Relaxed);
+        // Connect as user
+        assert_valid_request(process_request(
+            "use my-db my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+        process_request("set some value", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value value\n");
+
+        process_request("set test-jose jose", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+    }
+
+    #[test]
+    fn shoud_set_allow_reading_by_default() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+        // No longer an admin
+        client.auth.store(false, Ordering::Relaxed);
+
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        process_request("set some value", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value value\n");
+
+        process_request("set test-jose jose", &dbs, &mut client);
+        process_request("get test-jose", &dbs, &mut client);
+        assert_received(&mut receiver, "value jose\n");
+    }
+
+    #[test]
+    fn should_deny_access_to_users_by_default() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        assert_valid_request(process_request(
+            "create-user my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        // Connect to db as admin
+        assert_valid_request(process_request("use my-db my-token", &dbs, &mut client));
+
+        // No longer an admin
+        client.auth.store(false, Ordering::Relaxed);
+        // Connect as user
+        assert_valid_request(process_request(
+            "use my-db my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+        process_request("set some value", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+
+        process_request("set test-jose jose", &dbs, &mut client);
+        assert_received(&mut receiver, "permission denied\n");
+    }
+
+    #[test]
+    fn should_allow_access_to_db_token() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        assert_valid_request(process_request(
+            "create-user my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        // Connect to db as admin
+        assert_valid_request(process_request("use my-db my-token", &dbs, &mut client));
+
+        // No longer an admin
+        client.auth.store(false, Ordering::Relaxed);
+        process_request("set some value", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value value\n");
     }
 }
