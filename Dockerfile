@@ -1,18 +1,18 @@
 FROM ekidd/rust-musl-builder:stable as builder
-
+RUN rustup update
 RUN USER=root cargo new --bin nun-db
 WORKDIR ./nun-db
 
-# COPY ./Cargo.toml ./Cargo.toml
-# RUN mkdir benches/
-# RUN mkdir src/lib/
-# RUN mkdir src/bin/
-# RUN touch benches/nundb_benchmark.rs
-# RUN touch src/lib/lib.rs
-# RUN mv src/main.rs src/bin/main.rs
-# RUN cargo build --release
-# RUN rm src/**/*.rs
-# RUN rm benches/*.rs
+COPY ./Cargo.toml ./Cargo.toml
+RUN mkdir benches/
+RUN mkdir src/lib/
+RUN mkdir src/bin/
+RUN touch benches/nundb_benchmark.rs
+RUN touch src/lib/lib.rs
+RUN mv src/main.rs src/bin/main.rs
+RUN cargo build --release
+RUN rm src/**/*.rs
+RUN rm benches/*.rs
 
 ADD . ./
 
