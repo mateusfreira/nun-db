@@ -16,7 +16,7 @@ RUN rm benches/*.rs
 
 ADD . ./
 
-#RUN rm ./target/x86_64-unknown-linux-musl/release/deps/nun*
+RUN rm ./target/x86_64-unknown-linux-musl/release/deps/nun*
 RUN cargo build --release
 
 FROM alpine:3.12.4
