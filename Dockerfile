@@ -1,5 +1,6 @@
 FROM ekidd/rust-musl-builder:stable as builder
-RUN USER=root rustup install 1.70.0
+USER root
+RUN rustup install 1.70.0
 RUN USER=root cargo new --bin nun-db
 WORKDIR ./nun-db
 
