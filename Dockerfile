@@ -3,7 +3,6 @@ RUN apt-get update
 RUN apt-get -y install libssl-dev pkg-config
 RUN cargo new --bin nun-db
 WORKDIR ./nun-db
-RUN rustup target add x86_64-unknown-linux-musl
 COPY ./Cargo.toml ./Cargo.toml
 RUN mkdir benches/
 RUN mkdir src/lib/
