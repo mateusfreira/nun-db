@@ -1,9 +1,9 @@
-FROM ekidd/rust-musl-builder:stable as builder
-USER root
-RUN rustup install 1.70.0
-RUN USER=root cargo new --bin nun-db
+FROM rust:1.70.0-slim as builder
+RUN apt-get update
+RUN apt-get -y install libssl-dev pkg-config
+RUN cargo new --bin nun-db
 WORKDIR ./nun-db
-
+RUN rustup target add x86_64-unknown-linux-musl
 COPY ./Cargo.toml ./Cargo.toml
 RUN mkdir benches/
 RUN mkdir src/lib/
@@ -16,14 +16,16 @@ RUN rm src/**/*.rs
 RUN rm benches/*.rs
 
 ADD . ./
+RUN touch src/bin/main.rs
+RUN touch src/lib/lib.rs
 
-RUN rm ./target/x86_64-unknown-linux-musl/release/deps/nun*
 RUN cargo build --release
 
-FROM alpine:3.12.4
+FROM bitnami/minideb:bullseye
 
-RUN apk add libressl-dev
-COPY --from=builder /home/rust/src/nun-db/target/x86_64-unknown-linux-musl/release/nun-db /usr/bin/nun-db
+RUN apt-get update
+RUN apt-get -y install libssl-dev pkg-config
+COPY --from=builder ./nun-db/target/release/nun-db /usr/bin/nun-db
 ENV NUN_WS_ADDR   "0.0.0.0:3012"
 ENV NUN_HTTP_ADDR "0.0.0.0:3013"
 ENV NUN_TCP_ADDR  "0.0.0.0:3014"
