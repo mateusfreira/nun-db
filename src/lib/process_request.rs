@@ -212,7 +212,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             token,
             user_name,
         } => {
-            let dbs_map = dbs.map.read().expect("Could not lock the mao mutex");
+            let dbs_map = dbs.map.read().expect("Could not lock the map mutex");
             let respose: Response = match dbs_map.get(&name.to_string()) {
                 Some(db) => {
                     match user_name {

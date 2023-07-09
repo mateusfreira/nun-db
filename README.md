@@ -180,6 +180,11 @@ e.g:
 use $db-name $db-pwd
 ```
 
+e.g: 
+```
+use-db $db-bame $user-name $token
+```
+
 ### CreateDb
 #### Context
 - [x] Require admin auth
