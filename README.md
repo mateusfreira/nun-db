@@ -53,7 +53,7 @@ Note that the "/tmp/data/nun_db/" is a directory in the machine where the nun-db
 
 ### Create the sample DB:
 
-```
+```bash
 
 # First connect to the running container
 docker exec -it nun-test  /bin/sh

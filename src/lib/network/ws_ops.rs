@@ -94,11 +94,27 @@ impl Handler for Server {
                     ),
                 }
             }
-            e => {
+            Response::Set { key, value } => {
+                log::debug!(
+                    "[{}] Server responded message  {:?} to set",
+                    thread_id::get(),
+                    message
+                );
+                match self.client.sender.try_send(format!("set {} {} \n", key, value)) {
+                    Ok(_) => {}
+                    Err(e) => log::warn!(
+                        "ws_ops::_read_thread::process_request::_::try_send::Error {}",
+                        e
+                    ),
+                }
+                log::debug!("ws::Success processed");
+
+            },
+            response => {
                 log::debug!(
                     "[{}] Server responded message  {:?} to {}",
                     thread_id::get(),
-                    e,
+                    response,
                     message
                 );
                 match self.client.sender.try_send(format!("ok \n")) {
