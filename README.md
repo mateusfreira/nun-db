@@ -72,6 +72,8 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 
 # How-tos
 
+* [How to create users with different permission levels in Nun-db](https://mateusfreira.github.io/@mateusfreira-2023-09-17-how-to-create-users-in-nun-db/)
+
 * [How to Building a Trello-like React/Redux App with Nun-DB with offline and conflict resolution features](https://mateusfreira.github.io/@mateusfreira-trelo-clone-offline-first-with-nun-db-dealing-with-conflicts/)
 
 * [How-to Make Redux TodoMVC Example a real-time multiuser with Nun-db in 10 steps](https://mateusfreira.github.io/@mateusfreira-2021-06-30-how-to-making-redux-todomvc-example-a-real-time-multiuser-with-nun-db/)
