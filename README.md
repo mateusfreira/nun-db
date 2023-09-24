@@ -71,6 +71,7 @@ Done you now have nun-db running in your docker and exposing all the ports to be
 
 
 # How-tos
+* [Real-time Medical Image Collaboration POC Made Easy with OHIF and Nun-db](https://mateusfreira.github.io/@mateusfreira-real-time-medical-image-collaboration-ohif-nun-db/)
 
 * [How to create users with different permission levels in Nun-db](https://mateusfreira.github.io/@mateusfreira-2023-09-17-how-to-create-users-in-nun-db/)
 
