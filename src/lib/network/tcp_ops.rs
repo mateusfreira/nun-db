@@ -54,6 +54,8 @@ fn handle_client(stream: TcpStream, dbs: Arc<Databases>) {
     let mut reader = BufReader::new(&stream);
     let writer = &mut BufWriter::new(&stream);
     let (mut client, mut receiver) = Client::new_empty_and_receiver();
+    writer.write_fmt(format_args!("ok \n")).unwrap();
+    writer.flush().unwrap();
     loop {
         let mut buf = String::new();
         let read_line = reader.read_line(&mut buf);

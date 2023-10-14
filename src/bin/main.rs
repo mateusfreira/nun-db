@@ -29,6 +29,7 @@ fn main() -> Result<(), String> {
     log::info!("nundb starting!");
     let matches: ArgMatches<'_> = nundb::commad_line::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
+        let tcp_address = start_match.value_of("tcp-address").unwrap_or(NUN_TCP_ADDR.as_str());
         return start_db(
             matches.value_of("user").unwrap_or(NUN_USER.as_str()),
             matches.value_of("pwd").unwrap_or(NUN_PWD.as_str()),
@@ -38,12 +39,13 @@ fn main() -> Result<(), String> {
             start_match
                 .value_of("http-address")
                 .unwrap_or(NUN_HTTP_ADDR.as_str()),
-            start_match
-                .value_of("tcp-address")
-                .unwrap_or(NUN_TCP_ADDR.as_str()),
+                tcp_address,
             start_match
                 .value_of("replicate-address")
                 .unwrap_or(NUN_REPLICATE_ADDR.as_str()),
+            start_match
+                .value_of("join-address")
+                .unwrap_or(tcp_address),
         );
     } else {
         return nundb::commad_line::commands::exec_command(&matches);
@@ -57,6 +59,7 @@ fn start_db(
     http_address: &str,
     tcp_address: &str,
     replicate_address: &str,
+    join_address: &str,
 ) -> Result<(), String> {
     if user == "" || pwd == "" {
         println!("NUN_USER and NUN_PWD must be provided via command line (nun-db -u $USER -p $PWD ...) or env var.");
@@ -131,10 +134,12 @@ fn start_db(
 
     let dbs_self_election = dbs.clone();
     let tcp_address_to_election = Arc::new(tcp_address.to_string());
+    let join_address = Arc::new(join_address.to_string());
     let join_thread = thread::spawn(move || {
         nundb::replication_ops::ask_to_join_all_replicas(
             &replicate_address_to_thread,
             &tcp_address_to_election.to_string(),
+            &join_address.to_string(),
             &dbs_self_election.user.to_string(),
             &dbs_self_election.pwd.to_string(),
         );

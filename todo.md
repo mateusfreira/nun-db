@@ -72,3 +72,23 @@ nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-d
 * Hash map to Tree or key lock Hash map
 * Security layer
 * Client protocols
+
+
+## Add join address command
+- [ ] When joining as a replica the server sends its tcp address to the primary
+- [x] Add new command line option
+- [x] Replace the command line to use the new parameter if it is set
+* Defines the command line parameter
+[src/lib/commad_line/commands.rs:59 ]
+Used here to pass to start db
+[src/bin/main.rs:58]
+Replicate join here
+[src/lib/replication_ops.rs:501 ]
+Change here to use the new parameter
+[src/bin/main.rs:117]
+
+Ask to join
+[src/lib/replication_ops.rs:745 ]
+[src/bin/main.rs:135 ] Called at main
+
+- [ ] How to test this???

@@ -1,5 +1,23 @@
 version: "3.9"  # optional since v1.27.0
 services:
+  toxiproxy:
+    image: "shopify/toxiproxy"
+    ports:
+       - "3017:3017"
+       - "3018:3018"
+       - "3019:3019"
+  # We created proxy configuration from another ephermal container
+  toxiproxy-config:
+    image: "shopify/toxiproxy"
+    entrypoint: > 
+      sh -c "
+             /go/bin/toxiproxy-cli -h toxiproxy:8474 create primary --listen 0.0.0.0:3017 --upstream nun-db-1:3017
+             /go/bin/toxiproxy-cli -h toxiproxy:8474 create secondary-1 --listen 0.0.0.0:3018 --upstream nun-db-secondary-1:3018
+             /go/bin/toxiproxy-cli -h toxiproxy:8474 create secondary-2 --listen 0.0.0.0:3019 --upstream nun-db-secondary-1:3019
+             /go/bin/toxiproxy-cli toxic add -t latency -a latency=1000 primary 
+             /go/bin/toxiproxy-cli toxic add -t latency -a latency=1000 secondary-1
+             /go/bin/toxiproxy-cli toxic add -t latency -a latency=1000 secondary-2
+             "
   jaeger:
     image: jaegertracing/all-in-one:1.17
     environment:
@@ -23,8 +41,8 @@ services:
     container_name: "traefik"
     depends_on:
       - nun-db-1
-      - nun-db-2
-      - nun-db-3
+      - nun-db-secondary-1
+      - nun-db-secondary-2
       - jaeger
     command:
       #- "--log.level=DEBUG"
@@ -50,7 +68,7 @@ services:
       - NUN_HTTP_ADDR=0.0.0.0:9092
       - NUN_TCP_ADDR=nun-db-1:3017
       - NUN_USER=mateus
-      - NUN_REPLICASET=nun-db-1:3017,nun-db-2:3018,nun-db-3:3017
+      - NUN_REPLICASET=toxiproxy:3017,toxiproxy:3018,toxiproxy:3019
       - NUN_PWD=mateus
     command:
       - "sh"
@@ -59,7 +77,7 @@ services:
     ports:
       - "3058:3058" # ws
       - "9092:9092" # http
-      - "3017:3017" # socket
+        #- "3017:3017" # socket
     volumes:
         - /tmp/data/nun_db/:/nun_data
     labels:
@@ -70,7 +88,7 @@ services:
 
       - "traefik.tcp.routers.nun-db-1.rule=HostSNI(`nun-db-1.localhost`)"
       - "traefik.tcp.services.nun-db-1.loadbalancer.server.port=3017"
-  nun-db-2:
+  nun-db-secondary-1:
     image: mateusfreira/nun-db
     depends_on:
       - nun-db-1
@@ -78,10 +96,10 @@ services:
       - NUN_DBS_DIR=/nun_data
       - NUN_WS_ADDR=0.0.0.0:3059
       - NUN_HTTP_ADDR=0.0.0.0:9093
-      - NUN_TCP_ADDR=nun-db-2:3018
+      - NUN_TCP_ADDR=toxiproxy:3018
       - NUN_USER=mateus
       - NUN_PWD=mateus
-      - NUN_REPLICASET=nun-db-1:3017,nun-db-2:3018,nun-db-3:3017
+      - NUN_REPLICASET=toxiproxy:3017,toxiproxy:3018,toxiproxy:3019
     command:
       - "sh"
       - "-c"
@@ -89,7 +107,6 @@ services:
     ports:
       - "3059:3059" # ws
       - "9093:9093" # http
-      - "3018:3018" # socket
     volumes:
         - /tmp/data/nun_db1/:/nun_data
     labels:
@@ -100,19 +117,20 @@ services:
 
       - "traefik.tcp.routers.nun-db-2.rule=HostSNI(`nun-db-2.localhost`)"
       - "traefik.tcp.services.nun-db-2.loadbalancer.server.port=3018"
-  nun-db-3:
+  nun-db-secondary-2:
     image: mateusfreira/nun-db
     depends_on:
       - nun-db-1
-      - nun-db-2
+      - nun-db-secondary-1
     environment:
       - NUN_DBS_DIR=/nun_data
       - NUN_WS_ADDR=0.0.0.0:3060
       - NUN_HTTP_ADDR=0.0.0.0:9094
-      - NUN_TCP_ADDR=nun-db-3:3019
+      - NUN_TCP_ADDR=nun-db-secondary-2:3019
+      - NUN_TCP_JOIN_ADDR=toxiproxy:3019
       - NUN_USER=mateus
       - NUN_PWD=mateus
-      - NUN_REPLICASET=nun-db-1:3017,nun-db-2:3018,nun-db-3:3017
+      - NUN_REPLICASET=toxiproxy:3017,toxiproxy:3018,toxiproxy:3019
     command:
       - "sh"
       - "-c"
@@ -120,7 +138,6 @@ services:
     ports:
       - "3060:3060" # ws
       - "9094:9094" # http
-      - "3019:3019" # socket
     volumes:
         - /tmp/data/nun_db2/:/nun_data
     labels:

@@ -83,6 +83,13 @@ pub fn prepare_args<'a>() -> ArgMatches<'static> {
                         .takes_value(true)
                         .help("Replicate address"),
                 )
+                .arg(
+                    Arg::with_name("join-address")
+                        .short("ja")
+                        .long("join-address")
+                        .takes_value(true)
+                        .help("TCP address to use to join the cluster"),
+                )
                 .about("Start Nun-db service"),
         )
         .get_matches();
