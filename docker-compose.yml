@@ -11,7 +11,7 @@ services:
     image: "shopify/toxiproxy"
     entrypoint: > 
       sh -c "
-             /go/bin/toxiproxy-cli -h toxiproxy:8474 create primary --listen 0.0.0.0:3017 --upstream nun-db-1:3017
+             /go/bin/toxiproxy-cli -h toxiproxy:8474 create primary --listen 0.0.0.0:3017 --upstream nun-db-primary:3017
              /go/bin/toxiproxy-cli -h toxiproxy:8474 create secondary-1 --listen 0.0.0.0:3018 --upstream nun-db-secondary-1:3018
              /go/bin/toxiproxy-cli -h toxiproxy:8474 create secondary-2 --listen 0.0.0.0:3019 --upstream nun-db-secondary-2:3019
 
@@ -46,7 +46,7 @@ services:
     image: "traefik:v2.7"
     container_name: "traefik"
     depends_on:
-      - nun-db-1
+      - nun-db-primary
       - nun-db-secondary-1
       - nun-db-secondary-2
       - jaeger
@@ -66,15 +66,16 @@ services:
       - "8080:8080"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
-  nun-db-1:
-    build:
-      context: .
-      dockerfile: ./Dockerfile
+  nun-db-primary:
+    image: mateusfreira/nun-db
+    #build:
+    #  context: .
+    #  dockerfile: ./Dockerfile
     environment:
       - NUN_DBS_DIR=/nun_data
       - NUN_WS_ADDR=0.0.0.0:3058
       - NUN_HTTP_ADDR=0.0.0.0:9092
-      - NUN_TCP_ADDR=nun-db-1:3017
+      - NUN_TCP_ADDR=nun-db-primary:3017
       - NUN_TCP_JOIN_ADDR=toxiproxy:3017
       - NUN_LOG_LEVEL=debug
       - NUN_USER=mateus
@@ -92,19 +93,19 @@ services:
         - /tmp/data/nun_db/:/nun_data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.nun-db-1.rule=Host(`nun-db-1.localhost`)"
-      - "traefik.http.routers.nun-db-1.entrypoints=web"
-      - "traefik.http.services.nun-db-1.loadbalancer.server.port=9092"
+      - "traefik.http.routers.nun-db-primary.rule=Host(`nun-db-primary.localhost`)"
+      - "traefik.http.routers.nun-db-primary.entrypoints=web"
+      - "traefik.http.services.nun-db-primary.loadbalancer.server.port=9092"
 
-      - "traefik.tcp.routers.nun-db-1.rule=HostSNI(`nun-db-1.localhost`)"
-      - "traefik.tcp.services.nun-db-1.loadbalancer.server.port=3017"
+      - "traefik.tcp.routers.nun-db-primary.rule=HostSNI(`nun-db-primary.localhost`)"
+      - "traefik.tcp.services.nun-db-primary.loadbalancer.server.port=3017"
   nun-db-secondary-1:
-    #image: mateusfreira/nun-db
-    build:
-      context: .
-      dockerfile: ./Dockerfile
+    image: mateusfreira/nun-db
+    #build:
+    #  context: .
+    #  dockerfile: ./Dockerfile
     depends_on:
-      - nun-db-1
+      - nun-db-primary
     environment:
       - NUN_LOG_LEVEL=debug
       - NUN_DBS_DIR=/nun_data
@@ -133,12 +134,12 @@ services:
       - "traefik.tcp.routers.nun-db-2.rule=HostSNI(`nun-db-2.localhost`)"
       - "traefik.tcp.services.nun-db-2.loadbalancer.server.port=3018"
   nun-db-secondary-2:
-    #image: mateusfreira/nun-db
-    build:
-      context: .
-      dockerfile: ./Dockerfile
+    image: mateusfreira/nun-db
+    #build:
+    #  context: .
+    #  dockerfile: ./Dockerfile
     depends_on:
-      - nun-db-1
+      - nun-db-primary
       - nun-db-secondary-1
     environment:
       - NUN_DBS_DIR=/nun_data
