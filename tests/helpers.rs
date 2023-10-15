@@ -73,7 +73,7 @@ pub mod helpers {
     }
 
 
-    pub fn start_secoundary_2_join_addr() -> std::process::Child {
+    pub fn start_secoundary_2_external_addr() -> std::process::Child {
         let mut cmd = Command::cargo_bin("nun-db").unwrap();
         let db_process = cmd
             .args(["-p", USER_NAME])
@@ -153,8 +153,8 @@ pub mod helpers {
         (start_primary(), start_secoundary(), start_secoundary_2())
     }
 
-    pub fn start_3_replicas_with_join_addr() -> (Child, Child, Child) {
-        (start_primary(), start_secoundary(), start_secoundary_2_join_addr())
+    pub fn start_3_replicas_with_external_addr() -> (Child, Child, Child) {
+        (start_primary(), start_secoundary(), start_secoundary_2_external_addr())
     }
 
     pub fn create_test_db() {

@@ -83,7 +83,7 @@ services:
     command:
       - "sh"
       - "-c"
-      - "nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --join-address $$NUN_TCP_JOIN_ADDR" 
+      - "nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --external-address $$NUN_TCP_JOIN_ADDR" 
     ports:
       - "3058:3058" # ws
       - "9092:9092" # http
@@ -118,7 +118,7 @@ services:
     command:
       - "sh"
       - "-c"
-      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --join-address $$NUN_TCP_JOIN_ADDR"
+      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --external-address $$NUN_TCP_JOIN_ADDR"
     ports:
       - "3059:3059" # ws
       - "9093:9093" # http
@@ -152,7 +152,7 @@ services:
     command:
       - "sh"
       - "-c"
-      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --join-address $$NUN_TCP_JOIN_ADDR"
+      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --external-address $$NUN_TCP_JOIN_ADDR"
     ports:
       - "3060:3060" # ws
       - "9094:9094" # http

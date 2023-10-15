@@ -120,9 +120,9 @@ mod tests {
     }
 
     #[test]
-    fn should_use_join_address_if_join_addr_is_provided() -> Result<(), Box<dyn std::error::Error>> {
+    fn should_use_exter_address_if_external_addr_is_provided() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
-        let replicas_processes = helpers::start_3_replicas_with_join_addr();
+        let replicas_processes = helpers::start_3_replicas_with_external_addr();
         helpers::nundb_exec(
             &helpers::PRIMARY_HTTP_URI.to_string(),
             &String::from("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus;"),

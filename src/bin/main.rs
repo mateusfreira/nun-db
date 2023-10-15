@@ -59,7 +59,7 @@ fn start_db(
     http_address: &str,
     tcp_address: &str,
     replicate_address: &str,
-    join_address: &str,
+    external_tcpaddress: &str,
 ) -> Result<(), String> {
     if user == "" || pwd == "" {
         println!("NUN_USER and NUN_PWD must be provided via command line (nun-db -u $USER -p $PWD ...) or env var.");
@@ -86,7 +86,7 @@ fn start_db(
         user.to_string(),
         pwd.to_string(),
         tcp_address.to_string(),
-        join_address.to_string(),
+        external_tcpaddress.to_string(),
         replication_supervisor_sender,
         replication_sender.clone(),
         keys_map,
@@ -116,13 +116,13 @@ fn start_db(
 
     let db_replication_start = dbs.clone();
     //let tcp_address_to_relication = Arc::new(tcp_address.to_string());
-    let join_address_to_relication = Arc::new(join_address.to_string());
+    let external_tcpaddress_to_relication = Arc::new(external_tcpaddress.to_string());
     let replication_thread_creator = async {
         log::debug!("nundb::replication_ops::start_replication_supervisor");
         nundb::replication_ops::start_replication_supervisor(
             replication_supervisor_receiver,
             db_replication_start,
-            join_address_to_relication,
+            external_tcpaddress_to_relication,
         )
         .await
     };
@@ -136,12 +136,12 @@ fn start_db(
 
     let dbs_self_election = dbs.clone();
     let tcp_address_to_election = Arc::new(tcp_address.to_string());
-    let join_address = Arc::new(join_address.to_string());
+    let external_tcpaddress = Arc::new(external_tcpaddress.to_string());
     let join_thread = thread::spawn(move || {
         nundb::replication_ops::ask_to_join_all_replicas(
             &replicate_address_to_thread,
             &tcp_address_to_election.to_string(),
-            &join_address.to_string(),
+            &external_tcpaddress.to_string(),
             &dbs_self_election.user.to_string(),
             &dbs_self_election.pwd.to_string(),
         );

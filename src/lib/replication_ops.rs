@@ -727,7 +727,7 @@ pub async fn start_replication_supervisor(
 pub fn ask_to_join_all_replicas(
     replicate_address_to_thread: &String,
     tcp_addr: &String,
-    join_addr: &String,
+    external_tcp_addr: &String,
     user: &String,
     pwd: &String,
 ) {
@@ -735,19 +735,19 @@ pub fn ask_to_join_all_replicas(
         let mut parts: Vec<&str> = replicate_address_to_thread.split(",").collect();
         parts.sort();
         for replica in parts {
-            if replica == join_addr {
-                log::warn!("Ignoring join_addr {} from replica equal join addr", join_addr);
+            if replica == external_tcp_addr {
+                log::warn!("Ignoring external_tcp_addr {} from replica equal join addr", external_tcp_addr);
             }
-            if replica != tcp_addr && replica != join_addr {// Don't ask to join the server sending it
+            if replica != tcp_addr && replica != external_tcp_addr {// Don't ask to join the server sending it
                 let replica_str = String::from(replica);
-                ask_to_join(&replica_str, &join_addr, &user, &pwd);
+                ask_to_join(&replica_str, &external_tcp_addr, &user, &pwd);
             }
         }
     }
 }
 
-pub fn ask_to_join(replica_addr: &String, join_addr: &String, user: &String, pwd: &String) {
-    log::debug!("Will ask to join {}, from join_addr {}", replica_addr, join_addr);
+pub fn ask_to_join(replica_addr: &String, external_addr: &String, user: &String, pwd: &String) {
+    log::debug!("Will ask to join {}, from externla_addr {}", replica_addr, external_addr);
     match TcpStream::connect(replica_addr.clone()) {
         Ok(socket) => {
             let writer = &mut BufWriter::new(&socket);
@@ -756,7 +756,7 @@ pub fn ask_to_join(replica_addr: &String, join_addr: &String, user: &String, pwd
                 .unwrap();
 
             writer
-                .write_fmt(format_args!("join {}\n", join_addr))
+                .write_fmt(format_args!("join {}\n", external_addr))
                 .unwrap();
             writer.flush().unwrap();
         }

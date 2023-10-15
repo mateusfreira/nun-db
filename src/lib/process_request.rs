@@ -487,7 +487,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             request_str,
             opp_id,
         } => {
-            send_message_to_primary(format!("ack {} {}", opp_id, dbs.join_tcp_address), dbs); // Todo validate auth
+            send_message_to_primary(format!("ack {} {}", opp_id, dbs.external_tcp_address), dbs); // Todo validate auth
             match process_request(&request_str, &dbs, client) {
                 Response::Error { msg } => {
                     log::warn!("Error to process message {}, error: {}", opp_id, msg);
