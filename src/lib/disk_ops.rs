@@ -946,6 +946,7 @@ mod tests {
             String::from(""),
             String::from(""),
             String::from(""),
+            String::from(""),
             sender.clone(),
             sender.clone(),
             keys_map,
@@ -1494,6 +1495,7 @@ mod tests {
         let (sender, _replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
         let keys_map = HashMap::new();
         let dbs = Arc::new(Databases::new(
+            String::from(""),
             String::from(""),
             String::from(""),
             String::from(""),

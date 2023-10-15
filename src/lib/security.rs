@@ -174,6 +174,7 @@ mod tests {
         let dbs = create_init_dbs(
             String::from("mateus"),
             String::from("mateus-123"),
+            tcp_addr.to_string(),
             tcp_addr,
             replication_supervisor_sender,
             replication_sender,

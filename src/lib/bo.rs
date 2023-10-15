@@ -425,6 +425,7 @@ pub struct Databases {
     pub replication_sender: Sender<String>,
     pub node_state: Arc<AtomicUsize>,
     pub tcp_address: String,
+    pub join_tcp_address: String,
     pub process_id: u128,
     pub user: String,
     pub pwd: String,
@@ -876,6 +877,7 @@ impl Databases {
         user: String,
         pwd: String,
         tcp_address: String,
+        join_tcp_address: String,
         replication_supervisor_sender: Sender<String>,
         replication_sender: Sender<String>,
         keys_map: HashMap<String, u64>,
@@ -905,6 +907,7 @@ impl Databases {
             replication_sender,
             node_state: Arc::new(AtomicUsize::new(ClusterRole::StartingUp as usize)),
             tcp_address,
+            join_tcp_address,
             process_id,
             user,
             pwd: pwd.to_string(),
@@ -1442,6 +1445,7 @@ mod tests {
         let (sender1, _): (Sender<String>, Receiver<String>) = channel(100);
         let keys_map = HashMap::new();
         Databases::new(
+            String::from(""),
             String::from(""),
             String::from(""),
             String::from(""),

@@ -242,6 +242,7 @@ pub fn create_init_dbs(
     user: String,
     pwd: String,
     tcp_address: String,
+    join_tcp_address: String,
     replication_supervisor_sender: Sender<String>,
     replication_sender: Sender<String>,
     keys_map: HashMap<String, u64>,
@@ -256,6 +257,7 @@ pub fn create_init_dbs(
         user,
         pwd,
         tcp_address,
+        join_tcp_address,
         replication_supervisor_sender,
         replication_sender,
         keys_map,
@@ -318,6 +320,7 @@ mod tests {
         let (sender, _replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
         let keys_map = HashMap::new();
         let dbs = Arc::new(Databases::new(
+            String::from(""),
             String::from(""),
             String::from(""),
             String::from(""),

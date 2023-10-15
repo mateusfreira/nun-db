@@ -86,6 +86,7 @@ fn start_db(
         user.to_string(),
         pwd.to_string(),
         tcp_address.to_string(),
+        join_address.to_string(),
         replication_supervisor_sender,
         replication_sender.clone(),
         keys_map,
