@@ -89,21 +89,26 @@ services:
       - "traefik.tcp.routers.nun-db-1.rule=HostSNI(`nun-db-1.localhost`)"
       - "traefik.tcp.services.nun-db-1.loadbalancer.server.port=3017"
   nun-db-secondary-1:
-    image: mateusfreira/nun-db
+    #image: mateusfreira/nun-db
+    build:
+      context: .
+      dockerfile: ./Dockerfile
     depends_on:
       - nun-db-1
     environment:
+      - NUN_LOG_LEVEL=debug
       - NUN_DBS_DIR=/nun_data
       - NUN_WS_ADDR=0.0.0.0:3059
       - NUN_HTTP_ADDR=0.0.0.0:9093
-      - NUN_TCP_ADDR=toxiproxy:3018
+      - NUN_TCP_ADDR=nun-db-secondary-1:3018
+      - NUN_TCP_JOIN_ADDR=toxiproxy:3018
       - NUN_USER=mateus
       - NUN_PWD=mateus
       - NUN_REPLICASET=toxiproxy:3017,toxiproxy:3018,toxiproxy:3019
     command:
       - "sh"
       - "-c"
-      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET"
+      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --join-address $$NUN_TCP_JOIN_ADDR"
     ports:
       - "3059:3059" # ws
       - "9093:9093" # http

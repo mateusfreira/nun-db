@@ -824,6 +824,7 @@ pub fn auth_on_replication(
     is_primary: bool,
     writer: &mut std::io::BufWriter<&std::net::TcpStream>,
 ) {
+    log::debug!("authenticating on replication {}", tcp_addr);
     writer
         .write_fmt(format_args!("auth {} {}\n", user, pwd))
         .unwrap();

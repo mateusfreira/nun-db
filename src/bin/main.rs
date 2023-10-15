@@ -114,13 +114,14 @@ fn start_db(
     });
 
     let db_replication_start = dbs.clone();
-    let tcp_address_to_relication = Arc::new(tcp_address.to_string());
+    //let tcp_address_to_relication = Arc::new(tcp_address.to_string());
+    let join_address_to_relication = Arc::new(join_address.to_string());
     let replication_thread_creator = async {
         log::debug!("nundb::replication_ops::start_replication_supervisor");
         nundb::replication_ops::start_replication_supervisor(
             replication_supervisor_receiver,
             db_replication_start,
-            tcp_address_to_relication,
+            join_address_to_relication,
         )
         .await
     };

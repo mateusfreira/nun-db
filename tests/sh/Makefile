@@ -95,3 +95,6 @@ all: build snapshot-all kill clean start-1 cluster-state start-2 start-3 save-ad
 connect-primary:
 	@echo "Connecting to primary"
 	@nc localhost 3017
+
+ps:
+	@ps aux | grep nun-db
