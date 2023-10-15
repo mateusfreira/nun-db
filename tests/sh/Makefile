@@ -50,7 +50,7 @@ start-2:
 
 start-3:
 	@echo "Starting secoundary 2"
-	NUN_DBS_DIR=/tmp/dbs2 RUST_BACKTRACE=1 ./../../target/debug/nun-db --user $(user) -p $(user) start --http-address "$(secoundary2HttpAddress)" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059" --replicate-address "$(replicaSetAddrs)" >> secoundary.2.log &
+	NUN_DBS_DIR=/tmp/dbs2 RUST_BACKTRACE=1 ./../../target/debug/nun-db --user $(user) -p $(user) start --http-address "$(secoundary2HttpAddress)" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059" --external-address "localhost:3018" --replicate-address "$(replicaSetAddrs)" >> secoundary.2.log &
 	echo $$! >> .secoundary.pid
 	sleep $(timeoutSpeep)
 
@@ -74,7 +74,7 @@ create-vue: build
 create-sample: build
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db sample sample-pwd; use-db sample sample-pwd; snapshot;"
 
-create-test: build
+create-test:
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db test test-pwd arbiter; use-db test test-pwd; snapshot;"
 
 create-blog: build
@@ -91,3 +91,14 @@ kill-all:
 all: build snapshot-all kill clean start-1 cluster-state start-2 start-3 save-admin print-election-primary print-election-2 print-election-3 create-vue create-sample create-test create-blog set-on-secoundary
 
 .PHONY: build snapshot-all kill clean start-1 cluster-state start-2 start-3 save-admin print-election-primary print-election-2 print-election-3 create-vue create-sample create-test create-blog set-on-secoundary
+
+connect-primary:
+	@echo "Connecting to primary"
+	@nc localhost 3017
+
+connect-secoundary-1:
+	@echo "Connecting to primary"
+	@nc localhost 3018
+
+ps:
+	@ps aux | grep nun-db

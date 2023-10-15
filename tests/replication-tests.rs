@@ -119,6 +119,38 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn should_use_exter_address_if_external_addr_is_provided() -> Result<(), Box<dyn std::error::Error>> {
+        helpers::clean_env();
+        let replicas_processes = helpers::start_3_replicas_with_external_addr();
+        helpers::nundb_exec(
+            &helpers::PRIMARY_HTTP_URI.to_string(),
+            &String::from("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus;"),
+        )
+        .success()
+        .stdout(predicate::str::contains("empty;empty"));
+
+        helpers::wait_seconds(3); //Wait 3s to the replication
+
+        helpers::nundb_exec(
+            &helpers::PRIMARY_HTTP_URI.to_string(),
+            &String::from("cluster-state"),
+        )
+        .success()
+        .stdout(predicate::str::contains("localhost:3016"));
+
+
+        helpers::nundb_exec(
+            &helpers::PRIMARY_HTTP_URI.to_string(),
+            &String::from("metrics-state"),
+        )
+        .success()
+        .stdout(predicate::str::contains("pending_ops: 0"));
+
+        helpers::kill_replicas(replicas_processes)?;
+        Ok(())
+    }
+
     /*
     // This tests require latancy beetwhen processes
     #[test]

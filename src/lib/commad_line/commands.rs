@@ -83,6 +83,13 @@ pub fn prepare_args<'a>() -> ArgMatches<'static> {
                         .takes_value(true)
                         .help("Replicate address"),
                 )
+                .arg(
+                    Arg::with_name("external-address")
+                        .short("ea")
+                        .long("external-address")
+                        .takes_value(true)
+                        .help("TCP address to use to join the cluster as a default address, useful when the node tcp address is not reachable from other nodes"),
+                )
                 .about("Start Nun-db service"),
         )
         .get_matches();

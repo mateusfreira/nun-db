@@ -26,6 +26,7 @@ pub mod helpers {
     pub const SECOUNDARY2_HTTP_ADDRESS: &'static str = "127.0.0.1:9094";
     pub const SECOUNDAR2_HTTP_URI: &'static str = "http://127.0.0.1:9094";
     pub const SECOUNDARY2_TCP_ADDRESS: &'static str = "127.0.0.1:3016";
+    pub const SECOUNDARY2_TCP_ADDRESS_LOCAL: &'static str = "localhost:3016";
     pub const SECOUNDARY2_WS_ADDRESS: &'static str = "127.0.0.1:3060";
 
     pub const REPLICATE_SET_ADDRS: &'static str = "127.0.0.1:3016,127.0.0.1:3017,127.0.0.1:3018";
@@ -71,6 +72,24 @@ pub mod helpers {
         db_process
     }
 
+
+    pub fn start_secoundary_2_external_addr() -> std::process::Child {
+        let mut cmd = Command::cargo_bin("nun-db").unwrap();
+        let db_process = cmd
+            .args(["-p", USER_NAME])
+            .args(["--user", PWD])
+            .arg("start")
+            .args(["--http-address", SECOUNDARY2_HTTP_ADDRESS])
+            .args(["--tcp-address", SECOUNDARY2_TCP_ADDRESS])
+            .args(["--external-address", SECOUNDARY2_TCP_ADDRESS_LOCAL])
+            .args(["--ws-address", SECOUNDARY2_WS_ADDRESS])
+            .args(["--replicate-address", REPLICATE_SET_ADDRS])
+            .env("NUN_DBS_DIR", "/tmp/dbs2")
+            .spawn()
+            .unwrap();
+        wait_seconds(time_to_start_replica()); // Need 1s here to run initial election
+        db_process
+    }
     pub fn start_secoundary_2() -> std::process::Child {
         let mut cmd = Command::cargo_bin("nun-db").unwrap();
         let db_process = cmd
@@ -132,6 +151,10 @@ pub mod helpers {
 
     pub fn start_3_replicas() -> (Child, Child, Child) {
         (start_primary(), start_secoundary(), start_secoundary_2())
+    }
+
+    pub fn start_3_replicas_with_external_addr() -> (Child, Child, Child) {
+        (start_primary(), start_secoundary(), start_secoundary_2_external_addr())
     }
 
     pub fn create_test_db() {

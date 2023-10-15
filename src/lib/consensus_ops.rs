@@ -269,6 +269,7 @@ mod tests {
             String::from("user"),
             String::from("token"),
             String::from(""),
+            String::from(""),
             sender1,
             sender2,
             keys_map,
