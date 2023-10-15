@@ -44,7 +44,7 @@ fn main() -> Result<(), String> {
                 .value_of("replicate-address")
                 .unwrap_or(NUN_REPLICATE_ADDR.as_str()),
             start_match
-                .value_of("join-address")
+                .value_of("external-address")
                 .unwrap_or(tcp_address),
         );
     } else {
