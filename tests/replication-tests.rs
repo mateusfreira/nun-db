@@ -139,6 +139,14 @@ mod tests {
         .success()
         .stdout(predicate::str::contains("localhost:3016"));
 
+
+        helpers::nundb_exec(
+            &helpers::PRIMARY_HTTP_URI.to_string(),
+            &String::from("metrics-state"),
+        )
+        .success()
+        .stdout(predicate::str::contains("pending_ops: 0"));
+
         helpers::kill_replicas(replicas_processes)?;
         Ok(())
     }

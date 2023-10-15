@@ -788,7 +788,7 @@ fn start_replication(
                     let message_opt = command_receiver.next().await;
                     match message_opt {
                         Some(message) => {
-                            log::debug!("Will replicate {}", message);
+                            log::debug!("Will replicate {} to {}", message, replicate_address);
                             writer.write_fmt(format_args!("{}\n", message)).unwrap();
                             match writer.flush() {
                                 Err(e) => {

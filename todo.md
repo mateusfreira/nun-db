@@ -92,4 +92,3 @@ Ask to join
 - [x] How to test this??? Write integration tests
 - [ ] Test it in docker
 - [ ] ack 1697328068431833087 nun-db-secondary-1:3018 must use the join addr not the tcp addr
-

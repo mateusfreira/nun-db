@@ -96,5 +96,9 @@ connect-primary:
 	@echo "Connecting to primary"
 	@nc localhost 3017
 
+connect-secoundary-1:
+	@echo "Connecting to primary"
+	@nc localhost 3018
+
 ps:
 	@ps aux | grep nun-db

@@ -16,3 +16,6 @@ docker-down:
 
 docker-logs-follower:
 	@docker-compose logs -f
+
+docker-exec-toxiproxy:
+	@docker-compose exec toxiproxy sh
