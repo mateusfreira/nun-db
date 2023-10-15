@@ -50,7 +50,7 @@ start-2:
 
 start-3:
 	@echo "Starting secoundary 2"
-	NUN_DBS_DIR=/tmp/dbs2 RUST_BACKTRACE=1 ./../../target/debug/nun-db --user $(user) -p $(user) start --http-address "$(secoundary2HttpAddress)" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059" --join-address "localhost:3018" --replicate-address "$(replicaSetAddrs)" >> secoundary.2.log &
+	NUN_DBS_DIR=/tmp/dbs2 RUST_BACKTRACE=1 ./../../target/debug/nun-db --user $(user) -p $(user) start --http-address "$(secoundary2HttpAddress)" --tcp-address "127.0.0.1:3018" --ws-address "127.0.0.1:3059" --external-address "localhost:3018" --replicate-address "$(replicaSetAddrs)" >> secoundary.2.log &
 	echo $$! >> .secoundary.pid
 	sleep $(timeoutSpeep)
 

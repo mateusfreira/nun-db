@@ -19,3 +19,7 @@ docker-logs-follower:
 
 docker-exec-toxiproxy:
 	@docker-compose exec toxiproxy sh
+
+
+run-tests:
+	@cargo test -- --test-threads=1 --show-output

@@ -81,7 +81,7 @@ pub mod helpers {
             .arg("start")
             .args(["--http-address", SECOUNDARY2_HTTP_ADDRESS])
             .args(["--tcp-address", SECOUNDARY2_TCP_ADDRESS])
-            .args(["--join-address", SECOUNDARY2_TCP_ADDRESS_LOCAL])
+            .args(["--external-address", SECOUNDARY2_TCP_ADDRESS_LOCAL])
             .args(["--ws-address", SECOUNDARY2_WS_ADDRESS])
             .args(["--replicate-address", REPLICATE_SET_ADDRS])
             .env("NUN_DBS_DIR", "/tmp/dbs2")
