@@ -1,3 +1,4 @@
+include ../../Makefile
 # Variables
 primaryTcpAddress="127.0.0.1:3017"
 primaryHttpAddress = "127.0.0.1:9092"
@@ -62,16 +63,16 @@ save-admin: build
 print-election-primary:
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "cluster-state;"
 
-print-election-2: build
+print-election-2:
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(secoundary1HttpAddress)" exec "cluster-state;"
 
-print-election-3: build
+print-election-3:
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(secoundary2HttpAddress)" exec "cluster-state;"
 
 create-vue: build
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db vue vue_pwd; use-db vue vue_pwd; snapshot;"
 
-create-sample: build
+create-sample:
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db sample sample-pwd; use-db sample sample-pwd; snapshot;"
 
 create-test:

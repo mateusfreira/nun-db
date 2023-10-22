@@ -756,7 +756,7 @@ pub fn ask_to_join_all_replicas(
 
 pub fn ask_to_join(replica_addr: &String, external_addr: &String, user: &String, pwd: &String) {
     log::debug!(
-        "Will ask to join {}, from externla_addr {}",
+        "Will ask to join {}, from external_addr {}",
         replica_addr,
         external_addr
     );

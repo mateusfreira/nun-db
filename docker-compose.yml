@@ -11,18 +11,20 @@ services:
     image: "shopify/toxiproxy"
     entrypoint: > 
       sh -c "
+              sleep 1
              /go/bin/toxiproxy-cli -h toxiproxy:8474 create primary --listen 0.0.0.0:3017 --upstream nun-db-primary:3017
              /go/bin/toxiproxy-cli -h toxiproxy:8474 create secondary-1 --listen 0.0.0.0:3018 --upstream nun-db-secondary-1:3018
              /go/bin/toxiproxy-cli -h toxiproxy:8474 create secondary-2 --listen 0.0.0.0:3019 --upstream nun-db-secondary-2:3019
 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=500 primary 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=500 --toxicity=1 primary
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=2000 primary 
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=2000 --toxicity=1 primary
 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=500 secondary-1
-             /go/bin/toxiproxy-cli -h toxiproxy:8474 toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=500 --toxicity=1 secondary-1
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=2000 secondary-1
+             /go/bin/toxiproxy-cli -h toxiproxy:8474 toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=2000 --toxicity=1 secondary-1
 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=500 secondary-2
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=500 --toxicity=1 secondary-2
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=2000 secondary-2
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=2000 --toxicity=1 secondary-2
+             sleep 100000
              "
   jaeger:
     image: jaegertracing/all-in-one:1.17
@@ -67,10 +69,10 @@ services:
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
   nun-db-primary:
-    image: mateusfreira/nun-db
-    #build:
-    #  context: .
-    #  dockerfile: ./Dockerfile
+    #image: mateusfreira/nun-db
+    build:
+      context: .
+      dockerfile: ./Dockerfile
     environment:
       - NUN_DBS_DIR=/nun_data
       - NUN_WS_ADDR=0.0.0.0:3058
@@ -84,7 +86,7 @@ services:
     command:
       - "sh"
       - "-c"
-      - "nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --external-address $$NUN_TCP_JOIN_ADDR" 
+      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --external-address $$NUN_TCP_JOIN_ADDR" 
     ports:
       - "3058:3058" # ws
       - "9092:9092" # http
@@ -99,11 +101,14 @@ services:
 
       - "traefik.tcp.routers.nun-db-primary.rule=HostSNI(`nun-db-primary.localhost`)"
       - "traefik.tcp.services.nun-db-primary.loadbalancer.server.port=3017"
+    depends_on:
+      - toxiproxy
+      - toxiproxy-config
   nun-db-secondary-1:
-    image: mateusfreira/nun-db
-    #build:
-    #  context: .
-    #  dockerfile: ./Dockerfile
+    #image: mateusfreira/nun-db
+    build:
+      context: .
+      dockerfile: ./Dockerfile
     depends_on:
       - nun-db-primary
     environment:
@@ -134,10 +139,11 @@ services:
       - "traefik.tcp.routers.nun-db-2.rule=HostSNI(`nun-db-2.localhost`)"
       - "traefik.tcp.services.nun-db-2.loadbalancer.server.port=3018"
   nun-db-secondary-2:
-    image: mateusfreira/nun-db
-    #build:
-    #  context: .
-    #  dockerfile: ./Dockerfile
+    #image: mateusfreira/nun-db
+    image: docker.io/library/nun-db-nun-db-secondary-1
+      #build:
+      #  context: .
+      #  dockerfile: ./Dockerfile
     depends_on:
       - nun-db-primary
       - nun-db-secondary-1

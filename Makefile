@@ -37,3 +37,7 @@ remove-all-latency:
 
 add-full-latency:
 	@docker-compose exec toxiproxy sh -c "/go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=3000 primary&/go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=3000 secondary-1 & /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=3000 secondary-2"
+
+
+restart-all-replicas:
+	@docker-compose restart nun-db-primary nun-db-secondary-1 nun-db-secondary-2

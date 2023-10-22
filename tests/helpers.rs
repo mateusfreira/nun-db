@@ -190,12 +190,15 @@ pub mod helpers {
     }
     pub fn start_db_with_docker() {
         let mut cmd = Command::new("make");
-        let _clen_cmd = cmd.args(["docker-up"]);
+        let cmd = cmd.args(["restart-all-replicas"]);
+        cmd.assert().success();
+        wait_seconds(5);
     }
 
     pub fn stop_db_with_docker() {
-        let mut cmd = Command::new("make");
-        let _clen_cmd = cmd.args(["docker-down"]);
+        //let mut cmd = Command::new("make");
+        //let cmd = cmd.args(["docker-down"]);
+        //cmd.assert().success();
     }
 
     pub fn run_test<T>(test: T, setup: fn() -> (), teardown: fn() -> ()) -> ()

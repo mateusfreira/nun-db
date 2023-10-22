@@ -74,12 +74,12 @@ nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-d
 * Client protocols
 
 ## Chaos
-_posts/draft-nun-db-chaos-testing-with-docker-and-toxiproxy.md
+* Sends a message to all replicas to join
+[src/lib/replication_ops.rs:731]
 
-Create the container for toxiproxy
-[docker-compose.yml:3 ]
-Expose all ports via toxi proxy
-[docker-compose.yml:6 ]
+* Start initial election
+[src/bin/main.rs:150]
 
-Create a proxy for nun-db primary in the port 3017
-[docker-compose.yml:14 ]
+
+## TODO On primary change check sync state
+* When receiving and set primary send the state to all replicas to verify it they are all in sync if not a new election is trigged

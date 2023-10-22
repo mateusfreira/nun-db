@@ -327,7 +327,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         }),
 
         Request::SetScoundary { name } => apply_if_auth(&client.auth, &|| {
-            log::info!("Setting {} as secoundary!", name);
+            log::info!("Setting {} as secondary!", name);
             let member = Some(ClusterMember {
                 name: name.clone(),
                 role: ClusterRole::Secoundary,
@@ -339,10 +339,11 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         }),
 
         Request::Join { name } => apply_if_auth(&client.auth, &|| {
-            if dbs.is_primary() {
+            if dbs.is_primary() || dbs.is_eligible() {
                 add_as_secoundary(&dbs, &name);
+                start_new_election(&dbs); //Slow operation here
             } else {
-                log::debug!("Ignoring join on secoundary!")
+                log::debug!("Ignoring join on secondary!")
             }
             Response::Ok {}
         }),
