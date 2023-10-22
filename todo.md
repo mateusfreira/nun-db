@@ -73,22 +73,13 @@ nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-d
 * Security layer
 * Client protocols
 
+## Chaos
+_posts/draft-nun-db-chaos-testing-with-docker-and-toxiproxy.md
 
-## Add join address command
-- [ ] When joining as a replica the server sends its tcp address to the primary
-- [x] Add new command line option
-- [x] Replace the command line to use the new parameter if it is set
-* Defines the command line parameter
-[src/lib/commad_line/commands.rs:59 ]
-Used here to pass to start db
-[src/bin/main.rs:58]
-Replicate join here
-[src/lib/replication_ops.rs:501 ]
-Change here to use the new parameter
-[src/bin/main.rs:117]
-Ask to join
-[src/lib/replication_ops.rs:745 ]
-[src/bin/main.rs:135 ] Called at main
-- [x] How to test this??? Write integration tests
-- [ ] Test it in docker
-- [ ] ack 1697328068431833087 nun-db-secondary-1:3018 must use the join addr not the tcp addr
+Create the container for toxiproxy
+[docker-compose.yml:3 ]
+Expose all ports via toxi proxy
+[docker-compose.yml:6 ]
+
+Create a proxy for nun-db primary in the port 3017
+[docker-compose.yml:14 ]

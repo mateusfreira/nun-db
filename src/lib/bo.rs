@@ -1,4 +1,3 @@
-use std::sync::RwLockReadGuard;
 use atomic_float::*;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
@@ -7,6 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
+use std::sync::RwLockReadGuard;
 use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -89,11 +89,7 @@ impl Client {
     }
 
     pub fn send_message(&self, msg: &String) {
-        match self
-            .sender
-            .clone()
-            .try_send(msg.clone())
-        {
+        match self.sender.clone().try_send(msg.clone()) {
             Ok(_) => {}
             Err(e) => log::warn!("send_message::try_send {}", e),
         };
@@ -433,7 +429,6 @@ pub struct Databases {
 }
 
 impl Database {
-
     #[cfg(test)]
     pub fn to_string_hash(&self) -> HashMap<String, String> {
         let data = self.map.read().expect("Error getting the db.map.read");
@@ -803,7 +798,6 @@ fn filter_system_keys(list_system_keys: bool, key: &&String) -> bool {
 }
 
 impl Databases {
-
     pub fn acquire_dbs_read_lock(&self) -> RwLockReadGuard<HashMap<String, Database>> {
         self.map.read().expect("Error getting the db.map.read")
     }

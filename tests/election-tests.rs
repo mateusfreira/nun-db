@@ -2,6 +2,7 @@
 pub mod helpers;
 mod tests {
     use crate::helpers::*;
+    // Add methods on commands
     use assert_cmd::prelude::*; // Add methods on commands
     use predicates::prelude::*; // Used for writing assertions
     use std::process::Command;
@@ -79,5 +80,35 @@ mod tests {
 
         helpers::kill_replicas(replicas_processes)?;
         Ok(())
+    }
+
+    fn before_each() {
+        println!("before each");
+        helpers::clean_env();
+        helpers::stop_db_with_docker();
+        helpers::start_db_with_docker();
+    }
+
+    fn after_each() {
+        println!("after each");
+        helpers::stop_db_with_docker();
+    }
+    #[test]
+    fn should_run_election_as_expected_with_latenct() {
+        helpers::run_test(
+            || {
+                helpers::nundb_exec(
+                    &helpers::PRIMARY_HTTP_URI.to_string(),
+                    &String::from("cluster-state"),
+                )
+                .success()
+                .stdout(predicate::str::contains("toxiproxy:3017:Primary"))
+                .stdout(predicate::str::contains("toxiproxy:3018:Secondary"))
+                .stdout(predicate::str::contains("toxiproxy:3019:Secondary"));
+                ()
+            },
+            before_each,
+            after_each,
+        )
     }
 }

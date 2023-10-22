@@ -4,6 +4,7 @@ pub mod helpers {
     use assert_cmd::prelude::*; // Add methods on commands
     use predicates::prelude::*;
     use std::env;
+    use std::panic;
     use std::process::Child;
     use std::process::Command;
     use std::time::SystemTime;
@@ -71,7 +72,6 @@ pub mod helpers {
         wait_seconds(time_to_start_replica()); // Need 1s here to run initial election
         db_process
     }
-
 
     pub fn start_secoundary_2_external_addr() -> std::process::Child {
         let mut cmd = Command::cargo_bin("nun-db").unwrap();
@@ -154,7 +154,11 @@ pub mod helpers {
     }
 
     pub fn start_3_replicas_with_external_addr() -> (Child, Child, Child) {
-        (start_primary(), start_secoundary(), start_secoundary_2_external_addr())
+        (
+            start_primary(),
+            start_secoundary(),
+            start_secoundary_2_external_addr(),
+        )
     }
 
     pub fn create_test_db() {
@@ -183,5 +187,24 @@ pub mod helpers {
             .expect("Time went backwards");
         let id = since_the_epoch.as_nanos() as u64;
         return format!("{}", id);
+    }
+    pub fn start_db_with_docker() {
+        let mut cmd = Command::new("make");
+        let _clen_cmd = cmd.args(["docker-up"]);
+    }
+
+    pub fn stop_db_with_docker() {
+        let mut cmd = Command::new("make");
+        let _clen_cmd = cmd.args(["docker-down"]);
+    }
+
+    pub fn run_test<T>(test: T, setup: fn() -> (), teardown: fn() -> ()) -> ()
+    where
+        T: FnOnce() -> () + panic::UnwindSafe,
+    {
+        setup();
+       let result = panic::catch_unwind(|| test());
+        teardown();
+        assert!(result.is_ok())
     }
 }

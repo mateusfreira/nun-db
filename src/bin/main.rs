@@ -29,7 +29,9 @@ fn main() -> Result<(), String> {
     log::info!("nundb starting!");
     let matches: ArgMatches<'_> = nundb::commad_line::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
-        let tcp_address = start_match.value_of("tcp-address").unwrap_or(NUN_TCP_ADDR.as_str());
+        let tcp_address = start_match
+            .value_of("tcp-address")
+            .unwrap_or(NUN_TCP_ADDR.as_str());
         return start_db(
             matches.value_of("user").unwrap_or(NUN_USER.as_str()),
             matches.value_of("pwd").unwrap_or(NUN_PWD.as_str()),
@@ -39,7 +41,7 @@ fn main() -> Result<(), String> {
             start_match
                 .value_of("http-address")
                 .unwrap_or(NUN_HTTP_ADDR.as_str()),
-                tcp_address,
+            tcp_address,
             start_match
                 .value_of("replicate-address")
                 .unwrap_or(NUN_REPLICATE_ADDR.as_str()),

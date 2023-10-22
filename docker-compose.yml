@@ -15,14 +15,14 @@ services:
              /go/bin/toxiproxy-cli -h toxiproxy:8474 create secondary-1 --listen 0.0.0.0:3018 --upstream nun-db-secondary-1:3018
              /go/bin/toxiproxy-cli -h toxiproxy:8474 create secondary-2 --listen 0.0.0.0:3019 --upstream nun-db-secondary-2:3019
 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=1000 primary 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=1000 --toxicity=1 primary
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=500 primary 
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=500 --toxicity=1 primary
 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=10000 secondary-1
-             /go/bin/toxiproxy-cli -h toxiproxy:8474 toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=1000 --toxicity=1 secondary-1
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=500 secondary-1
+             /go/bin/toxiproxy-cli -h toxiproxy:8474 toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=500 --toxicity=1 secondary-1
 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=1000 secondary-2
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=1000 --toxicity=1 secondary-2
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=500 secondary-2
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=500 --toxicity=1 secondary-2
              "
   jaeger:
     image: jaegertracing/all-in-one:1.17

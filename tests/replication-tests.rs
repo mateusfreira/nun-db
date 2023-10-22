@@ -120,7 +120,8 @@ mod tests {
     }
 
     #[test]
-    fn should_use_exter_address_if_external_addr_is_provided() -> Result<(), Box<dyn std::error::Error>> {
+    fn should_use_exter_address_if_external_addr_is_provided(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
         let replicas_processes = helpers::start_3_replicas_with_external_addr();
         helpers::nundb_exec(
@@ -138,7 +139,6 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains("localhost:3016"));
-
 
         helpers::nundb_exec(
             &helpers::PRIMARY_HTTP_URI.to_string(),

@@ -317,7 +317,11 @@ pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
 }
 
 fn get_db_id(db_name: String, dbs: &Arc<Databases>) -> u64 {
-    dbs.acquire_dbs_read_lock().get(&db_name).unwrap().metadata.id as u64
+    dbs.acquire_dbs_read_lock()
+        .get(&db_name)
+        .unwrap()
+        .metadata
+        .id as u64
 }
 
 fn generate_key_id(
@@ -736,9 +740,13 @@ pub fn ask_to_join_all_replicas(
         parts.sort();
         for replica in parts {
             if replica == external_tcp_addr {
-                log::warn!("Ignoring external_tcp_addr {} from replica equal join addr", external_tcp_addr);
+                log::warn!(
+                    "Ignoring external_tcp_addr {} from replica equal join addr",
+                    external_tcp_addr
+                );
             }
-            if replica != tcp_addr && replica != external_tcp_addr {// Don't ask to join the server sending it
+            if replica != tcp_addr && replica != external_tcp_addr {
+                // Don't ask to join the server sending it
                 let replica_str = String::from(replica);
                 ask_to_join(&replica_str, &external_tcp_addr, &user, &pwd);
             }
@@ -747,7 +755,11 @@ pub fn ask_to_join_all_replicas(
 }
 
 pub fn ask_to_join(replica_addr: &String, external_addr: &String, user: &String, pwd: &String) {
-    log::debug!("Will ask to join {}, from externla_addr {}", replica_addr, external_addr);
+    log::debug!(
+        "Will ask to join {}, from externla_addr {}",
+        replica_addr,
+        external_addr
+    );
     match TcpStream::connect(replica_addr.clone()) {
         Ok(socket) => {
             let writer = &mut BufWriter::new(&socket);
