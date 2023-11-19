@@ -103,3 +103,12 @@ connect-secoundary-1:
 
 ps:
 	@ps aux | grep nun-db
+force-election-1:
+	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "debug force-election;"
+
+force-election-2:
+	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(secoundary1HttpAddress)" exec "debug force-election;"
+
+
+force-election-3:
+	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(secoundary2HttpAddress)" exec "debug force-election;"

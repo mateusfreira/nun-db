@@ -13,15 +13,11 @@ pub fn start_inital_election(dbs: Arc<Databases>) {
 
 pub fn start_election(dbs: &Arc<Databases>) {
     log::info!("Will start election");
-    match dbs
-        .replication_sender
-        .clone()
-        .try_send(format!("election candidate {}", dbs.process_id))
-    {
+    match dbs.replicate_message(format!("election candidate {} {}", dbs.process_id, dbs.external_tcp_address)) {
         Ok(_) => (),
         Err(_) => log::warn!("Error election candidate"),
     }
-    thread::sleep(time::Duration::from_millis(1000));
+    thread::sleep(time::Duration::from_millis(1000)); // Will wait for the ack
     if dbs.is_eligible() {
         log::info!("winning the election");
         election_win(&dbs);
@@ -35,25 +31,23 @@ pub fn start_new_election(dbs: &Arc<Databases>) {
     start_election(&dbs);
 }
 
-pub fn election_eval(dbs: &Arc<Databases>, candidate_id: u128) -> Response {
+pub fn election_eval(dbs: &Arc<Databases>, candidate_id: u128, node_name: &String) -> Response {
     log::info!(
-        "Election received candidate_id : {} ,dbs.process_id : {}",
+        "Election received [candidate_id : {}, node_name : {} ] , dbs : [process_id : {}, {} ]",
         candidate_id,
-        dbs.process_id
+        node_name,
+        dbs.process_id,
+        dbs.external_tcp_address
     );
 
     if candidate_id == dbs.process_id {
         log::debug!("Ignoring same node election");
-    } else if candidate_id > dbs.process_id {
+    } else if candidate_id < dbs.process_id {
         log::info!("Will run the start_election");
         start_election(dbs);
     } else {
         log::info!("Won't run the start_election");
-        match dbs
-            .replication_sender
-            .clone()
-            .try_send(format!("election alive"))
-        {
+        match dbs.replicate_message(format!("election alive {}", dbs.external_tcp_address)){
             Ok(_) => (),
             Err(_) => log::warn!("Error election alive"),
         }

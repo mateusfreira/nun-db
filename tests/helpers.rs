@@ -206,7 +206,7 @@ pub mod helpers {
         T: FnOnce() -> () + panic::UnwindSafe,
     {
         setup();
-       let result = panic::catch_unwind(|| test());
+        let result = panic::catch_unwind(|| test());
         teardown();
         assert!(result.is_ok())
     }

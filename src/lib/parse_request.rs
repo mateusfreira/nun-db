@@ -292,13 +292,30 @@ fn parse_election_command(command: &mut std::str::SplitN<&str>) -> Result<Reques
     match command.next() {
         Some("win") => Ok(Request::ElectionWin {}),
         Some("candidate") => {
-            let process_id = match command.next() {
+            let rest = match command.next() {
+                Some(rest) => rest,
+                None => return Err(format!("candidate must contain process id and server name")),
+            };
+            let mut rest = rest.splitn(2, " ");
+            let process_id = match rest.next() {
                 Some(id) => id.parse::<u128>().unwrap(),
                 None => return Err(format!("replicate-snapshot must contain a db name")),
             };
-            Ok(Request::Election { id: process_id })
+            let node_name = match rest.next() {
+                Some(server_name) => server_name.replace("\n", ""),
+                None => {
+                    log::warn!("election missing server name there must be an un-updated node on the cluster");
+                    "no-server".to_string()
+                }
+            };
+            Ok(Request::Election {
+                id: process_id,
+                node_name,
+            })
         }
-        _ => Ok(Request::ElectionActive {}),
+        _ => Ok(Request::ElectionActive {
+            node_name: command.next().unwrap_or("no-server").to_string(),
+        }),
     }
 }
 

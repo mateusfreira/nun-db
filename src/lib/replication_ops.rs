@@ -16,10 +16,31 @@ use crate::bo::*;
 use crate::db_ops::*;
 use crate::disk_ops::*;
 
+impl Databases {
+    pub fn replicate_message(&self, message: String) -> Result<u64, String> {
+        replicate_message_with_sender(&self.replication_sender, message)
+    }
+}
+
+pub fn replicate_message_with_sender(replication_sender: &Sender<String>, message: String) -> Result <u64, String > {
+    let opp_id = Databases::next_op_log_id();
+    match replication_sender
+    .clone()
+    // Replicate the message "opp_id message"
+    .try_send(format!("rp {} {}", opp_id, message)) {
+        Ok(_) => Ok(opp_id),
+            Err(e) => Err(format!(
+                "Error sending message to replication channel: {}",
+                e
+            )),
+    }
+}
+
+
 pub fn replicate_web(replication_sender: &Sender<String>, message: String) {
-    match replication_sender.clone().try_send(message.clone()) {
+    match replicate_message_with_sender(replication_sender, message)  {
         Ok(_) => (),
-        Err(_) => log::error!("Error replicating message {}", message),
+        Err(e) => log::error!(" [replicate_web] error {}", e),
     }
 }
 
@@ -204,13 +225,16 @@ pub fn replicate_request(
                 Response::Ok {}
             }
 
-            Request::Election { id } => {
-                replicate_web(replication_sender, format!("election candidate {}", id));
+            Request::Election { id, node_name } => {
+                replicate_web(
+                    replication_sender,
+                    format!("election candidate {} {}", id, node_name),
+                );
                 Response::Ok {}
             }
 
-            Request::ElectionActive {} => {
-                replicate_web(replication_sender, format!("election active"));
+            Request::ElectionActive { node_name } => {
+                replicate_web(replication_sender, format!("election active {}", node_name));
                 Response::Ok {}
             }
 
@@ -355,6 +379,7 @@ pub async fn start_replication_thread(
 ) {
     let mut op_log_stream = get_log_file_append_mode();
     let mut invalidate_stream = get_invalidate_file_write_mode();
+    // Loop replicating messages
     loop {
         let message_opt = replication_receiver.next().await;
         match message_opt {
@@ -363,7 +388,18 @@ pub async fn start_replication_thread(
                     log::info!("replication_ops::start_replication_thread will exist!");
                     break;
                 }
-                let request = Request::parse(&message.to_string()).unwrap();
+                let rp_request = Request::parse(&message.to_string()).unwrap();
+                let (request_str, op_log_id_in) = match  rp_request {
+                    Request::ReplicateRequest { request_str, opp_id} => {
+                        (request_str.to_string(), opp_id)
+                    }
+                    _ => {
+                        log::error!("replication_ops::start_replication_thread:: Unknown message {}", message);
+                        panic!("replication_ops::start_replication_thread:: Unknown message {}", message);
+                    }
+                };
+                let request = Request::parse(&request_str).unwrap();
+
                 let op_log_id: u64 = match request {
                     Request::CreateDb {
                         name,
@@ -373,7 +409,7 @@ pub async fn start_replication_thread(
                         let db_id = get_db_id(name, &dbs);
                         let key_id = 1;
                         log::debug!("Will write CreateDb");
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::CreateDb)
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::CreateDb, op_log_id_in)
                     }
                     Request::ReplicateSnapshot {
                         db,
@@ -382,7 +418,7 @@ pub async fn start_replication_thread(
                         let db_id = get_db_id(db, &dbs);
                         let key_id = 2; //has to be different
                         log::debug!("Will write ReplicateSnapshot");
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot)
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot, op_log_id_in)
                     }
                     Request::ReplicateSet {
                         db,
@@ -392,30 +428,30 @@ pub async fn start_replication_thread(
                     } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update)
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update, op_log_id_in)
                     }
 
                     Request::ReplicateIncrement { db, key, inc: _ } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update)
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update, op_log_id_in)
                     }
 
                     Request::ReplicateRemove { db, key } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove)
+                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove, op_log_id_in)
                     }
 
                     // Even if not in op log we need to return a valid id so the message can be ack
-                    Request::SetPrimary { name: _ } => Databases::next_op_log_id(), //Election events won't be registed in OpLog
+                    Request::SetPrimary { name: _ } => op_log_id_in, //Election events won't be registed in OpLog
                     _ => {
                         log::debug!(
                             "Ignoring command {} in replication oplog register! not unimplemented!",
                             message
                         );
                         // Even if not in op log we need to return a valid id so the message can be ack
-                        Databases::next_op_log_id()
+                        op_log_id_in
                     }
                 };
 
@@ -704,10 +740,7 @@ pub async fn start_replication_supervisor(
                             sender: None,
                         });
                         //noity others about primary
-                        match dbs
-                            .replication_sender
-                            .clone()
-                            .try_send(format!("set-primary {}", tcp_addr))
+                        match dbs.replicate_message(format!("set-primary {}", tcp_addr))
                         {
                             Ok(_) => (),
                             Err(_) => log::warn!("Error election candidate"),

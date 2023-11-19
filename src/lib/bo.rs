@@ -103,6 +103,25 @@ pub struct ClusterMember {
     pub sender: Option<Sender<String>>,
 }
 
+impl ClusterMember {
+    pub fn is_self(&self, dbs: &Databases) -> bool {
+        self.name == dbs.external_tcp_address || self.name == dbs.tcp_address
+    }
+
+    pub fn to_string_with_role(&self, dbs: &Databases) -> String {
+        if self.is_self(dbs) {
+            format!("{}(self):{} ", self.name, self.role)
+        } else {
+            let str_connected = if self.sender.is_none() {
+                "Disconnected"
+            } else {
+                "Connected"
+            };
+            format!("{}({}):{}", self.name, (str_connected), self.role)
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Copy)]
 pub enum ClusterRole {
     StartingUp = 0,
@@ -1302,8 +1321,11 @@ pub enum Request {
     ElectionWin {},
     Election {
         id: u128,
+        node_name: String,
     },
-    ElectionActive {},
+    ElectionActive {
+        node_name: String,
+    },
     Keys {
         pattern: String,
     },
