@@ -1090,14 +1090,11 @@ mod tests {
             set_key_value("key".to_string(), "value3".to_string(), -1, db, &dbs);
         }
 
-        sender
-            .try_send("replicate $admin key value".to_string())
+        replicate_message_with_sender(&sender.clone(), "replicate $admin key value".to_string())
             .unwrap();
-        sender
-            .try_send("replicate $admin key value1".to_string())
+        replicate_message_with_sender(&sender, "replicate $admin key value1".to_string())
             .unwrap();
-        sender
-            .try_send("replicate $admin key value3".to_string())
+        replicate_message_with_sender(&sender, "replicate $admin key value3".to_string())
             .unwrap();
         thread::sleep(time::Duration::from_millis(20));
 
@@ -1126,21 +1123,16 @@ mod tests {
         }
 
         thread::sleep(time::Duration::from_millis(10));
-        sender
-            .try_send("create-db sample sample".to_string())
+        replicate_message_with_sender(&sender, "create-db sample sample".to_string())
             .unwrap();
-        sender
-            .try_send("replicate sample key value".to_string())
+        replicate_message_with_sender(&sender, "replicate sample key value".to_string())
             .unwrap();
 
-        sender
-            .try_send("replicate sample key value1".to_string())
+        replicate_message_with_sender(&sender, "replicate sample key value1".to_string())
             .unwrap();
-        sender
-            .try_send("replicate sample key value3".to_string())
+        replicate_message_with_sender(&sender, "replicate sample key value3".to_string())
             .unwrap();
-        sender
-            .try_send("replicate-snapshot sample".to_string())
+        replicate_message_with_sender(&sender, "replicate-snapshot sample".to_string())
             .unwrap();
 
         sender.try_send("exit".to_string()).unwrap();
@@ -1185,22 +1177,17 @@ mod tests {
         }
 
         thread::sleep(time::Duration::from_millis(10));
-        sender
-            .try_send("create-db sample sample".to_string())
+        replicate_message_with_sender(&sender, "create-db sample sample".to_string())
             .unwrap();
-        sender
-            .try_send("replicate sample key value".to_string())
+        replicate_message_with_sender(&sender, "replicate sample key value".to_string())
             .unwrap();
 
-        sender
-            .try_send("replicate sample key value1".to_string())
+         replicate_message_with_sender(&sender, "replicate sample key value1".to_string())
             .unwrap();
-        sender
-            .try_send("replicate sample key value3".to_string())
+        replicate_message_with_sender(&sender, "replicate sample key value3".to_string())
             .unwrap();
-        //thread::sleep(time::Duration::from_millis(200));
-        sender
-            .try_send("replicate-snapshot sample".to_string())
+
+        replicate_message_with_sender(&sender, "replicate-snapshot sample".to_string())
             .unwrap();
 
         sender.try_send("exit".to_string()).unwrap();
@@ -1249,14 +1236,11 @@ mod tests {
             // 11 recoreds on the op log
         }
 
-        sender
-            .try_send("replicate $admin key value".to_string())
+        replicate_message_with_sender(&sender, "replicate $admin key value".to_string())
             .unwrap();
-        sender
-            .try_send("replicate $admin key value1".to_string())
+        replicate_message_with_sender(&sender, "replicate $admin key value1".to_string())
             .unwrap();
-        sender
-            .try_send("replicate $admin key value3".to_string())
+        replicate_message_with_sender(&sender, "replicate $admin key value3".to_string())
             .unwrap();
 
         sender.try_send("exit".to_string()).unwrap();
@@ -1315,7 +1299,7 @@ mod tests {
         };
         assert!(result, "should have returned an ok response!");
         let replicate_command = receiver.try_next().unwrap().unwrap();
-        assert_eq!(replicate_command, "replicate some any_key -1 any_value")
+        assert!(replicate_command.ends_with("replicate some any_key -1 any_value"));
     }
 
     #[test]
@@ -1387,10 +1371,7 @@ mod tests {
         };
         assert!(result, "should have returned an Ok response!");
         let receiver_replicate_result = receiver.try_next().unwrap().unwrap();
-        assert_eq!(
-            receiver_replicate_result,
-            "replicate-snapshot some_db_name false"
-        );
+        assert!(receiver_replicate_result.ends_with("replicate-snapshot some_db_name false"));
     }
     #[test]
     fn should_replicate_if_the_command_is_a_create_db_and_node_is_primary() {
@@ -1410,6 +1391,6 @@ mod tests {
         };
         assert!(result, "should have returned an Ok response!");
         let receiver_replicate_result = receiver.try_next().unwrap().unwrap();
-        assert_eq!(receiver_replicate_result, "create-db mateus_db jose newer");
+        assert!(receiver_replicate_result.contains("create-db mateus_db jose newer"));
     }
 }

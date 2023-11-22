@@ -94,4 +94,4 @@ nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-d
 - [ ] src/lib/election_ops.rs:23] There should be a way to wait for the response from all replicas but there shold be a timeoutsrc/lib/election_ops.rs:23
     [src/lib/disk_ops.rs:656 ] This will be defined in the DB level
     [src/lib/election_ops.rs:16 ] When sending a messagen from there... we will get the id and will know when it was ack from the replicas
-- [ ]  Create a method in the dbs to replicate message and return the op_id
+- [x]  Create a method in the dbs to replicate message and return the op_id
