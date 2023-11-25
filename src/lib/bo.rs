@@ -810,6 +810,7 @@ impl Database {
             value: change.value.to_string(),
         }
     }
+
 }
 
 fn filter_system_keys(list_system_keys: bool, key: &&String) -> bool {
@@ -845,6 +846,12 @@ impl Databases {
                 sender: member.sender.clone(),
             },
         );
+    }
+
+    pub fn count_cluster_members(&self) -> usize {
+        let cluster_state = self.cluster_state.lock().unwrap();
+        let members = cluster_state.members.lock().unwrap();
+        members.len()
     }
 
     pub fn add_database(&self, database: Database) -> Response {
@@ -992,6 +999,13 @@ impl Databases {
         }
     }
 
+    pub fn get_pending_opp_copy(&self, opp_id: u64) -> Option<ReplicationMessage> {
+        let pending_opps = self.pending_opps.read().unwrap();
+        match pending_opps.get(&opp_id) {
+            Some(pendding_opp) => Some(pendding_opp.get_copy()),
+            None => None,
+        }
+    }
     pub fn acknowledge_pending_opp(&self, opp_id: u64, server_name: &String) -> bool {
         let mut pending_opps = self.pending_opps.write().unwrap();
         match pending_opps.get_mut(&opp_id) {
@@ -1387,6 +1401,16 @@ pub struct ReplicationMessage {
     pub replications: Mutex<HashMap<String, bool>>, // Key ServerName value ack or not
 }
 impl ReplicationMessage {
+    pub fn get_copy(&self) -> ReplicationMessage {
+        ReplicationMessage {
+            opp_id: self.opp_id,
+            message: self.message.clone(),
+            ack_count: AtomicUsize::new(self.ack_count.load(Ordering::Relaxed)),
+            replicate_count: AtomicUsize::new(self.replicate_count.load(Ordering::Relaxed)),
+            start_time: self.start_time,
+            replications: Mutex::new(self.replications.lock().unwrap().clone()),
+        }
+    }
     pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
         ReplicationMessage {
             opp_id,
@@ -1444,6 +1468,14 @@ impl ReplicationMessage {
 
     pub fn is_full_acknowledged(&self) -> bool {
         self.replicate_count.load(Ordering::Relaxed) == self.ack_count.load(Ordering::Relaxed)
+    }
+
+    pub fn count_replication(&self) -> usize {
+        self.replicate_count.load(Ordering::Relaxed)
+    }
+
+    pub fn count_acknowledged(&self) -> usize {
+        self.ack_count.load(Ordering::Relaxed)
     }
 
     pub fn message_to_replicate(&self) -> String {

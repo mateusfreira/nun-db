@@ -112,3 +112,6 @@ force-election-2:
 
 force-election-3:
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(secoundary2HttpAddress)" exec "debug force-election;"
+
+clean-logs:
+	@rm *.log

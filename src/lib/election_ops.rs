@@ -5,22 +5,67 @@ use std::{thread, time};
 
 use crate::bo::*;
 
+const ELECTION_TIMEOUT: u128 = 1000;
+
 pub fn start_inital_election(dbs: Arc<Databases>) {
-    log::info!("will run start_inital_election");
+    log::info!("will run start_inital_election in 1s");
+    thread::sleep(time::Duration::from_millis(1000));
     log::info!("calling start_election");
-    start_election(&dbs);
+    if dbs.is_eligible() {
+        start_election(&dbs);
+    } else {
+        log::info!("Will not run start_election at this node, because it is not eligible");
+    }
 }
 
 pub fn start_election(dbs: &Arc<Databases>) {
     log::info!("Will start election");
+    /*
+    if dbs.count_cluster_members() <= 1 {
+        log::info!("Only one node in the cluster, will set as primary");
+        election_win(dbs);
+        return;
+    }*/
     match dbs.replicate_message(format!("election candidate {} {}", dbs.process_id, dbs.external_tcp_address)) {
-        Ok(_) => (),
+        Ok(id) => {
+            let mut opp = dbs.get_pending_opp_copy(id);
+            let mut start_time: u128 = 0;
+            while opp.is_none() && start_time < ELECTION_TIMEOUT {
+                log::debug!("Waiting for opp to be registered");
+                thread::sleep(time::Duration::from_millis(2));
+                start_time = start_time + 2;
+                opp = dbs.get_pending_opp_copy(id);
+            }
+            if opp.is_none() {
+                log::debug!("No opp registered, will set as primary");
+                election_win(dbs);
+                return;
+            }
+
+            while opp.is_some() && !opp.unwrap().is_full_acknowledged() {
+                thread::sleep(time::Duration::from_millis(2));
+                opp = dbs.get_pending_opp_copy(id);
+                match opp {
+                    Some(opp) => log::debug!(
+                        "Waiting election for Acks is_full_acknowledged: {:?} replication: {:?}, acknowledged: {:}", 
+                        opp.is_full_acknowledged(),
+                        opp.count_replication(),
+                        opp.count_acknowledged()
+
+                        ),
+                    None => log::debug!("Waiting election for Acks is_nome: {:?}", opp.is_none()),
+                }
+                opp = dbs.get_pending_opp_copy(id);
+            }
+            log::info!("Election acks received");
+
+            thread::sleep(time::Duration::from_millis(100)); // Will wait for the ack
+            if dbs.is_eligible() {
+                log::info!("winning the election");
+                election_win(&dbs);
+            }
+        },
         Err(_) => log::warn!("Error election candidate"),
-    }
-    thread::sleep(time::Duration::from_millis(1000)); // Will wait for the ack
-    if dbs.is_eligible() {
-        log::info!("winning the election");
-        election_win(&dbs);
     }
 }
 
@@ -42,7 +87,7 @@ pub fn election_eval(dbs: &Arc<Databases>, candidate_id: u128, node_name: &Strin
 
     if candidate_id == dbs.process_id {
         log::debug!("Ignoring same node election");
-    } else if candidate_id < dbs.process_id {
+    } else if candidate_id > dbs.process_id {
         log::info!("Will run the start_election");
         start_election(dbs);
     } else {

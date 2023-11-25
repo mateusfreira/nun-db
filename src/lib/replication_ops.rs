@@ -457,7 +457,8 @@ pub async fn start_replication_thread(
 
                 if dbs.is_primary() || dbs.is_eligible() {
                     // starting nodes needs to replicate election messages
-                    replicate_message_to_secoundary(op_log_id, message.to_string(), &dbs);
+                    log::debug!("is_primary or is_eligible replicating message to secoundary");
+                    replicate_message_to_secoundary(op_log_id, request_str.to_string(), &dbs);
                 } else {
                     log::debug!("Won't replicate message from secoundary");
                 }
@@ -833,7 +834,7 @@ fn start_replication(
                     let message_opt = command_receiver.next().await;
                     match message_opt {
                         Some(message) => {
-                            log::debug!("Will replicate {} to {}", message, replicate_address);
+                            log::debug!("[start_replication] Will replicate {} to {}", message, replicate_address);
                             writer.write_fmt(format_args!("{}\n", message)).unwrap();
                             match writer.flush() {
                                 Err(e) => {
