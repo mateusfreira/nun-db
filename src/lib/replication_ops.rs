@@ -22,23 +22,26 @@ impl Databases {
     }
 }
 
-pub fn replicate_message_with_sender(replication_sender: &Sender<String>, message: String) -> Result <u64, String > {
+pub fn replicate_message_with_sender(
+    replication_sender: &Sender<String>,
+    message: String,
+) -> Result<u64, String> {
     let opp_id = Databases::next_op_log_id();
     match replication_sender
-    .clone()
-    // Replicate the message "opp_id message"
-    .try_send(format!("rp {} {}", opp_id, message)) {
+        .clone()
+        // Replicate the message "opp_id message"
+        .try_send(format!("rp {} {}", opp_id, message))
+    {
         Ok(_) => Ok(opp_id),
-            Err(e) => Err(format!(
-                "Error sending message to replication channel: {}",
-                e
-            )),
+        Err(e) => Err(format!(
+            "Error sending message to replication channel: {}",
+            e
+        )),
     }
 }
 
-
 pub fn replicate_web(replication_sender: &Sender<String>, message: String) {
-    match replicate_message_with_sender(replication_sender, message)  {
+    match replicate_message_with_sender(replication_sender, message) {
         Ok(_) => (),
         Err(e) => log::error!(" [replicate_web] error {}", e),
     }
@@ -310,15 +313,34 @@ fn replicate_if_some(opt_sender: &Option<Sender<String>>, message: &String, name
         ),
     }
 }
+
+fn replicate_message_to_all(op_log_id: u64, message: String, dbs: &Arc<Databases>) {
+    log::debug!("Got the message {} to replicate ", message);
+    let state = dbs.cluster_state.lock().unwrap();
+    for (name, member) in state.members.lock().unwrap().iter() {
+        if dbs.external_tcp_address.to_string() == name.to_string() {
+            log::debug!("Not replicating to myself {}", name);
+            continue;
+        } else {
+            let message_to_replicate = dbs.register_pending_opp(op_log_id, message.clone(), name);
+            replicate_if_some(&member.sender, &message_to_replicate, &member.name)
+        }
+    }
+}
+
 fn replicate_message_to_secoundary(op_log_id: u64, message: String, dbs: &Arc<Databases>) {
     log::debug!("Got the message {} to replicate ", message);
     let state = dbs.cluster_state.lock().unwrap();
     for (name, member) in state.members.lock().unwrap().iter() {
         match member.role {
             ClusterRole::Secoundary => {
-                let message_to_replicate =
-                    dbs.register_pending_opp(op_log_id, message.clone(), name);
-                replicate_if_some(&member.sender, &message_to_replicate, &member.name)
+                if dbs.external_tcp_address.to_string() != name.to_string() {
+                    let message_to_replicate =
+                        dbs.register_pending_opp(op_log_id, message.clone(), name);
+                    replicate_if_some(&member.sender, &message_to_replicate, &member.name)
+                } else {
+                    log::debug!("Not replicating to myself {}", name);
+                }
             }
             ClusterRole::Primary => (),
             ClusterRole::StartingUp => (),
@@ -337,6 +359,15 @@ pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
             ClusterRole::Primary => replicate_if_some(&member.sender, &message, &member.name),
             ClusterRole::StartingUp => (),
         }
+    }
+}
+
+pub fn send_message_to_all(message: String, dbs: &Arc<Databases>) {
+    latency_trap();
+    log::debug!("Got the message {} to send to all nodes", message);
+    let state = dbs.cluster_state.lock().unwrap();
+    for (_name, member) in state.members.lock().unwrap().iter() {
+        replicate_if_some(&member.sender, &message, &member.name)
     }
 }
 
@@ -389,13 +420,20 @@ pub async fn start_replication_thread(
                     break;
                 }
                 let rp_request = Request::parse(&message.to_string()).unwrap();
-                let (request_str, op_log_id_in) = match  rp_request {
-                    Request::ReplicateRequest { request_str, opp_id} => {
-                        (request_str.to_string(), opp_id)
-                    }
+                let (request_str, op_log_id_in) = match rp_request {
+                    Request::ReplicateRequest {
+                        request_str,
+                        opp_id,
+                    } => (request_str.to_string(), opp_id),
                     _ => {
-                        log::error!("replication_ops::start_replication_thread:: Unknown message {}", message);
-                        panic!("replication_ops::start_replication_thread:: Unknown message {}", message);
+                        log::error!(
+                            "replication_ops::start_replication_thread:: Unknown message {}",
+                            message
+                        );
+                        panic!(
+                            "replication_ops::start_replication_thread:: Unknown message {}",
+                            message
+                        );
                     }
                 };
                 let request = Request::parse(&request_str).unwrap();
@@ -409,7 +447,13 @@ pub async fn start_replication_thread(
                         let db_id = get_db_id(name, &dbs);
                         let key_id = 1;
                         log::debug!("Will write CreateDb");
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::CreateDb, op_log_id_in)
+                        write_op_log(
+                            &mut op_log_stream,
+                            db_id,
+                            key_id,
+                            ReplicateOpp::CreateDb,
+                            op_log_id_in,
+                        )
                     }
                     Request::ReplicateSnapshot {
                         db,
@@ -418,7 +462,13 @@ pub async fn start_replication_thread(
                         let db_id = get_db_id(db, &dbs);
                         let key_id = 2; //has to be different
                         log::debug!("Will write ReplicateSnapshot");
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Snapshot, op_log_id_in)
+                        write_op_log(
+                            &mut op_log_stream,
+                            db_id,
+                            key_id,
+                            ReplicateOpp::Snapshot,
+                            op_log_id_in,
+                        )
                     }
                     Request::ReplicateSet {
                         db,
@@ -428,19 +478,37 @@ pub async fn start_replication_thread(
                     } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update, op_log_id_in)
+                        write_op_log(
+                            &mut op_log_stream,
+                            db_id,
+                            key_id,
+                            ReplicateOpp::Update,
+                            op_log_id_in,
+                        )
                     }
 
                     Request::ReplicateIncrement { db, key, inc: _ } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Update, op_log_id_in)
+                        write_op_log(
+                            &mut op_log_stream,
+                            db_id,
+                            key_id,
+                            ReplicateOpp::Update,
+                            op_log_id_in,
+                        )
                     }
 
                     Request::ReplicateRemove { db, key } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(&mut op_log_stream, db_id, key_id, ReplicateOpp::Remove, op_log_id_in)
+                        write_op_log(
+                            &mut op_log_stream,
+                            db_id,
+                            key_id,
+                            ReplicateOpp::Remove,
+                            op_log_id_in,
+                        )
                     }
 
                     // Even if not in op log we need to return a valid id so the message can be ack
@@ -455,12 +523,20 @@ pub async fn start_replication_thread(
                     }
                 };
 
-                if dbs.is_primary() || dbs.is_eligible() {
-                    // starting nodes needs to replicate election messages
-                    log::debug!("is_primary or is_eligible replicating message to secoundary");
-                    replicate_message_to_secoundary(op_log_id, request_str.to_string(), &dbs);
-                } else {
-                    log::debug!("Won't replicate message from secoundary");
+                match dbs.get_role() {
+                    ClusterRole::Primary => {
+                        log::debug!("is_primary replicating message to secoundary");
+                        replicate_message_to_secoundary(op_log_id, request_str.to_string(), &dbs);
+                    }
+                    ClusterRole::Secoundary => {
+                        log::debug!("Won't replicate message from secoundary");
+                    }
+                    ClusterRole::StartingUp => {
+                        // When running elections Nodes stay in StartingUp state, therefore we need
+                        // to replicate to all nodes
+                        log::debug!("is_starting replicating message to all");
+                        replicate_message_to_all(op_log_id, request_str.to_string(), &dbs);
+                    }
                 }
             }
             _ => log::warn!("Non part in replication"),
@@ -741,8 +817,7 @@ pub async fn start_replication_supervisor(
                             sender: None,
                         });
                         //noity others about primary
-                        match dbs.replicate_message(format!("set-primary {}", tcp_addr))
-                        {
+                        match dbs.replicate_message(format!("set-primary {}", tcp_addr)) {
                             Ok(_) => (),
                             Err(_) => log::warn!("Error election candidate"),
                         }
@@ -834,7 +909,11 @@ fn start_replication(
                     let message_opt = command_receiver.next().await;
                     match message_opt {
                         Some(message) => {
-                            log::debug!("[start_replication] Will replicate {} to {}", message, replicate_address);
+                            log::debug!(
+                                "[start_replication] Will replicate {} to {}",
+                                message,
+                                replicate_address
+                            );
                             writer.write_fmt(format_args!("{}\n", message)).unwrap();
                             match writer.flush() {
                                 Err(e) => {
@@ -1093,10 +1172,8 @@ mod tests {
 
         replicate_message_with_sender(&sender.clone(), "replicate $admin key value".to_string())
             .unwrap();
-        replicate_message_with_sender(&sender, "replicate $admin key value1".to_string())
-            .unwrap();
-        replicate_message_with_sender(&sender, "replicate $admin key value3".to_string())
-            .unwrap();
+        replicate_message_with_sender(&sender, "replicate $admin key value1".to_string()).unwrap();
+        replicate_message_with_sender(&sender, "replicate $admin key value3".to_string()).unwrap();
         thread::sleep(time::Duration::from_millis(20));
 
         let test_start = Databases::next_op_log_id();
@@ -1124,17 +1201,12 @@ mod tests {
         }
 
         thread::sleep(time::Duration::from_millis(10));
-        replicate_message_with_sender(&sender, "create-db sample sample".to_string())
-            .unwrap();
-        replicate_message_with_sender(&sender, "replicate sample key value".to_string())
-            .unwrap();
+        replicate_message_with_sender(&sender, "create-db sample sample".to_string()).unwrap();
+        replicate_message_with_sender(&sender, "replicate sample key value".to_string()).unwrap();
 
-        replicate_message_with_sender(&sender, "replicate sample key value1".to_string())
-            .unwrap();
-        replicate_message_with_sender(&sender, "replicate sample key value3".to_string())
-            .unwrap();
-        replicate_message_with_sender(&sender, "replicate-snapshot sample".to_string())
-            .unwrap();
+        replicate_message_with_sender(&sender, "replicate sample key value1".to_string()).unwrap();
+        replicate_message_with_sender(&sender, "replicate sample key value3".to_string()).unwrap();
+        replicate_message_with_sender(&sender, "replicate-snapshot sample".to_string()).unwrap();
 
         sender.try_send("exit".to_string()).unwrap();
         aw!(replication_thread.join().expect("thread died"));
@@ -1178,18 +1250,13 @@ mod tests {
         }
 
         thread::sleep(time::Duration::from_millis(10));
-        replicate_message_with_sender(&sender, "create-db sample sample".to_string())
-            .unwrap();
-        replicate_message_with_sender(&sender, "replicate sample key value".to_string())
-            .unwrap();
+        replicate_message_with_sender(&sender, "create-db sample sample".to_string()).unwrap();
+        replicate_message_with_sender(&sender, "replicate sample key value".to_string()).unwrap();
 
-         replicate_message_with_sender(&sender, "replicate sample key value1".to_string())
-            .unwrap();
-        replicate_message_with_sender(&sender, "replicate sample key value3".to_string())
-            .unwrap();
+        replicate_message_with_sender(&sender, "replicate sample key value1".to_string()).unwrap();
+        replicate_message_with_sender(&sender, "replicate sample key value3".to_string()).unwrap();
 
-        replicate_message_with_sender(&sender, "replicate-snapshot sample".to_string())
-            .unwrap();
+        replicate_message_with_sender(&sender, "replicate-snapshot sample".to_string()).unwrap();
 
         sender.try_send("exit".to_string()).unwrap();
         aw!(replication_thread.join().expect("thread died"));
@@ -1237,12 +1304,9 @@ mod tests {
             // 11 recoreds on the op log
         }
 
-        replicate_message_with_sender(&sender, "replicate $admin key value".to_string())
-            .unwrap();
-        replicate_message_with_sender(&sender, "replicate $admin key value1".to_string())
-            .unwrap();
-        replicate_message_with_sender(&sender, "replicate $admin key value3".to_string())
-            .unwrap();
+        replicate_message_with_sender(&sender, "replicate $admin key value".to_string()).unwrap();
+        replicate_message_with_sender(&sender, "replicate $admin key value1".to_string()).unwrap();
+        replicate_message_with_sender(&sender, "replicate $admin key value3".to_string()).unwrap();
 
         sender.try_send("exit".to_string()).unwrap();
         aw!(replication_thread.join().unwrap());

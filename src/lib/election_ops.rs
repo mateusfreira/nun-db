@@ -26,7 +26,10 @@ pub fn start_election(dbs: &Arc<Databases>) {
         election_win(dbs);
         return;
     }*/
-    match dbs.replicate_message(format!("election candidate {} {}", dbs.process_id, dbs.external_tcp_address)) {
+    match dbs.replicate_message(format!(
+        "election candidate {} {}",
+        dbs.process_id, dbs.external_tcp_address
+    )) {
         Ok(id) => {
             let mut opp = dbs.get_pending_opp_copy(id);
             let mut start_time: u128 = 0;
@@ -41,9 +44,14 @@ pub fn start_election(dbs: &Arc<Databases>) {
                 election_win(dbs);
                 return;
             }
-
+            start_time = 0;
             while opp.is_some() && !opp.unwrap().is_full_acknowledged() {
+                if !dbs.is_eligible() {
+                    log::info!("No longer eligible to be primary, will stop election");
+                    return;
+                }
                 thread::sleep(time::Duration::from_millis(2));
+                start_time = start_time + 2;
                 opp = dbs.get_pending_opp_copy(id);
                 match opp {
                     Some(opp) => log::debug!(
@@ -56,7 +64,13 @@ pub fn start_election(dbs: &Arc<Databases>) {
                     None => log::debug!("Waiting election for Acks is_nome: {:?}", opp.is_none()),
                 }
                 opp = dbs.get_pending_opp_copy(id);
+                if start_time > ELECTION_TIMEOUT {
+                    log::info!("Election timeout, will claim as primary");
+                    election_win(&dbs);
+                    return;
+                }
             }
+
             log::info!("Election acks received");
 
             thread::sleep(time::Duration::from_millis(100)); // Will wait for the ack
@@ -64,7 +78,7 @@ pub fn start_election(dbs: &Arc<Databases>) {
                 log::info!("winning the election");
                 election_win(&dbs);
             }
-        },
+        }
         Err(_) => log::warn!("Error election candidate"),
     }
 }
@@ -92,7 +106,7 @@ pub fn election_eval(dbs: &Arc<Databases>, candidate_id: u128, node_name: &Strin
         start_election(dbs);
     } else {
         log::info!("Won't run the start_election");
-        match dbs.replicate_message(format!("election alive {}", dbs.external_tcp_address)){
+        match dbs.replicate_message(format!("election alive {}", dbs.external_tcp_address)) {
             Ok(_) => (),
             Err(_) => log::warn!("Error election alive"),
         }

@@ -810,7 +810,6 @@ impl Database {
             value: change.value.to_string(),
         }
     }
-
 }
 
 fn filter_system_keys(list_system_keys: bool, key: &&String) -> bool {
