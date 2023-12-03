@@ -20,12 +20,11 @@ pub fn start_inital_election(dbs: Arc<Databases>) {
 
 pub fn start_election(dbs: &Arc<Databases>) {
     log::info!("Will start election");
-    /*
     if dbs.count_cluster_members() <= 1 {
         log::info!("Only one node in the cluster, will set as primary");
         election_win(dbs);
         return;
-    }*/
+    }
     match dbs.replicate_message(format!(
         "election candidate {} {}",
         dbs.process_id, dbs.external_tcp_address
