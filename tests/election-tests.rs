@@ -65,8 +65,8 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains(format!(
-            "{}(Connected):Primary",
-            helpers::SECOUNDARY2_TCP_ADDRESS
+            "{}(self):Primary",
+            helpers::SECOUNDARY_TCP_ADDRESS
         )));
         helpers::nundb_exec(
             &helpers::SECOUNDAR2_HTTP_URI.to_string(),
@@ -74,8 +74,8 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains(format!(
-            "{}(self):Primary",
-            helpers::SECOUNDARY2_TCP_ADDRESS
+            "{}(Connected):Primary",
+            helpers::SECOUNDARY_TCP_ADDRESS
         )));
 
         helpers::kill_replicas(replicas_processes)?;
