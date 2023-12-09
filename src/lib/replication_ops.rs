@@ -1,15 +1,25 @@
+use crate::process_request::process_request;
+use async_std::io::WriteExt;
+use futures::AsyncWriteExt;
+
 use crate::security::permissions_key_from_user_name;
 use crate::security::user_name_key_from_user_name;
+use async_std::net::TcpStream;
 use std::fs::File;
-use std::net::TcpStream;
+use std::io::Write;
 use std::thread;
 
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
+use futures::join;
 use futures::stream::StreamExt;
+
+use futures::io::AsyncBufReadExt;
+
+use std::io::BufWriter;
+
 use log;
 
-use std::io::{BufWriter, Write};
 use std::sync::Arc;
 
 use crate::bo::*;
@@ -601,7 +611,7 @@ fn add_primary_to_secoundary(
     });
     let tcp_addr = tcp_addr.clone();
     let guard = thread::spawn(move || {
-        start_replication(name, receiver, user, pwd, tcp_addr.to_string(), false);
+        start_replication(name, receiver, user, pwd, tcp_addr.to_string(), false, &dbs);
     });
     guard
 }
@@ -632,6 +642,7 @@ fn add_sencoundary_to_primary(
             pwd,
             tcp_addr.to_string(),
             true,
+            &dbs,
         );
 
         log::info!(
@@ -669,6 +680,7 @@ fn add_sencoundary_to_secoundary(
             pwd,
             tcp_addr.to_string(),
             false,
+            &dbs,
         );
 
         log::info!(
@@ -869,9 +881,9 @@ pub fn ask_to_join(replica_addr: &String, external_addr: &String, user: &String,
         replica_addr,
         external_addr
     );
-    match TcpStream::connect(replica_addr.clone()) {
+    match std::net::TcpStream::connect(replica_addr.clone()) {
         Ok(socket) => {
-            let writer = &mut BufWriter::new(&socket);
+            let writer = &mut std::io::BufWriter::new(&socket);
             writer
                 .write_fmt(format_args!("auth {} {}\n", user, pwd))
                 .unwrap();
@@ -888,6 +900,7 @@ pub fn ask_to_join(replica_addr: &String, external_addr: &String, user: &String,
         }
     }
 }
+
 fn start_replication(
     replicate_address: String,
     mut command_receiver: Receiver<String>,
@@ -895,79 +908,125 @@ fn start_replication(
     pwd: String,
     tcp_addr: String,
     is_primary: bool,
+    dbs: &Arc<Databases>,
 ) {
     log::info!(
         "replicating to tcp client in the addr: {}",
         replicate_address
     );
-    match TcpStream::connect(replicate_address.clone()) {
-        Ok(socket) => {
-            let writer = &mut BufWriter::new(&socket);
-            auth_on_replication(user, pwd, tcp_addr, is_primary, writer);
-            let fut = async {
-                loop {
-                    let message_opt = command_receiver.next().await;
-                    match message_opt {
-                        Some(message) => {
-                            log::debug!(
-                                "[start_replication] Will replicate {} to {}",
-                                message,
-                                replicate_address
-                            );
-                            writer.write_fmt(format_args!("{}\n", message)).unwrap();
-                            match writer.flush() {
-                                Err(e) => {
-                                    log::warn!("replication error: {}", e);
-                                    break;
-                                }
-                                _ => (),
-                            }
-                        }
-                        None => {
-                            log::warn!("replication::next::Empty message");
-                            break;
-                        }
+    let global_fut = async {
+        let (mut client, _receiver) = Client::new_empty_and_receiver();
+        client
+            .auth
+            .store(true, std::sync::atomic::Ordering::Relaxed); // Auth as node
+        let member = Some(ClusterMember {
+            name: tcp_addr.clone(),
+            role: ClusterRole::Secoundary, // Todo not sure if this is correct
+            sender: None,
+        });
+        {
+            let mut member_lock = client.cluster_member.lock().unwrap();
+            *member_lock = member;
+        }
+
+        log::warn!("replication::start_replication::reader");
+        let stream = TcpStream::connect(replicate_address.clone()).await?;
+        let mut line = String::new();
+        let mut reader = futures::io::BufReader::new(&stream);
+        let mut writer = futures::io::BufWriter::new(&stream);
+        auth_on_replication(&user, &pwd, &tcp_addr, is_primary, &mut writer).await?;
+        let reader_fut = async {
+            loop {
+                let len = reader.read_line(&mut line).await?;
+                if len == 0 {
+                    log::warn!("replication::next::Empty message");
+                    break;
+                } else {
+                    log::debug!("replication::next::{}", line);
+                    let message = line.trim().to_string();
+                    // Todo ignore ok message
+                    match process_request(&message, &dbs, &mut client) {
+                        _ => log::info!("Processed"),
                     }
                 }
-            };
-            block_on(fut);
-        }
-        Err(e) => {
-            log::warn!(
-                "Could not stablish the connection to replicate to {} error : {}",
-                replicate_address,
-                e
-            )
-        }
+                line.clear();
+            }
+            Result::<(), std::io::Error>::Ok(())
+        };
+
+        let fut = async {
+            log::warn!("replication::start_replication::writer");
+            loop {
+                let message_opt = command_receiver.next().await;
+                match message_opt {
+                    Some(message) => {
+                        log::debug!(
+                            "[start_replication] Will replicate {} to {}",
+                            message,
+                            replicate_address
+                        );
+                        match writer.write_fmt(format_args!("{}\n", message)).await {
+                            Ok(_) => (),
+                            Err(_) => {
+                                log::warn!("Error replicating message write_fmt");
+                            }
+                        }
+                        match futures::AsyncWriteExt::flush(&mut writer).await {
+                            Ok(_) => (),
+                            Err(_) => {
+                                log::warn!("Error replicating message");
+                            }
+                        }
+                    }
+                    None => {
+                        log::warn!("replication::next::Empty message");
+                        break;
+                    }
+                }
+            }
+        };
+        let join_all_promises = async { join!(fut, reader_fut) };
+        match join_all_promises.await {
+            _ => (),
+        };
+        Result::<(), std::io::Error>::Ok(())
     };
+    match block_on(global_fut) {
+        Ok(_) => (),
+        Err(e) => log::warn!("Error global_fut {}", e),
+    }
 }
 
-pub fn auth_on_replication(
-    user: String,
-    pwd: String,
-    tcp_addr: String,
+pub async fn auth_on_replication(
+    user: &String,
+    pwd: &String,
+    tcp_addr: &String,
     is_primary: bool,
-    writer: &mut std::io::BufWriter<&std::net::TcpStream>,
-) {
+    writer: &mut futures::io::BufWriter<&TcpStream>,
+) -> Result<(), std::io::Error> {
     log::debug!("authenticating on replication {}", tcp_addr);
     writer
         .write_fmt(format_args!("auth {} {}\n", user, pwd))
-        .unwrap();
+        .await?;
     if is_primary {
         // do I need this?
         writer
             .write_fmt(format_args!("set-primary {}\n", tcp_addr))
-            .unwrap();
+            .await?;
     } else {
         writer
             .write_fmt(format_args!("set-secoundary {}\n", tcp_addr))
-            .unwrap();
-        start_sync_process(writer, &tcp_addr);
+            .await?;
+        start_sync_process(writer, &tcp_addr).await;
+        ()
     }
 
-    match writer.flush() {
-        Err(e) => log::warn!("auth replication error: {}", e),
-        _ => (),
+    match AsyncWriteExt::flush(writer).await {
+        Err(e) => {
+            log::warn!("auth replication error: {}", e);
+            Err(e)
+        }
+        _ => Ok(()),
     }
 }
 
@@ -1074,15 +1133,23 @@ pub fn get_pendding_opps_since(since: u64, dbs: &Arc<Databases>) -> Vec<String> 
     }
 }
 
-fn start_sync_process(writer: &mut std::io::BufWriter<&std::net::TcpStream>, tcp_addr: &String) {
+async fn start_sync_process(writer: &mut futures::io::BufWriter<&TcpStream>, tcp_addr: &String) {
     log::debug!("start_sync_process to {}", tcp_addr);
-    writer
+    // todo make sure it replicates
+    match writer
         .write_fmt(format_args!(
             "replicate-since {} {}\n",
             tcp_addr.to_string(),
             last_op_time()
         ))
-        .unwrap();
+        .await
+    {
+        Ok(_n) => (),
+        Err(e) => log::warn!(
+            "start_sync_process writer.write_fmt Error: {} replicate-since",
+            e
+        ),
+    }
 }
 
 pub fn add_as_secoundary(dbs: &Arc<Databases>, name: &String) {

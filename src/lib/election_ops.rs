@@ -4,8 +4,7 @@ use std::sync::Arc;
 use std::{thread, time};
 
 use crate::bo::*;
-
-const ELECTION_TIMEOUT: u128 = 1000;
+use crate::configuration::NUN_ELECTION_TIMEOUT;
 
 pub fn start_inital_election(dbs: Arc<Databases>) {
     log::info!("will run start_inital_election in 1s");
@@ -32,7 +31,7 @@ pub fn start_election(dbs: &Arc<Databases>) {
         Ok(id) => {
             let mut opp = dbs.get_pending_opp_copy(id);
             let mut start_time: u128 = 0;
-            while opp.is_none() && start_time < ELECTION_TIMEOUT {
+            while opp.is_none() && start_time < *NUN_ELECTION_TIMEOUT {
                 log::debug!("Waiting for opp to be registered");
                 thread::sleep(time::Duration::from_millis(2));
                 start_time = start_time + 2;
@@ -63,7 +62,7 @@ pub fn start_election(dbs: &Arc<Databases>) {
                     None => log::debug!("Waiting election for Acks is_nome: {:?}", opp.is_none()),
                 }
                 opp = dbs.get_pending_opp_copy(id);
-                if start_time > ELECTION_TIMEOUT {
+                if start_time > *NUN_ELECTION_TIMEOUT {
                     log::info!("Election timeout, will claim as primary");
                     election_win(&dbs);
                     return;

@@ -10,6 +10,7 @@ lazy_static! {
     pub static ref NUN_TCP_ADDR: String = optional_env_var("NUN_TCP_ADDR", "0.0.0.0:3014");
     pub static ref NUN_REPLICATE_ADDR: String = optional_env_var("NUN_REPLICATE_ADDR", "");
     pub static ref NUN_LOG_LEVEL: String = optional_env_var("NUN_LOG_LEVEL", "Info"); //(Off, Error, Warn, Info, Debug, Trace)
+    pub static ref NUN_ELECTION_TIMEOUT: u128 = optional_env_var("NUN_ELECTION_TIMEOUT", "1000").to_string().parse::<u128>().unwrap();
 }
 
 fn optional_env_var(name: &str, default: &str) -> String {

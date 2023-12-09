@@ -421,6 +421,9 @@ vue : none
 test : arbiter
 analitcs-blog : none
 $admin : newer
+
+debug force-election
+# Forces run an election immediately, which is useful if some node in the cluster is not responsive or to debug latency problems between nodes. Elections in Nun-db are predictable and, unless the primary node is slow, the primary should not change even if you force an election.
 ```
 
 ### Arbiter
@@ -489,3 +492,9 @@ $connections
 ## Secure keys
 * All keys prefixed with `$$` will be considered secure by Nun-db and will only allow database admin authentication to `set`, `get`, or `remove` them. These are useful if admins want to store information that should not be leaked to any client. 
 * The key `$$token` cannot be removed even with admin credentials.
+
+
+
+## Configurations
+###  NUN_ELECTION_TIMEOUT
+* Configurations are available to define the timeout period for elections to wait until they are acknowledged from all nodes. It is important to note that you should rarely change this variable since doing so could make elections slower. The value of this variable should be at least twice the latency value to ensure that the election process runs smoothly.
