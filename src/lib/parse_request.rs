@@ -62,9 +62,13 @@ impl Request {
         if let Some(cmd) = command.next() {
             match PARSER_HASH_TABLE.get(cmd) {
                 Some(f) => f(&mut command),
-                None => Err(format!("unknown command: {}", cmd)),
+                None => {
+                    log::debug!("unknown command: {}", cmd);
+                    Err(format!("unknown command: {}", cmd))
+                }
             }
         } else {
+            log::debug!("unknown command");
             Err(String::from("unknown command"))
         }
     }
@@ -405,14 +409,17 @@ fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result
 }
 
 fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    log::debug!("Parsing ack command");
     let opp_id: u64 = match command.next() {
         Some(id_str) => match id_str.parse::<u64>() {
             Ok(id) => id,
             Err(_) => {
+                log::debug!("Invalid request Id");
                 return Err(format!("Invalid request Id"));
             }
         },
         None => {
+            log::debug!("Invalid request Id");
             return Err(format!("Invalid request Id"));
         }
     };
@@ -423,6 +430,7 @@ fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, St
     });
 
     if server_name == "" {
+        log::debug!("Invalid server name");
         return Err(format!("Invalid server name"));
     }
 

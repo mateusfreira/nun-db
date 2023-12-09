@@ -124,6 +124,8 @@ mod tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
         let replicas_processes = helpers::start_3_replicas_with_external_addr();
+        helpers::wait_seconds(3); //Wait 3s to the replication
+
         helpers::nundb_exec(
             &helpers::PRIMARY_HTTP_URI.to_string(),
             &String::from("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus;"),
@@ -139,7 +141,7 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains("localhost:3016"));
-
+        helpers::wait_seconds(3); //Wait 3s to the replication
         helpers::nundb_exec(
             &helpers::PRIMARY_HTTP_URI.to_string(),
             &String::from("metrics-state"),

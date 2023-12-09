@@ -1779,3 +1779,8 @@ mod tests {
         );
     }
 }
+
+pub fn get_var_type<T>(_: &T) -> String {
+    let type_name = std::any::type_name::<T>();
+    String::from(type_name)
+}

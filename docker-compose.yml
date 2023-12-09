@@ -19,10 +19,10 @@ services:
              /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=2000 primary 
              /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=2000 --toxicity=1 primary
 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=2000 secondary-1
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=500 secondary-1
              /go/bin/toxiproxy-cli -h toxiproxy:8474 toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=2000 --toxicity=1 secondary-1
 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=2000 secondary-2
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=500 secondary-2
              /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=2000 --toxicity=1 secondary-2
              sleep 100000
              "
@@ -83,6 +83,7 @@ services:
       - NUN_USER=mateus
       - NUN_REPLICASET=toxiproxy:3017,toxiproxy:3018,toxiproxy:3019
       - NUN_PWD=mateus
+      - NUN_ELECTION_TIMEOUT=3000
     command:
       - "sh"
       - "-c"
@@ -121,6 +122,7 @@ services:
       - NUN_USER=mateus
       - NUN_PWD=mateus
       - NUN_REPLICASET=toxiproxy:3017,toxiproxy:3018,toxiproxy:3019
+      - NUN_ELECTION_TIMEOUT=3000
     command:
       - "sh"
       - "-c"
@@ -140,10 +142,10 @@ services:
       - "traefik.tcp.services.nun-db-2.loadbalancer.server.port=3018"
   nun-db-secondary-2:
     #image: mateusfreira/nun-db
-    image: docker.io/library/nun-db-nun-db-secondary-1
-      #build:
-      #  context: .
-      #  dockerfile: ./Dockerfile
+    #image: docker.io/library/nun-db-nun-db-secondary-1
+    build:
+      context: .
+      dockerfile: ./Dockerfile
     depends_on:
       - nun-db-primary
       - nun-db-secondary-1
@@ -156,6 +158,7 @@ services:
       - NUN_USER=mateus
       - NUN_PWD=mateus
       - NUN_REPLICASET=toxiproxy:3017,toxiproxy:3018,toxiproxy:3019
+      - NUN_ELECTION_TIMEOUT=3000
     command:
       - "sh"
       - "-c"

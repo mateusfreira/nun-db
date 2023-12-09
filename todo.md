@@ -90,12 +90,14 @@ nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-d
 ## Today
 - [x]  Add a command to force election to run (in debug)
 - [x]  Debug elections happening from Primary to Secoundary
-- [ ] There should be a way to debug the nodes connections to other cluster
-- [ ] Test force election
+- [x] There should be a way to debug the nodes connections to other cluster
+- [x] Test force election
 - [x] [src/lib/election_ops.rs:23] There should be a way to wait for the response from all replicas but there shold be a timeoutsrc/lib/election_ops.rs:23
     [src/lib/disk_ops.rs:656 ] This will be defined in the DB level
     [src/lib/election_ops.rs:16 ] When sending a messagen from there... we will get the id and will know when it was ack from the replicas
 - [x]  Create a method in the dbs to replicate message and return the op_id
-- [ ] Replicate back from the sender in rp message intead of to all
+- [ ] Replicate back from the sender in rp message instead of to all
+* Create 2 threads one for reading one for writing the writing is already working and the reading needs to work
+> Lets CODE>>>>>>
 [src/lib/process_request.rs:495 ]
 
