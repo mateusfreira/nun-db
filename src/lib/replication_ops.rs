@@ -372,15 +372,6 @@ pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
     }
 }
 
-pub fn send_message_to_all(message: String, dbs: &Arc<Databases>) {
-    latency_trap();
-    log::debug!("Got the message {} to send to all nodes", message);
-    let state = dbs.cluster_state.lock().unwrap();
-    for (_name, member) in state.members.lock().unwrap().iter() {
-        replicate_if_some(&member.sender, &message, &member.name)
-    }
-}
-
 fn get_db_id(db_name: String, dbs: &Arc<Databases>) -> u64 {
     dbs.acquire_dbs_read_lock()
         .get(&db_name)

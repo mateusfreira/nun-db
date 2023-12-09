@@ -492,12 +492,9 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             opp_id,
         } => {
             log::debug!("ack send_message_to_secoundary {} {}", opp_id, request_str);
-            // Today we ack to all notes in fact we only need to reply to the sender of the message
-            //send_message_to_all(format!("ack {} {}", opp_id, dbs.external_tcp_address), dbs); // Todo validate auth
             client
                 .sender
                 .clone()
-                //.try_send(format!("ack {} {}", opp_id, dbs.external_tcp_address))
                 .try_send(format!("ack {} {} \n", opp_id, dbs.external_tcp_address))
                 .unwrap();
             match process_request(&request_str, &dbs, client) {
