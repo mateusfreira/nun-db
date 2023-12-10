@@ -106,7 +106,7 @@ fn start_db(
         }
     });
 
-    let tcp_address_to_thread = String::from(tcp_address.clone());
+    let tcp_address_to_thread = String::from(tcp_address);
     let dbs_tcp = dbs.clone();
     /*
      * This thread has to be the first one to start to avoid race conditions if the primary tries
