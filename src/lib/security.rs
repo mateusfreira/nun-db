@@ -116,17 +116,13 @@ pub fn apply_to_database_name_if_has_permission(
             } else {
                 let msg = String::from(PERMISSION_DENIED_MESSAGE);
                 client.send_message(&msg);
-                Response::Error {
-                    msg,
-                }
+                Response::Error { msg }
             }
         }
         None => {
             let msg = String::from(NO_DB_SELECTED_MESSAGE);
             client.send_message(&msg);
-            return Response::Error {
-                msg,
-            };
+            return Response::Error { msg };
         }
     };
     return result;

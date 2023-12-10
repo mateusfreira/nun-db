@@ -1,13 +1,12 @@
-use nundb::process_request::process_request;
 use criterion::{criterion_group, criterion_main, Criterion};
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use nundb::bo::*;
+use nundb::process_request::process_request;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 fn criterion_benchmark(c: &mut Criterion) {
-
     c.bench_function("Parse use-db", |b| {
         b.iter(|| Request::parse("use-db jose jose"))
     });
@@ -31,11 +30,15 @@ fn criterion_benchmark(c: &mut Criterion) {
         receiver.try_next().unwrap();
         process_request("use-db test test-1", &dbs, &mut client);
         process_request("create-user foo bar", &dbs, &mut client);
-        process_request("set-permissions foo rw key-*|rwix nure-*", &dbs, &mut client);
+        process_request(
+            "set-permissions foo rw key-*|rwix nure-*",
+            &dbs,
+            &mut client,
+        );
         client.auth.store(false, Ordering::Relaxed);
         process_request("use-db test foo bar", &dbs, &mut client);
 
-        b.iter(||{
+        b.iter(|| {
             let thread_id = std::thread::current().id();
             let key = format!("key-{:?}", thread_id).to_string();
             let command = format!("set {} jose", key).to_string();
@@ -44,7 +47,6 @@ fn criterion_benchmark(c: &mut Criterion) {
             let response = receiver.try_next().unwrap();
             println!("response: {:?}", response);
         });
-        //todo!()
     });
 }
 pub fn create_default_args() -> (Receiver<String>, Arc<Databases>, Client) {

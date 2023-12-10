@@ -62,9 +62,13 @@ impl Request {
         if let Some(cmd) = command.next() {
             match PARSER_HASH_TABLE.get(cmd) {
                 Some(f) => f(&mut command),
-                None => Err(format!("unknown command: {}", cmd)),
+                None => {
+                    log::debug!("unknown command: {}", cmd);
+                    Err(format!("unknown command: {}", cmd))
+                }
             }
         } else {
+            log::debug!("unknown command");
             Err(String::from("unknown command"))
         }
     }
@@ -292,13 +296,30 @@ fn parse_election_command(command: &mut std::str::SplitN<&str>) -> Result<Reques
     match command.next() {
         Some("win") => Ok(Request::ElectionWin {}),
         Some("candidate") => {
-            let process_id = match command.next() {
+            let rest = match command.next() {
+                Some(rest) => rest,
+                None => return Err(format!("candidate must contain process id and server name")),
+            };
+            let mut rest = rest.splitn(2, " ");
+            let process_id = match rest.next() {
                 Some(id) => id.parse::<u128>().unwrap(),
                 None => return Err(format!("replicate-snapshot must contain a db name")),
             };
-            Ok(Request::Election { id: process_id })
+            let node_name = match rest.next() {
+                Some(server_name) => server_name.replace("\n", ""),
+                None => {
+                    log::warn!("election missing server name there must be an un-updated node on the cluster");
+                    "no-server".to_string()
+                }
+            };
+            Ok(Request::Election {
+                id: process_id,
+                node_name,
+            })
         }
-        _ => Ok(Request::ElectionActive {}),
+        _ => Ok(Request::ElectionActive {
+            node_name: command.next().unwrap_or("no-server").to_string(),
+        }),
     }
 }
 
@@ -388,14 +409,17 @@ fn parse_set_permissions_command(command: &mut std::str::SplitN<&str>) -> Result
 }
 
 fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
+    log::debug!("Parsing ack command");
     let opp_id: u64 = match command.next() {
         Some(id_str) => match id_str.parse::<u64>() {
             Ok(id) => id,
             Err(_) => {
+                log::debug!("Invalid request Id");
                 return Err(format!("Invalid request Id"));
             }
         },
         None => {
+            log::debug!("Invalid request Id");
             return Err(format!("Invalid request Id"));
         }
     };
@@ -406,6 +430,7 @@ fn parse_ack_command(command: &mut std::str::SplitN<&str>) -> Result<Request, St
     });
 
     if server_name == "" {
+        log::debug!("Invalid server name");
         return Err(format!("Invalid server name"));
     }
 

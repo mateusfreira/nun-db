@@ -2,6 +2,7 @@
 pub mod helpers;
 mod tests {
     use crate::helpers::*;
+    // Add methods on commands
     use assert_cmd::prelude::*; // Add methods on commands
     use predicates::prelude::*; // Used for writing assertions
     use std::process::Command;
@@ -35,7 +36,7 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains(format!(
-            "{}:Primary",
+            "{}(self):Primary",
             helpers::PRIMARY_TCP_ADDRESS
         )));
         helpers::kill_replicas(replicas_processes)?;
@@ -52,7 +53,7 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains(format!(
-            "{}:Primary",
+            "{}(self):Primary",
             helpers::PRIMARY_TCP_ADDRESS
         )));
         replicas_processes.0.kill()?; //Kill Primary
@@ -64,7 +65,7 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains(format!(
-            "{}:Primary",
+            "{}(self):Primary",
             helpers::SECOUNDARY_TCP_ADDRESS
         )));
         helpers::nundb_exec(
@@ -73,11 +74,45 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains(format!(
-            "{}:Primary",
+            "{}(Connected):Primary",
             helpers::SECOUNDARY_TCP_ADDRESS
         )));
 
         helpers::kill_replicas(replicas_processes)?;
         Ok(())
     }
+
+    /*
+     * Depends on docker needs to see a faster way to do the same thing
+    fn before_each() {
+        println!("before each");
+        helpers::clean_env();
+        //helpers::stop_db_with_docker();
+        helpers::start_db_with_docker();
+    }
+
+    fn after_each() {
+        println!("after each");
+        helpers::stop_db_with_docker();
+    }
+
+    #[test]
+    fn should_run_election_as_expected_with_latenct() {
+        helpers::run_test(
+            || {
+                helpers::nundb_exec(
+                    &helpers::PRIMARY_HTTP_URI.to_string(),
+                    &String::from("cluster-state"),
+                )
+                .success()
+                .stdout(predicate::str::contains("toxiproxy:3017:Secoundary"))
+                .stdout(predicate::str::contains("toxiproxy:3018:Primary"))
+                .stdout(predicate::str::contains("toxiproxy:3019:Secoundary"));
+                ()
+            },
+            before_each,
+            after_each,
+        )
+    }
+    */
 }

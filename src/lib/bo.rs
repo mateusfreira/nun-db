@@ -1,4 +1,3 @@
-use std::sync::RwLockReadGuard;
 use atomic_float::*;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
@@ -7,6 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
+use std::sync::RwLockReadGuard;
 use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -89,11 +89,7 @@ impl Client {
     }
 
     pub fn send_message(&self, msg: &String) {
-        match self
-            .sender
-            .clone()
-            .try_send(msg.clone())
-        {
+        match self.sender.clone().try_send(msg.clone()) {
             Ok(_) => {}
             Err(e) => log::warn!("send_message::try_send {}", e),
         };
@@ -105,6 +101,25 @@ pub struct ClusterMember {
     pub name: String,
     pub role: ClusterRole,
     pub sender: Option<Sender<String>>,
+}
+
+impl ClusterMember {
+    pub fn is_self(&self, dbs: &Databases) -> bool {
+        self.name == dbs.external_tcp_address || self.name == dbs.tcp_address
+    }
+
+    pub fn to_string_with_role(&self, dbs: &Databases) -> String {
+        if self.is_self(dbs) {
+            format!("{}(self):{} ", self.name, self.role)
+        } else {
+            let str_connected = if self.sender.is_none() {
+                "Disconnected"
+            } else {
+                "Connected"
+            };
+            format!("{}({}):{}", self.name, (str_connected), self.role)
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Copy)]
@@ -433,7 +448,6 @@ pub struct Databases {
 }
 
 impl Database {
-
     #[cfg(test)]
     pub fn to_string_hash(&self) -> HashMap<String, String> {
         let data = self.map.read().expect("Error getting the db.map.read");
@@ -803,7 +817,6 @@ fn filter_system_keys(list_system_keys: bool, key: &&String) -> bool {
 }
 
 impl Databases {
-
     pub fn acquire_dbs_read_lock(&self) -> RwLockReadGuard<HashMap<String, Database>> {
         self.map.read().expect("Error getting the db.map.read")
     }
@@ -832,6 +845,12 @@ impl Databases {
                 sender: member.sender.clone(),
             },
         );
+    }
+
+    pub fn count_cluster_members(&self) -> usize {
+        let cluster_state = self.cluster_state.lock().unwrap();
+        let members = cluster_state.members.lock().unwrap();
+        members.len()
     }
 
     pub fn add_database(&self, database: Database) -> Response {
@@ -979,6 +998,13 @@ impl Databases {
         }
     }
 
+    pub fn get_pending_opp_copy(&self, opp_id: u64) -> Option<ReplicationMessage> {
+        let pending_opps = self.pending_opps.read().unwrap();
+        match pending_opps.get(&opp_id) {
+            Some(pendding_opp) => Some(pendding_opp.get_copy()),
+            None => None,
+        }
+    }
     pub fn acknowledge_pending_opp(&self, opp_id: u64, server_name: &String) -> bool {
         let mut pending_opps = self.pending_opps.write().unwrap();
         match pending_opps.get_mut(&opp_id) {
@@ -1308,8 +1334,11 @@ pub enum Request {
     ElectionWin {},
     Election {
         id: u128,
+        node_name: String,
     },
-    ElectionActive {},
+    ElectionActive {
+        node_name: String,
+    },
     Keys {
         pattern: String,
     },
@@ -1371,6 +1400,16 @@ pub struct ReplicationMessage {
     pub replications: Mutex<HashMap<String, bool>>, // Key ServerName value ack or not
 }
 impl ReplicationMessage {
+    pub fn get_copy(&self) -> ReplicationMessage {
+        ReplicationMessage {
+            opp_id: self.opp_id,
+            message: self.message.clone(),
+            ack_count: AtomicUsize::new(self.ack_count.load(Ordering::Relaxed)),
+            replicate_count: AtomicUsize::new(self.replicate_count.load(Ordering::Relaxed)),
+            start_time: self.start_time,
+            replications: Mutex::new(self.replications.lock().unwrap().clone()),
+        }
+    }
     pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
         ReplicationMessage {
             opp_id,
@@ -1428,6 +1467,14 @@ impl ReplicationMessage {
 
     pub fn is_full_acknowledged(&self) -> bool {
         self.replicate_count.load(Ordering::Relaxed) == self.ack_count.load(Ordering::Relaxed)
+    }
+
+    pub fn count_replication(&self) -> usize {
+        self.replicate_count.load(Ordering::Relaxed)
+    }
+
+    pub fn count_acknowledged(&self) -> usize {
+        self.ack_count.load(Ordering::Relaxed)
     }
 
     pub fn message_to_replicate(&self) -> String {
@@ -1731,4 +1778,9 @@ mod tests {
             "pending_ops should stay 0, message already fully acknowledged"
         );
     }
+}
+
+pub fn get_var_type<T>(_: &T) -> String {
+    let type_name = std::any::type_name::<T>();
+    String::from(type_name)
 }

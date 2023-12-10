@@ -652,8 +652,13 @@ pub fn get_log_file_read_mode() -> File {
     }
 }
 
-pub fn write_op_log(stream: &mut BufWriter<File>, db_id: u64, key: u64, opp: ReplicateOpp) -> u64 {
-    let opp_id: u64 = Databases::next_op_log_id();
+pub fn write_op_log(
+    stream: &mut BufWriter<File>,
+    db_id: u64,
+    key: u64,
+    opp: ReplicateOpp,
+    opp_id: u64,
+) -> u64 {
     let opp_to_write = opp as u8;
 
     stream.write(&opp_id.to_le_bytes()).unwrap(); //8
@@ -1006,8 +1011,20 @@ mod tests {
     #[test]
     fn should_write_op_log_and_return_opp_id() {
         let mut f = get_log_file_append_mode();
-        let opp_id = write_op_log(&mut f, 1, 1, ReplicateOpp::Update);
-        let opp_id1 = write_op_log(&mut f, 1, 1, ReplicateOpp::Update);
+        let opp_id = write_op_log(
+            &mut f,
+            1,
+            1,
+            ReplicateOpp::Update,
+            Databases::next_op_log_id(),
+        );
+        let opp_id1 = write_op_log(
+            &mut f,
+            1,
+            1,
+            ReplicateOpp::Update,
+            Databases::next_op_log_id(),
+        );
         assert_ne!(opp_id, opp_id1);
     }
 

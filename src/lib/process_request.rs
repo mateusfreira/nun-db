@@ -296,38 +296,41 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             create_db(&name, &token, &dbs, &client, strategy)
         }),
 
-        Request::ElectionActive {} => Response::Ok {}, //Nothing need to be done here now
+        Request::ElectionActive { node_name: _ } => Response::Ok {}, //Nothing need to be done here now
         Request::ElectionWin {} => apply_if_auth(&client.auth, &|| election_win(&dbs)),
-        Request::Election { id } => apply_if_auth(&client.auth, &|| election_eval(&dbs, id)),
+        Request::Election { id, node_name } => {
+            apply_if_auth(&client.auth, &|| election_eval(&dbs, id, &node_name))
+        }
 
         Request::SetPrimary { name } => apply_if_auth(&client.auth, &|| {
             if !dbs.is_primary() {
                 log::info!("Setting {} as primary!", name);
+                match dbs
+                    .replication_supervisor_sender
+                    .clone()
+                    .try_send(format!("primary {}", name))
+                {
+                    Ok(_n) => (),
+                    Err(e) => log::error!("Request::SetPrimary sender.send Error: {}", e),
+                }
+                dbs.node_state
+                    .swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
+                let member = Some(ClusterMember {
+                    name: name.clone(),
+                    role: ClusterRole::Primary,
+                    sender: None,
+                });
+                let mut member_lock = client.cluster_member.lock().unwrap();
+                *member_lock = member;
             } else {
                 log::warn!("Got a set primary from {} but already is a primary... There is going to be war!!", name);
+                start_new_election(&dbs);
             }
-            match dbs
-                .replication_supervisor_sender
-                .clone()
-                .try_send(format!("primary {}", name))
-            {
-                Ok(_n) => (),
-                Err(e) => log::error!("Request::SetPrimary sender.send Error: {}", e),
-            }
-            dbs.node_state
-                .swap(ClusterRole::Secoundary as usize, Ordering::Relaxed);
-            let member = Some(ClusterMember {
-                name: name.clone(),
-                role: ClusterRole::Primary,
-                sender: None,
-            });
-            let mut member_lock = client.cluster_member.lock().unwrap();
-            *member_lock = member;
             Response::Ok {}
         }),
 
         Request::SetScoundary { name } => apply_if_auth(&client.auth, &|| {
-            log::info!("Setting {} as secoundary!", name);
+            log::info!("Setting {} as secondary!", name);
             let member = Some(ClusterMember {
                 name: name.clone(),
                 role: ClusterRole::Secoundary,
@@ -339,10 +342,11 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
         }),
 
         Request::Join { name } => apply_if_auth(&client.auth, &|| {
-            if dbs.is_primary() {
+            if dbs.is_primary() || dbs.is_eligible() {
                 add_as_secoundary(&dbs, &name);
+                start_new_election(&dbs); //Slow operation here
             } else {
-                log::debug!("Ignoring join on secoundary!")
+                log::debug!("Ignoring join on secondary!")
             }
             Response::Ok {}
         }),
@@ -408,7 +412,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                 .lock()
                 .unwrap()
                 .iter()
-                .map(|(_name, member)| format!("{}:{}", member.name, member.role))
+                .map(|(_name, member)| member.to_string_with_role(dbs))
                 .collect();
             members.sort(); //OMG try not to use this
             log::debug!("ClusterMember {}", members.len());
@@ -487,7 +491,12 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             request_str,
             opp_id,
         } => {
-            send_message_to_primary(format!("ack {} {}", opp_id, dbs.external_tcp_address), dbs); // Todo validate auth
+            log::debug!("ack send_message_to_secoundary {} {}", opp_id, request_str);
+            client
+                .sender
+                .clone()
+                .try_send(format!("ack {} {} \n", opp_id, dbs.external_tcp_address))
+                .unwrap();
             match process_request(&request_str, &dbs, client) {
                 Response::Error { msg } => {
                     log::warn!("Error to process message {}, error: {}", opp_id, msg);
@@ -549,6 +558,21 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                         format_args!("dbs-list \n{}\n", dbs_name_and_strategy).to_string(),
                     ) {
                         Err(e) => log::warn!("Request::dbs-list sender.send Error: {}", e),
+                        _ => (),
+                    }
+                }
+                "force-election" => {
+                    log::info!("Force election");
+                    start_new_election(&dbs);
+                }
+                "process-info" => {
+                    let process_info = format!("process_id: {}", dbs.process_id);
+                    match client
+                        .sender
+                        .clone()
+                        .try_send(format_args!("process-info \n{}\n", process_info).to_string())
+                    {
+                        Err(e) => log::warn!("Request::process-info sender.send Error: {}", e),
                         _ => (),
                     }
                 }
@@ -693,9 +717,10 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
     };
 
     log::debug!(
-        "[{}] process_request parsed message '{}'. ",
+        "[{}] process_request parsed message '{}'. {}",
         thread_id::get(),
-        input_to_log
+        input_to_log,
+        crate::bo::get_var_type(&request)
     );
 
     let result = process_request_obj(&request, &dbs, client);

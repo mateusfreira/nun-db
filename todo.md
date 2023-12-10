@@ -73,22 +73,31 @@ nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-d
 * Security layer
 * Client protocols
 
+## Chaos
+* Sends a message to all replicas to join
+[src/lib/replication_ops.rs:731]
 
-## Add join address command
-- [ ] When joining as a replica the server sends its tcp address to the primary
-- [x] Add new command line option
-- [x] Replace the command line to use the new parameter if it is set
-* Defines the command line parameter
-[src/lib/commad_line/commands.rs:59 ]
-Used here to pass to start db
-[src/bin/main.rs:58]
-Replicate join here
-[src/lib/replication_ops.rs:501 ]
-Change here to use the new parameter
-[src/bin/main.rs:117]
-Ask to join
-[src/lib/replication_ops.rs:745 ]
-[src/bin/main.rs:135 ] Called at main
-- [x] How to test this??? Write integration tests
-- [ ] Test it in docker
-- [ ] ack 1697328068431833087 nun-db-secondary-1:3018 must use the join addr not the tcp addr
+* Start initial election
+[src/bin/main.rs:150]
+
+
+## TODO On primary change check sync state
+* When receiving and set primary send the state to all replicas to verify it they are all in sync if not a new election is trigged...
+
+
+
+
+## Today
+- [x]  Add a command to force election to run (in debug)
+- [x]  Debug elections happening from Primary to Secoundary
+- [x] There should be a way to debug the nodes connections to other cluster
+- [x] Test force election
+- [x] [src/lib/election_ops.rs:23] There should be a way to wait for the response from all replicas but there shold be a timeoutsrc/lib/election_ops.rs:23
+    [src/lib/disk_ops.rs:656 ] This will be defined in the DB level
+    [src/lib/election_ops.rs:16 ] When sending a messagen from there... we will get the id and will know when it was ack from the replicas
+- [x]  Create a method in the dbs to replicate message and return the op_id
+- [x] Replicate back from the sender in rp message instead of to all
+* Create 2 threads one for reading one for writing the writing is already working and the reading needs to work
+[src/lib/process_request.rs:495 ]
+- [ ] Improve the code in 
+[src/lib/replication_ops.rs:908 ]
