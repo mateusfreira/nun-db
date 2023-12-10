@@ -935,9 +935,12 @@ fn start_replication(
                 } else {
                     log::debug!("replication::next::{}", line);
                     let message = line.trim().to_string();
-                    // Todo ignore ok message
-                    match process_request(&message, &dbs, &mut client) {
-                        _ => log::info!("Processed"),
+                    if message == "ok" {
+                        log::debug!("Ignoring ok message");
+                    } else {
+                        match process_request(&message, &dbs, &mut client) {
+                            _ => log::info!("Processed"),
+                        }
                     }
                 }
                 line.clear();

@@ -47,7 +47,6 @@ fn criterion_benchmark(c: &mut Criterion) {
             let response = receiver.try_next().unwrap();
             println!("response: {:?}", response);
         });
-        //todo!()
     });
 }
 pub fn create_default_args() -> (Receiver<String>, Arc<Databases>, Client) {
