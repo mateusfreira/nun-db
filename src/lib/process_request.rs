@@ -155,7 +155,11 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             respose
         }),
 
-        Request::Snapshot { reclaim_space } => apply_if_auth(&client.auth, &|| {
+        Request::Snapshot {
+            reclaim_space,
+            db_names: _,
+        } => apply_if_auth(&client.auth, &|| {
+            // @todo apply to all databases
             apply_to_database(&dbs, &client, &|_db| {
                 if dbs.is_primary() {
                     snapshot_db(_db, &dbs, reclaim_space)
@@ -175,15 +179,37 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
 
         Request::ReplicateSnapshot {
             reclaim_space,
-            db: db_to_snap_shot,
+            db_names,
         } => apply_if_auth(&client.auth, &|| {
+            // @todo this needs many test cases and refactory
             let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock");
-            match dbs_map.get(&db_to_snap_shot.to_string()) {
-                Some(db) => snapshot_db(db, &dbs, reclaim_space),
-                _ => Response::Error {
-                    msg: "Invalid db name".to_string(),
-                },
-            }
+            db_names
+                .clone()
+                .into_iter()
+                .map(
+                    |db_to_snap_shot| match dbs_map.get(&db_to_snap_shot.to_string()) {
+                        Some(db) => snapshot_db(db, &dbs, reclaim_space),
+                        _ => Response::Error {
+                            msg: "Invalid db name".to_string(),
+                        },
+                    },
+                )
+                .reduce(|a, b| {
+                    match (a, b) {
+                        // Error and error concat the error
+                        (Response::Error { msg: a_msg }, Response::Error { msg: b_msg }) => {
+                            Response::Error {
+                                msg: format!("{} {}", a_msg, b_msg),
+                            }
+                        }
+                        // Error or anything return error
+                        (Response::Error { msg: a_msg }, _) => Response::Error { msg: a_msg },
+                        (_, Response::Error { msg: b_msg }) => Response::Error { msg: b_msg },
+                        // All other are ok
+                        (_, _) => Response::Ok {},
+                    }
+                })
+                .unwrap_or(Response::Ok {})
         }),
 
         Request::UnWatch { key } => apply_to_database(&dbs, &client, &|_db| {

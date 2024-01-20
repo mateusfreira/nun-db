@@ -150,7 +150,10 @@ pub fn replicate_request(
                 );
                 Response::Ok {}
             }
-            Request::Snapshot { reclaim_space } => {
+            Request::Snapshot {
+                reclaim_space,
+                db_names,
+            } => {
                 log::debug!("Will replicate a snapshot to the database {}", db_name);
                 replicate_web(
                     replication_sender,
@@ -159,11 +162,21 @@ pub fn replicate_request(
                 Response::Ok {}
             }
 
-            Request::ReplicateSnapshot { db, reclaim_space } => {
-                log::debug!("Will replicate a snapshot to the database {}", db);
+            Request::ReplicateSnapshot {
+                reclaim_space,
+                db_names,
+            } => {
+                log::debug!(
+                    "Will replicate a snapshot to the database {}",
+                    db_names.join("|")
+                );
                 replicate_web(
                     replication_sender,
-                    format!("replicate-snapshot {} {}", db, reclaim_space),
+                    format!(
+                        "replicate-snapshot {} {}",
+                        db_names.join("|"),
+                        reclaim_space
+                    ),
                 );
                 Response::Ok {}
             }
@@ -457,9 +470,11 @@ pub async fn start_replication_thread(
                         )
                     }
                     Request::ReplicateSnapshot {
-                        db,
+                        db_names,
                         reclaim_space: _reclaim_space,
                     } => {
+                        // Todo replicate all databases
+                        let db = db_names[0].clone();
                         let db_id = get_db_id(db, &dbs);
                         let key_id = 2; //has to be different
                         log::debug!("Will write ReplicateSnapshot");
@@ -1486,6 +1501,7 @@ mod tests {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         let request = Request::Snapshot {
             reclaim_space: false,
+            db_names: vec![],
         };
 
         let resp_get = Response::Ok {};
