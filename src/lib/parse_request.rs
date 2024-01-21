@@ -1094,6 +1094,23 @@ mod tests {
     }
 
     #[test]
+    fn should_parse_replicaion_snapshot_with_many_databases() -> Result<(), String> {
+        match Request::parse("replicate-snapshot vue|jose") {
+            Ok(Request::ReplicateSnapshot {
+                db_names,
+                reclaim_space,
+            }) => {
+                if db_names[0] == "vue" && !reclaim_space && db_names[1] == "jose" {
+                    Ok(())
+                } else {
+                    Err(String::from("db should vue key should be jose value 1"))
+                }
+            }
+            _ => Err(String::from("wrong command parsed")),
+        }
+    }
+
+    #[test]
     fn should_parse_join() -> Result<(), String> {
         match Request::parse("join some:8071") {
             Ok(Request::Join { name }) => {

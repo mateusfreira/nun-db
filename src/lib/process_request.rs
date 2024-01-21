@@ -1228,4 +1228,46 @@ mod tests {
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value value\n");
     }
+
+    #[test]
+    fn should_snaotshot_many_dbs() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+
+
+        assert_valid_request(process_request(
+            "create-db my-db-1 my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        assert_valid_request(process_request(
+            "create-db my-db-new my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        assert_valid_request(process_request(
+            "create-user my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        // Connect to db as admin
+        assert_valid_request(process_request("use my-db my-token", &dbs, &mut client));
+
+        process_request("set some value", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+
+        process_request("snapshot my-db-new|my-db", &dbs, &mut client);
+        assert_eq!(dbs.to_snapshot.read().unwrap().len(), 2);
+
+    }
 }
