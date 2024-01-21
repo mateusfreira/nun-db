@@ -155,6 +155,11 @@ pub fn replicate_request(
                 db_names,
             } => {
                 log::debug!("Will replicate a snapshot to the database {}", db_name);
+                let db_names = if db_names.is_empty() {
+                    vec![db_name.to_string()]
+                } else {
+                    db_names
+                };
                 replicate_web(
                     replication_sender,
                     format!(
