@@ -64,10 +64,12 @@ pub fn create_db(
     }
 }
 
-pub fn snapshot_db(db: &Database, dbs: &Databases, reclaim_space: bool) -> Response {
-    let name = db.name.clone();
+pub fn snapshot_db_by_name(name: &String, dbs: &Databases, reclaim_space: bool) -> Response {
     {
-        dbs.to_snapshot.write().unwrap().push((name, reclaim_space));
+        dbs.to_snapshot
+            .write()
+            .unwrap()
+            .push((name.clone(), reclaim_space));
     };
     Response::Ok {}
 }

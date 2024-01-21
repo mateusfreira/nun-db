@@ -157,7 +157,11 @@ pub fn replicate_request(
                 log::debug!("Will replicate a snapshot to the database {}", db_name);
                 replicate_web(
                     replication_sender,
-                    format!("replicate-snapshot {} {}", db_name, reclaim_space),
+                    format!(
+                        "replicate-snapshot {} {}",
+                        db_names.join("|"),
+                        reclaim_space
+                    ),
                 );
                 Response::Ok {}
             }

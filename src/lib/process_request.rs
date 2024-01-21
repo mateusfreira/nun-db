@@ -157,59 +157,29 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
 
         Request::Snapshot {
             reclaim_space,
-            db_names: _,
+            db_names,
         } => apply_if_auth(&client.auth, &|| {
-            // @todo apply to all databases
-            apply_to_database(&dbs, &client, &|_db| {
-                if dbs.is_primary() {
-                    snapshot_db(_db, &dbs, reclaim_space)
-                } else {
-                    send_message_to_primary(
-                        format!(
-                            "replicate-snapshot {} {}",
-                            _db.name.to_string(),
-                            reclaim_space
-                        ),
-                        &dbs,
-                    );
-                    Response::Ok {}
-                }
-            })
+            if db_names.is_empty() {
+                snapshot_db_by_name(
+                    &client.selected_db.name.read().unwrap(),
+                    &dbs,
+                    reclaim_space,
+                );
+            } else {
+                db_names.clone().into_iter().for_each(|db_name| {
+                    snapshot_db_by_name(&db_name, &dbs, reclaim_space);
+                });
+            }
+            Response::Ok {}
         }),
-
         Request::ReplicateSnapshot {
             reclaim_space,
             db_names,
         } => apply_if_auth(&client.auth, &|| {
-            // @todo this needs many test cases and refactory
-            let dbs_map = dbs.map.read().expect("Error getting the dbs.map.lock");
-            db_names
-                .clone()
-                .into_iter()
-                .map(
-                    |db_to_snap_shot| match dbs_map.get(&db_to_snap_shot.to_string()) {
-                        Some(db) => snapshot_db(db, &dbs, reclaim_space),
-                        _ => Response::Error {
-                            msg: "Invalid db name".to_string(),
-                        },
-                    },
-                )
-                .reduce(|a, b| {
-                    match (a, b) {
-                        // Error and error concat the error
-                        (Response::Error { msg: a_msg }, Response::Error { msg: b_msg }) => {
-                            Response::Error {
-                                msg: format!("{} {}", a_msg, b_msg),
-                            }
-                        }
-                        // Error or anything return error
-                        (Response::Error { msg: a_msg }, _) => Response::Error { msg: a_msg },
-                        (_, Response::Error { msg: b_msg }) => Response::Error { msg: b_msg },
-                        // All other are ok
-                        (_, _) => Response::Ok {},
-                    }
-                })
-                .unwrap_or(Response::Ok {})
+            db_names.clone().into_iter().for_each(|db_name| {
+                snapshot_db_by_name(&db_name, &dbs, reclaim_space);
+            });
+            Response::Ok {}
         }),
 
         Request::UnWatch { key } => apply_to_database(&dbs, &client, &|_db| {
@@ -1230,7 +1200,7 @@ mod tests {
     }
 
     #[test]
-    fn should_snaotshot_many_dbs() {
+    fn should_snaptshot_many_dbs() {
         let (mut receiver, dbs, mut client) = create_default_args();
         client.auth.store(true, Ordering::Relaxed);
         assert_valid_request(process_request(
@@ -1238,7 +1208,6 @@ mod tests {
             &dbs,
             &mut client,
         ));
-
 
         assert_valid_request(process_request(
             "create-db my-db-1 my-token",
@@ -1266,8 +1235,41 @@ mod tests {
         process_request("set some value", &dbs, &mut client);
         process_request("get some", &dbs, &mut client);
 
-        process_request("snapshot my-db-new|my-db", &dbs, &mut client);
-        assert_eq!(dbs.to_snapshot.read().unwrap().len(), 2);
+        process_request("snapshot false my-db-new|my-db", &dbs, &mut client);
+        let to_snapshot = dbs.to_snapshot.read().unwrap();
+        assert_eq!(to_snapshot.get(0).unwrap().0, "my-db-new");
+        assert_eq!(to_snapshot.get(1).unwrap().0, "my-db");
+        assert_eq!(to_snapshot.len(), 2);
+    }
 
+    #[test]
+    fn should_snaptshot_the_current_db() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        assert_valid_request(process_request(
+            "create-db my-db-1 my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        assert_valid_request(process_request(
+            "create-db my-db-new my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        process_request("snapshot false", &dbs, &mut client);
+
+        let to_snapshot = dbs.to_snapshot.read().unwrap();
+        assert_eq!(to_snapshot.get(0).unwrap().0, "my-db");
+        assert_eq!(to_snapshot.len(), 1);
     }
 }
