@@ -254,10 +254,14 @@ E.g:
 
 ##### Snapshot the database to disk, faster method will store only the difference will use more disk space.
 ```
-snapshot true db1|db2|db3|db4
+snapshot false db1|db2|db3|db4
 ```
 
 ##### Snapshot the database to disk, slower method will store all data again to disk
+```
+snapshot true db1|db2|db3|db4
+```
+##### Snapshot the database to disk only the current database
 ```
 snapshot true
 ```
