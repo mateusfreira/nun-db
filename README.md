@@ -244,7 +244,7 @@ set-safe name 10 Mateus # Sets key name to mateus if version is equal or minor t
 - [x] Require db auth
 - [x] Replicate? How? (replicate)
 
-### Snapshot $reclaim_space(true|false)
+### Snapshot $reclaim_space(true|false) $db_names_pipe_separated
 #### Context
 - [x] Require admin auth
 - [x] Require db auth
@@ -254,7 +254,7 @@ E.g:
 
 ##### Snapshot the database to disk, faster method will store only the difference will use more disk space.
 ```
-snapshot
+snapshot true db1|db2|db3|db4
 ```
 
 ##### Snapshot the database to disk, slower method will store all data again to disk
