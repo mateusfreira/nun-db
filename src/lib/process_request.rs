@@ -165,12 +165,38 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                     &dbs,
                     reclaim_space,
                 );
+                return Response::Ok {  }
             } else {
-                db_names.clone().into_iter().for_each(|db_name| {
-                    snapshot_db_by_name(&db_name, &dbs, reclaim_space);
-                });
+                // Validate all dbs are existent
+                    let map_dbs = dbs.map.read().unwrap();
+                    let missing_dbs = db_names
+                        .clone()
+                        .into_iter()
+                        .map(|db_name| (map_dbs.contains_key(&db_name.to_string()), db_name))
+                        .filter(|db_exists| !db_exists.0);
+
+                    match missing_dbs.clone().count() {
+                        0 => {
+                            db_names.clone().into_iter().for_each(|db_name| {
+                                snapshot_db_by_name(&db_name, &dbs, reclaim_space);
+                            });
+                            return Response::Ok {  }
+                        },
+                        1 => {
+                            return Response::Error { 
+                                msg: missing_dbs.last().unwrap().1 + " is not a valid database name"
+
+                            }
+                        },
+                        _ => {
+                            let dbs_name_for_message = missing_dbs.clone().fold(String::new(), |acc, dbs| acc +  dbs.1.as_str() +", ");
+                            return Response::Error {
+                                msg: dbs_name_for_message + "are not a valid database names"
+
+                            }
+                        }
+                    }
             }
-            Response::Ok {}
         }),
         Request::ReplicateSnapshot {
             reclaim_space,
@@ -1197,6 +1223,63 @@ mod tests {
         process_request("set some value", &dbs, &mut client);
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value value\n");
+    }
+
+    #[test]
+    fn snaptshot_should_fail_if_one_or_more_dbs_does_not_exists() {
+        let (mut receiver, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        assert_valid_request(process_request(
+            "create-db my-db-1 my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        assert_valid_request(process_request(
+            "create-db my-db-new my-token",
+            &dbs,
+            &mut client,
+        ));
+        assert_received(&mut receiver, "create-db success\n");
+        assert_received(&mut receiver, "create-db success\n");
+        process_request("use-db my-db my-token", &dbs, &mut client);
+        assert_valid_request(process_request(
+            "create-user my-user my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        // Connect to db as admin
+        assert_valid_request(process_request("use my-db my-token", &dbs, &mut client));
+
+        process_request("set some value", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+
+        let response = process_request("snapshot false my-db-new|jose", &dbs, &mut client);
+        match response {
+            Response::Error { msg } => {
+                assert_eq!(msg, "jose is not a valid database name")
+            }
+            _ => assert!(false, "Should error out because database does not exists"),
+        }
+        let to_snapshot = dbs.to_snapshot.read().unwrap();
+        assert_eq!(to_snapshot.len(), 0);
+
+        let response = process_request("snapshot false my-db-new|jose|maria", &dbs, &mut client);
+        match response {
+            Response::Error { msg } => {
+                assert_eq!(msg, "jose, maria, are not a valid database names")
+            }
+            _ => assert!(false, "Should error out because database does not exists"),
+        }
+        let to_snapshot = dbs.to_snapshot.read().unwrap();
+        assert_eq!(to_snapshot.len(), 0);
     }
 
     #[test]
