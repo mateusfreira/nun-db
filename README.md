@@ -2,7 +2,7 @@
 
 ## What is Nun DB
 
-Nun DB is an open source real time database, made to be fast, light and easy to use.
+Nun DB is an open source real-time database, made to be fast, light and easy to use.
 
 Nun DB is written to be memory safe and horizontal(soon) scalable.
 
@@ -16,15 +16,14 @@ Checkout our examples of integration and see what we can do for your app
 * [React.js Realtime Todo app](https://github.com/mateusfreira/nun-db-js/tree/master/examples/react)
 
 
-# Instalations
+# Installations
 
 ## Docker 
 
-Running Nun-db from docker is probably the faster way to do it, the simples steps to run nun-db with
-docker is bu running and container using all the default ports like the next example shows.
+Running NunDB using Docker is likely the fastest method. The simplest steps to run NunDB with Docker involve running a container, as shown in the following example.
 
 ```bash
-#Change user-name to the admin you want, user-pwd to the admin pwd you want, change /tmp to the directory where you want to store your data in the host computer... for dev /tmp works ine
+#Change user-name to the admin you want, user-pwd to the admin pwd you want, change /tmp to the directory where you want to store your data in the host computer... for dev /tmp works fine
 docker run --env NUN_USER=user-name --env NUN_PWD=user-pwd --env NUN_DBS_DIR="/data" --mount type=bind,source="/tmp",target=/data -it --rm -p 3013:3013 -p 3012:3012 -p 3014:3014 --name nun-test mateusfreira/nun-db
 ```
 
@@ -39,7 +38,7 @@ services:
     ports:
       - "3012:3012" # Web socket
       - "3013:3013" # Http
-      - "3014:3014" # Socker
+      - "3014:3014" # Socket
     environment:
       - NUN_DBS_DIR=/nun_data 
       - NUN_USER=mateus
@@ -66,41 +65,41 @@ Response "valid auth\n;create-db success\n"
 
 ```
 
-Done you now have nun-db running in your docker and exposing all the ports to be use http (3013), web-socket(3012), socket(3014)  you are ready to use.
+Once done, you now have NunDB running in your docker and exposing all the ports for use: HTTP (3013), WebSocket (3012), and Socket (3014)  you are ready to use.
 
 
 
 # How-tos
-* [Real-time Medical Image Collaboration POC Made Easy with OHIF and Nun-db](https://mateusfreira.github.io/@mateusfreira-real-time-medical-image-collaboration-ohif-nun-db/)
+* [Real-time Medical Image Collaboration POC Made Easy with OHIF and NunDB](https://mateusfreira.github.io/@mateusfreira-real-time-medical-image-collaboration-ohif-nun-db/)
 
-* [How to create users with different permission levels in Nun-db](https://mateusfreira.github.io/@mateusfreira-2023-09-17-how-to-create-users-in-nun-db/)
+* [How to create users with different permission levels in NunDB](https://mateusfreira.github.io/@mateusfreira-2023-09-17-how-to-create-users-in-nun-db/)
 
 * [How to Building a Trello-like React/Redux App with Nun-DB with offline and conflict resolution features](https://mateusfreira.github.io/@mateusfreira-trelo-clone-offline-first-with-nun-db-dealing-with-conflicts/)
 
-* [How-to Make Redux TodoMVC Example a real-time multiuser with Nun-db in 10 steps](https://mateusfreira.github.io/@mateusfreira-2021-06-30-how-to-making-redux-todomvc-example-a-real-time-multiuser-with-nun-db/)
+* [How-to Make Redux TodoMVC Example a real-time multiuser with NunDB in 10 steps](https://mateusfreira.github.io/@mateusfreira-2021-06-30-how-to-making-redux-todomvc-example-a-real-time-multiuser-with-nun-db/)
 
-* [How to create your simple version of google analytics real-time using Nun-db](https://mateusfreira.github.io/@mateusfreira-create-a-simple-verison-of-google-analytics-realtime-using-nun-db/)
+* [How to create your simple version of google analytics real-time using NunDB](https://mateusfreira.github.io/@mateusfreira-create-a-simple-verison-of-google-analytics-realtime-using-nun-db/)
 
 * [NunDb How to backup one or all databases](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
 
-* [How to snapshot Nun-db databases from memory to disk](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
+* [How to snapshot NunDB databases from memory to disk](https://mateusfreira.github.io/@mateusfreira-nundb-how-to-backups-all-databases-with-one-command/)
 ```bash
 # TLDR version
 nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-db $DB_NAME $DB_TOKEN; snapshot"
 ```
-* [Introduction to manage conflicts in Nun-DB](https://mateusfreira.github.io/@mateusfreira-dealing-with-conflicts-in-nun-db/)
+* [Introduction to manage conflicts in NunDB](https://mateusfreira.github.io/@mateusfreira-dealing-with-conflicts-in-nun-db/)
 
 ## Technical documentations
 
-[A fast-to-sync/search and space-optimized replication algorithm written in rust, The Nun-db data replication model](https://mateusfreira.github.io/@mateusfreira-a-fast-to-sync-search-and-space-optimized-replication-algorithm-written-in-rust-the-Nun-db-data-replication-model/)
+[A fast-to-sync/search and space-optimized replication algorithm written in rust, The NunDB data replication model](https://mateusfreira.github.io/@mateusfreira-a-fast-to-sync-search-and-space-optimized-replication-algorithm-written-in-rust-the-Nun-db-data-replication-model/)
 
-[Leader election in rust the journey towards implementing nun-db leader election](https://mateusfreira.github.io/@mateusfreira-leader-election-rust-the-journey-towards-nun-db-leader-election-implementation/)
+[Leader election in rust the journey towards implementing NunDB leader election](https://mateusfreira.github.io/@mateusfreira-leader-election-rust-the-journey-towards-nun-db-leader-election-implementation/)
 
 [Integration tests in rust a multi-process test example](https://mateusfreira.github.io/@mateusfreira-integration-tests-for-rust-apps-testing-command-line-tools-in-rust/)
 
 [Writing a prometheus exporter in rust from idea to grafana chart](https://mateusfreira.github.io/@mateusfreira-writing-a-prometheus-exporter-in-rust-from-idea-to-grafana-chart/)
 
-[Why does Nun-db we have a Debug command?](https://mateusfreira.github.io/@mateusfreira-the-nun-db-debug-command/)
+[Why does NunDB we have a Debug command?](https://mateusfreira.github.io/@mateusfreira-the-nun-db-debug-command/)
 
 ## Diagram
 
@@ -196,7 +195,7 @@ use-db $db-bame $user-name $token
 - [ ] Register Oplog? How? (Update)
 Creates a new database
 
-e.gs
+e.g.,
 
 ```
 # create simple db
@@ -244,7 +243,7 @@ set-safe name 10 Mateus # Sets key name to mateus if version is equal or minor t
 - [x] Require db auth
 - [x] Replicate? How? (replicate)
 
-### Snapshot $reclaim_space(true|false)
+### Snapshot $reclaim_space(true|false) $db_names_pipe_separated (Empty means will snapshot the current database only)
 #### Context
 - [x] Require admin auth
 - [x] Require db auth
@@ -252,12 +251,16 @@ set-safe name 10 Mateus # Sets key name to mateus if version is equal or minor t
 
 E.g:
 
-##### Snapshot the database to disk, faster method will store only the difference will use more disk space.
+##### Snapshot the databases to disk, faster method will store only the difference will use more disk space.
 ```
-snapshot
+snapshot false db1|db2|db3|db4
 ```
 
-##### Snapshot the database to disk, slower method will store all data again to disk
+##### Snapshot the database to disk, slower method will store all data again to disk and reorganize the values file
+```
+snapshot true db1|db2|db3|db4
+```
+##### Snapshot the database to disk only the current database
 ```
 snapshot true
 ```
@@ -333,7 +336,7 @@ e.gs:
 - [x] Replicate? How? (replicate-increment)
 - [x] Register Oplog? How? (Update)
 
-Increments a integer key value, if the does not exists start the value with 0, if the key is integer returns an error
+Increments an integer key value, if the key does not exist start the value with 0, if the key is integer returns an error
 e.gs: 
 Increments in 1
 ```
@@ -353,7 +356,7 @@ increment visits 10
 - [ ] Replicate? How? (replicate-increment)
 - [ ] Register Oplog? How? (Update)
 
-Internally used to acknowledged messages processed by the replicas
+Internally used to acknowledge messages processed by the replicas
 
 e.g
 ```
@@ -367,7 +370,7 @@ e.g
 - [ ] Replicate? How? (replicate-increment)
 - [ ] Register Oplog? How? (Update)
 
-Returns the cluster state, useful for debugging or admin proposes
+Returns the cluster state, useful for debugging or admin purposes
 
 e.gs
 ```
@@ -401,7 +404,7 @@ metrics-state pending_ops: 0, op_log_file_size: 0, op_log_count: 0,replication_t
 - [ ] Replicate? How? (replicate-increment)
 - [ ] Register Oplog? How? (Update)
 
-The debug command holds admin queries for Nun-db, like, for example, checking the messages that are pending replication from a specific node in the cluster.
+The debug command holds admin queries for NunDB, such as, checking the messages that are pending replication from a specific node in the cluster.
 
 e.gs
 ```
@@ -423,7 +426,7 @@ analitcs-blog : none
 $admin : newer
 
 debug force-election
-# Forces run an election immediately, which is useful if some node in the cluster is not responsive or to debug latency problems between nodes. Elections in Nun-db are predictable and, unless the primary node is slow, the primary should not change even if you force an election.
+# Forces run an election immediately, which is useful if some node in the cluster is not responsive or to debug latency problems between nodes. Elections in NunDB are predictable and, unless the primary node is slow, the primary should not change even if you force an election.
 ```
 
 ### Arbiter
@@ -490,7 +493,7 @@ $connections
 * Key used to register client as arbiter for conflict resolution
 
 ## Secure keys
-* All keys prefixed with `$$` will be considered secure by Nun-db and will only allow database admin authentication to `set`, `get`, or `remove` them. These are useful if admins want to store information that should not be leaked to any client. 
+* All keys prefixed with `$$` will be considered secure by NunDB and will only allow database admin authentication to `set`, `get`, or `remove` them. These are useful if admins want to store information that should not be leaked to any client. 
 * The key `$$token` cannot be removed even with admin credentials.
 
 
