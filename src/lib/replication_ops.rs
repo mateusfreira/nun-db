@@ -482,18 +482,20 @@ pub async fn start_replication_thread(
                         db_names,
                         reclaim_space: _reclaim_space,
                     } => {
-                        // Todo replicate all databases
-                        let db = db_names[0].clone();
-                        let db_id = get_db_id(db, &dbs);
-                        let key_id = 2; //has to be different
-                        log::debug!("Will write ReplicateSnapshot");
-                        write_op_log(
-                            &mut op_log_stream,
-                            db_id,
-                            key_id,
-                            ReplicateOpp::Snapshot,
-                            op_log_id_in,
-                        )
+                        db_names.iter().map(|db| {
+                            log::debug!("Will write ReplicateSnapshot db {}", db);
+                            let db_id = get_db_id(db.to_string(), &dbs);
+                            let key_id = 2; //has to be different
+                            log::debug!("Will write ReplicateSnapshot");
+                            write_op_log(
+                                &mut op_log_stream,
+                                db_id,
+                                key_id,
+                                ReplicateOpp::Snapshot,
+                                op_log_id_in,
+                            )
+                        })
+                        .fold(0, |_, x| x)
                     }
                     Request::ReplicateSet {
                         db,
