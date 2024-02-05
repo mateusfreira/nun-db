@@ -31,18 +31,26 @@ pub fn start_election(dbs: &Arc<Databases>) {
         Ok(id) => {
             let mut opp = dbs.get_pending_opp_copy(id);
             let mut start_time: u128 = 0;
+
+            /*
+             * Wait for the opp to be registered
+             */
             while opp.is_none() && start_time < *NUN_ELECTION_TIMEOUT {
                 log::debug!("Waiting for opp to be registered");
                 thread::sleep(time::Duration::from_millis(2));
                 start_time = start_time + 2;
                 opp = dbs.get_pending_opp_copy(id);
             }
+
             if opp.is_none() {
                 log::debug!("No opp registered, will set as primary");
                 election_win(dbs);
                 return;
             }
             start_time = 0;
+            /*
+             * Wait for the opp to be acknowledged by all nodes
+             */
             while opp.is_some() && !opp.unwrap().is_full_acknowledged() {
                 if !dbs.is_eligible() {
                     log::info!("No longer eligible to be primary, will stop election");

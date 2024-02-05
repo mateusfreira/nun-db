@@ -150,20 +150,42 @@ pub fn replicate_request(
                 );
                 Response::Ok {}
             }
-            Request::Snapshot { reclaim_space } => {
+            Request::Snapshot {
+                reclaim_space,
+                db_names,
+            } => {
                 log::debug!("Will replicate a snapshot to the database {}", db_name);
+                let db_names = if db_names.is_empty() {
+                    vec![db_name.to_string()]
+                } else {
+                    db_names
+                };
                 replicate_web(
                     replication_sender,
-                    format!("replicate-snapshot {} {}", db_name, reclaim_space),
+                    format!(
+                        "replicate-snapshot {} {}",
+                        db_names.join("|"),
+                        reclaim_space
+                    ),
                 );
                 Response::Ok {}
             }
 
-            Request::ReplicateSnapshot { db, reclaim_space } => {
-                log::debug!("Will replicate a snapshot to the database {}", db);
+            Request::ReplicateSnapshot {
+                reclaim_space,
+                db_names,
+            } => {
+                log::debug!(
+                    "Will replicate a snapshot to the database {}",
+                    db_names.join("|")
+                );
                 replicate_web(
                     replication_sender,
-                    format!("replicate-snapshot {} {}", db, reclaim_space),
+                    format!(
+                        "replicate-snapshot {} {}",
+                        db_names.join("|"),
+                        reclaim_space
+                    ),
                 );
                 Response::Ok {}
             }
@@ -457,19 +479,23 @@ pub async fn start_replication_thread(
                         )
                     }
                     Request::ReplicateSnapshot {
-                        db,
+                        db_names,
                         reclaim_space: _reclaim_space,
                     } => {
-                        let db_id = get_db_id(db, &dbs);
-                        let key_id = 2; //has to be different
-                        log::debug!("Will write ReplicateSnapshot");
-                        write_op_log(
-                            &mut op_log_stream,
-                            db_id,
-                            key_id,
-                            ReplicateOpp::Snapshot,
-                            op_log_id_in,
-                        )
+                        db_names.iter().map(|db| {
+                            log::debug!("Will write ReplicateSnapshot db {}", db);
+                            let db_id = get_db_id(db.to_string(), &dbs);
+                            let key_id = 2; //has to be different
+                            log::debug!("Will write ReplicateSnapshot");
+                            write_op_log(
+                                &mut op_log_stream,
+                                db_id,
+                                key_id,
+                                ReplicateOpp::Snapshot,
+                                op_log_id_in,
+                            )
+                        })
+                        .fold(0, |_, x| x)
                     }
                     Request::ReplicateSet {
                         db,
@@ -1486,6 +1512,7 @@ mod tests {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         let request = Request::Snapshot {
             reclaim_space: false,
+            db_names: vec![],
         };
 
         let resp_get = Response::Ok {};

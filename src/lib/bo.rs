@@ -1301,10 +1301,11 @@ pub enum Request {
     },
     Snapshot {
         reclaim_space: bool,
+        db_names: Vec<String>,
     },
     ReplicateSnapshot {
-        db: String,
         reclaim_space: bool,
+        db_names: Vec<String>,
     },
     Leave {
         name: String,
