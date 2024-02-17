@@ -65,7 +65,8 @@ impl Handler for Server {
             clean_string_to_log(&message, &self.dbs)
         );
         let messages_part = message.split(";");
-        messages_part.for_each(|message| { // @todo unit tests it
+        messages_part.for_each(|message| {
+            // @todo unit tests it
             match process_request(&message, &self.dbs, &mut self.client) {
                 Response::Error { msg } => {
                     log::debug!("Error: {}", msg);
