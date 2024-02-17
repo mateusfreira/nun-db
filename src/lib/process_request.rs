@@ -165,37 +165,37 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                     &dbs,
                     reclaim_space,
                 );
-                return Response::Ok {  }
+                return Response::Ok {};
             } else {
                 // Validate all dbs are existent
-                    let map_dbs = dbs.map.read().unwrap();
-                    let missing_dbs = db_names
-                        .clone()
-                        .into_iter()
-                        .map(|db_name| (map_dbs.contains_key(&db_name.to_string()), db_name))
-                        .filter(|db_exists| !db_exists.0);
+                let map_dbs = dbs.map.read().unwrap();
+                let missing_dbs = db_names
+                    .clone()
+                    .into_iter()
+                    .map(|db_name| (map_dbs.contains_key(&db_name.to_string()), db_name))
+                    .filter(|db_exists| !db_exists.0);
 
-                    match missing_dbs.clone().count() {
-                        0 => {
-                            db_names.clone().into_iter().for_each(|db_name| {
-                                snapshot_db_by_name(&db_name, &dbs, reclaim_space);
-                            });
-                            return Response::Ok {  }
-                        },
-                        1 => {
-                            return Response::Error { 
-                                msg: missing_dbs.last().unwrap().1 + " is not a valid database name"
-
-                            }
-                        },
-                        _ => {
-                            let dbs_name_for_message = missing_dbs.clone().fold(String::new(), |acc, dbs| acc +  dbs.1.as_str() +", ");
-                            return Response::Error {
-                                msg: dbs_name_for_message + "are not a valid database names"
-
-                            }
+                match missing_dbs.clone().count() {
+                    0 => {
+                        db_names.clone().into_iter().for_each(|db_name| {
+                            snapshot_db_by_name(&db_name, &dbs, reclaim_space);
+                        });
+                        return Response::Ok {};
+                    }
+                    1 => {
+                        return Response::Error {
+                            msg: missing_dbs.last().unwrap().1 + " is not a valid database name",
                         }
                     }
+                    _ => {
+                        let dbs_name_for_message = missing_dbs
+                            .clone()
+                            .fold(String::new(), |acc, dbs| acc + dbs.1.as_str() + ", ");
+                        return Response::Error {
+                            msg: dbs_name_for_message + "are not a valid database names",
+                        };
+                    }
+                }
             }
         }),
         Request::ReplicateSnapshot {

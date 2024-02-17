@@ -1,4 +1,5 @@
 pub mod bo;
+pub mod client;
 pub mod commad_line;
 pub mod configuration;
 pub mod consensus_ops;
