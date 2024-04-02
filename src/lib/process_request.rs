@@ -33,11 +33,11 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             &dbs,
             &client,
             &key,
-            &|_db| {
+            &|db| {
                 if dbs.is_primary() {
-                    _db.inc_value(key.to_string(), inc);
+                    return db.inc_value(key.to_string(), inc);
                 } else {
-                    let db_name_state = _db.name.clone();
+                    let db_name_state = db.name.clone();
                     // This is wrong
                     send_message_to_primary(
                         get_replicate_increment_message(
