@@ -1,5 +1,4 @@
 use futures::executor::block_on;
-use futures::join;
 use std::sync::{Arc, Mutex};
 use ws::Error;
 use ws::{connect, CloseCode, Handler, Message};
@@ -33,43 +32,51 @@ impl Handler for Tmp<'_> {
             .trim()
             .to_string();
         if message != "ok" {
-            if let Some(watch_fn) = self.watch_fn {
-                let change_parse = parse_change_response(&mut message.splitn(2, " ")).unwrap();
-                match change_parse {
-                    Response::Value {
-                        value,
-                        key: _,
-                        version: _,
-                    } => {
-                        panic!("Watch the key {}", message);
-                        match watch_fn(&value) {
-                            Ok(_) => {
-                                println!("Watch worked");
+            let command = message.splitn(2, " ").next();
+            match command {
+                Some("changed-version") => {
+                    if let Some(watch_fn) = self.watch_fn {
+                        let change_parse =
+                            parse_change_response(&mut message.splitn(2, " ")).unwrap();
+                        match change_parse {
+                            Response::Value {
+                                value,
+                                key: _,
+                                version: _,
+                            } => {
+                                //panic!("Watch the key {}", message);
+                                match watch_fn(&value) {
+                                    Ok(_) => {
+                                        println!("Watch worked");
+                                    }
+                                    Err(_) => {
+                                        self.socket_server.close(CloseCode::Away);
+                                    }
+                                }
                             }
-                            Err(_) => {
-                                self.socket_server.close(CloseCode::Away);
+                            _ => {
+                                println!("Error this response is not handled {}", message);
                             }
                         }
                     }
-                    _ => {
-                        println!("Error this response is not handled {}", message);
+                }
+                Some("value") => {
+                    let val = parse_value_response(&mut message.splitn(2, " ")).unwrap();
+                    match val {
+                        Response::Value {
+                            value,
+                            key: _,
+                            version: _,
+                        } => {
+                            self.extenal_sender.lock().unwrap().try_send(value).unwrap();
+                            self.socket_server.close(CloseCode::Away);
+                        }
+                        _ => {
+                            println!("Error this response is not handled {}", message);
+                        }
                     }
                 }
-            } else {
-                let val = parse_value_response(&mut message.splitn(2, " ")).unwrap();
-                match val {
-                    Response::Value {
-                        value,
-                        key: _,
-                        version: _,
-                    } => {
-                        self.extenal_sender.lock().unwrap().try_send(value).unwrap();
-                        self.socket_server.close(CloseCode::Away);
-                    }
-                    _ => {
-                        println!("Error this response is not handled {}", message);
-                    }
-                }
+                _ => {}
             }
         } else {
             // first message ok means auth is done
@@ -114,6 +121,7 @@ impl NunDbClient {
 
     pub async fn set(&self, key: &str, value: &str) {
         let command = format!("set {} {};get {}", key, value, key);
+        println!("Command: {}", command);
         let _ = self.connect_and_wait_for_response(command.as_str());
     }
 
@@ -192,22 +200,23 @@ fn parse_value_response(command: &mut std::str::SplitN<&str>) -> Result<Response
 fn parse_change_response(command: &mut std::str::SplitN<&str>) -> Result<Response, String> {
     let _change_command = command.next().unwrap();
     let mut key_parts = match command.next() {
-        Some(value) => value.splitn(2, " "),
+        Some(value) => value.splitn(3, " "),
         None => return Err(format!("get must contain a key")),
     };
     let key = key_parts.next().unwrap();
+    let version = key_parts.next().unwrap();
     let value = key_parts.next().unwrap();
     Ok(Response::Value {
         value: String::from(value.replace("\n", "")),
         key: String::from(key),
-        version: 0,
+        version: version.parse::<i32>().unwrap(),
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{thread, time};
     use super::*;
+    use std::{thread, time};
 
     macro_rules! aw {
         ($e:expr) => {
@@ -238,25 +247,36 @@ mod tests {
     #[test]
     fn should_watch_a_key() {
         let rand_value = Databases::next_op_log_id().to_string();
-        let nun_client = NunDbClient::new("ws://127.0.0.1:3058", "sample", "user", "sample-pwd");
-        let con = nun_client.unwrap();
         let key_name = "key1";
-        let watch = async {
+
+        let rand_value_watch = rand_value.clone();
+        let watch_thread = thread::spawn(move || {
+            let nun_client =
+                NunDbClient::new("ws://127.0.0.1:3058", "sample", "user", "sample-pwd");
+            let con = nun_client.unwrap();
             con.watch(key_name, &|value| {
-                assert_eq!(value.to_string(), rand_value);
+                assert_eq!(value.to_string(), rand_value_watch);
                 Err(String::from("Done"))
             });
-            panic!("on set");
-        };
-        thread::sleep(time::Duration::from_millis(100));// Wait until set is ready 
-        let set_thread = async {
-            let set = con.set("key1", rand_value.as_str());
-        };
+        });
 
-        let join_all_promises = async {
-            join!(watch, set_thread);
-        };
-
-        block_on(join_all_promises);
+        let rand_value_set = rand_value.clone();
+        let set_thread = thread::spawn(move || async move {
+            thread::sleep(time::Duration::from_secs(2));
+            let nun_client =
+                NunDbClient::new("ws://127.0.0.1:3058", "sample", "user", "sample-pwd");
+            let con = nun_client.unwrap();
+            //let rand_value_set = Databases::next_op_log_id().to_string();
+            let _set = con.set("key1", rand_value_set.as_str()).await;
+        });
+        block_on(set_thread.join().unwrap());
+        //set_thread.join().unwrap();
+        match watch_thread.join() {
+            Ok(_) => {}
+            Err(e) => {
+                println!("Error: {:?}", e);
+                assert_eq!(true, false);
+            }
+        }
     }
 }
