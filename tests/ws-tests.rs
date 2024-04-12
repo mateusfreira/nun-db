@@ -1,15 +1,13 @@
 #[cfg(test)]
 pub mod helpers;
 mod tests {
-    use std::sync::Once;
+
     use crate::helpers::*;
     use nundb::client::client::NunDbClient;
     use nundb::bo::Databases;
     use futures::executor::block_on;
     use std::{thread, time};
     use std::process::Child;
-
-    static INIT: Once = Once::new();
 
     macro_rules! aw {
         ($e:expr) => {
