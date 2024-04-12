@@ -1,4 +1,4 @@
-use futures::executor::block_on;
+use futures::channel::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use ws::Error;
 use ws::{connect, CloseCode, Handler, Message};
@@ -10,13 +10,13 @@ pub struct NunDbClient {
     db_name: String,
     user: String,
     password: String,
-    receiver: futures::channel::mpsc::Receiver<String>,
-    sender: Arc<Mutex<futures::channel::mpsc::Sender<String>>>,
+    sender: Arc<Mutex<Sender<String>>>,
+    receiver: Receiver<String>,
 }
 
 struct Tmp<'a> {
     socket_server: ws::Sender,
-    extenal_sender: Arc<Mutex<futures::channel::mpsc::Sender<String>>>,
+    extenal_sender: Arc<Mutex<Sender<String>>>,
     is_auth: bool,
     watch_fn: Option<&'a dyn Fn(&String) -> Result<(), String>>,
 }
@@ -108,13 +108,13 @@ impl NunDbClient {
         user: &str,
         password: &str,
     ) -> Result<NunDbClient, String> {
-        let (send, receive) = futures::channel::mpsc::channel::<String>(100);
+        let (send, receiver) = channel::<String>(100);
         Ok(NunDbClient {
             server_url: server_url.to_string(),
             db_name: db_name.to_string(),
             user: user.to_string(),
             password: password.to_string(),
-            receiver: receive,
+            receiver,
             sender: Arc::new(Mutex::new(send)),
         })
     }
@@ -152,7 +152,7 @@ impl NunDbClient {
         let command = command.to_string();
         let (user, password, db_name, server_url) = self.get_auth_data();
 
-        let (send, mut receive) = futures::channel::mpsc::channel::<String>(100);
+        let (send, mut receive) = channel::<String>(100);
         let send = Arc::new(Mutex::new(send));
         if let Err(e) = connect(server_url.clone(), |out| {
             auth_on_sender(&out, &db_name, &user, &password);
@@ -176,6 +176,10 @@ impl NunDbClient {
         let db_name = self.db_name.clone();
         let server_url = self.server_url.clone();
         (user, password, db_name, server_url)
+    }
+
+    fn try_next(&mut self) -> Result<Option<String>, TryRecvError> {
+        return self.receiver.try_next();
     }
 }
 
@@ -216,6 +220,7 @@ fn parse_change_response(command: &mut std::str::SplitN<&str>) -> Result<Respons
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::executor::block_on;
     use std::{thread, time};
 
     macro_rules! aw {
@@ -226,7 +231,6 @@ mod tests {
 
     #[test]
     fn should_connect_to_nun_db() {
-        // Connect to the NunDb server with local host test db user user and password test-pwd
         let nun_client = NunDbClient::new("ws://localhost:3012", "test", "user", "test-pwd");
         assert_eq!(nun_client.is_ok(), true);
     }
@@ -262,11 +266,11 @@ mod tests {
 
         let rand_value_set = rand_value.clone();
         let set_thread = thread::spawn(move || async move {
-            thread::sleep(time::Duration::from_secs(2));
+            thread::sleep(time::Duration::from_millis(100));
             let nun_client =
                 NunDbClient::new("ws://127.0.0.1:3058", "sample", "user", "sample-pwd");
             let con = nun_client.unwrap();
-            //let rand_value_set = Databases::next_op_log_id().to_string();
+            // let rand_value_set = Databases::next_op_log_id().to_string();
             let _set = con.set("key1", rand_value_set.as_str()).await;
         });
         block_on(set_thread.join().unwrap());
