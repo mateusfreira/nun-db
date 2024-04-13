@@ -111,13 +111,16 @@ impl NunDbClient {
         })
     }
 
-    pub async fn set(&self, key: &str, value: &str) {
+    pub async fn set(&self, key: &str, value: &str) -> Result<(), String> {
         let command = format!("set {} {};get {}", key, value, key);
         println!("Command: {}", command);
-        let _ = self.connect_and_wait_for_response(command.as_str());
+        match self.connect_and_wait_for_response(command.as_str()) {
+            Some(_) => Ok(()),
+            None => Ok(()),
+        }
     }
 
-    pub async fn get(&self, key: &str) -> String {
+    pub async fn get(&self, key: &str) -> Option<String> {
         let command = format!("get {}", key);
         let result = self.connect_and_wait_for_response(command.as_str());
         result
@@ -140,7 +143,7 @@ impl NunDbClient {
         }
     }
 
-    fn connect_and_wait_for_response(&self, command: &str) -> String {
+    fn connect_and_wait_for_response(&self, command: &str) -> Option<String> {
         let command = command.to_string();
         let (user, password, db_name, server_url) = self.get_auth_data();
 
@@ -159,7 +162,7 @@ impl NunDbClient {
             println!("Failed to connect to server: {}", e);
         }
         let result = receive.try_next();
-        return result.unwrap().unwrap();
+        return result.unwrap();
     }
 
     fn get_auth_data(&self) -> (String, String, String, String) {
