@@ -1,5 +1,3 @@
-use futures::executor::block_on;
-use futures::join;
 use std::sync::{Arc, Mutex};
 use ws::Error;
 use ws::{connect, CloseCode, Handler, Message};
@@ -74,11 +72,18 @@ impl Handler for Tmp<'_> {
         } else {
             // first message ok means auth is done
             if self.is_auth {
-                self.extenal_sender
+                match self
+                    .extenal_sender
                     .lock()
                     .unwrap()
                     .try_send("ok".to_string())
-                    .unwrap();
+                {
+                    Ok(_) => (),
+                    Err(e) => {
+                        println!("Errror {:?}", e);
+                        ()
+                    }
+                }
             } else {
                 self.is_auth = true;
             }
@@ -206,8 +211,10 @@ fn parse_change_response(command: &mut std::str::SplitN<&str>) -> Result<Respons
 
 #[cfg(test)]
 mod tests {
-    use std::{thread, time};
     use super::*;
+    use futures::executor::block_on;
+    use futures::join;
+    use std::{thread, time};
 
     macro_rules! aw {
         ($e:expr) => {
@@ -248,7 +255,7 @@ mod tests {
             });
             panic!("on set");
         };
-        thread::sleep(time::Duration::from_millis(100));// Wait until set is ready 
+        thread::sleep(time::Duration::from_millis(100)); // Wait until set is ready
         let set_thread = async {
             let set = con.set("key1", rand_value.as_str());
         };
