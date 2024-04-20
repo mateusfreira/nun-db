@@ -74,11 +74,17 @@ impl Handler for Tmp<'_> {
         } else {
             // first message ok means auth is done
             if self.is_auth {
-                self.extenal_sender
+                match self.extenal_sender
                     .lock()
                     .unwrap()
                     .try_send("ok".to_string())
-                    .unwrap();
+                    {
+                        Ok(_) => (),
+                        Err(e) => {
+                            println!("Error to send ok to external sender {:?}", e);
+                            ()
+                        }
+                    }
             } else {
                 self.is_auth = true;
             }
