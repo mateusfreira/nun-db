@@ -44,7 +44,7 @@ mod tests {
                     NunDbClient::new("ws://127.0.0.1:3058", "sample", "user", "sample-pwd");
                 let con = nun_client.unwrap();
                 let set = con.set("key1", rand_value.as_str());
-                aw!(set);
+                aw!(set).unwrap();
                 let value = con.get("key1");
                 assert_eq!(aw!(value).unwrap(), rand_value);
             },
@@ -68,6 +68,7 @@ mod tests {
                     let con = nun_client.unwrap();
                     con.watch(key_name, &|value| {
                         assert_eq!(value.to_string(), rand_value_watch);
+                        // returns an error to stop watching
                         Err(String::from("Done"))
                     });
                 });

@@ -128,9 +128,9 @@ stream
 println ! ("Type: {:?} Data: {:?}", event_type, data);
 }, | err| println!("{:?}", err), false).await;
 ```
-- [ ] Auth response should not be only ok
-
-- [ ] Hold the same sonnection for multiple methods calls
-- [ ] Find a name for the tmp class
-- [ ] Finish the connect implementation
-- [ ] Implement ws mock for unit test ...
+- [x] Auth response should not be only ok
+- [x] Hold the same sonnection for multiple methods calls
+- [x] Find a name for the tmp class
+- [x] Finish the connect implementation
+- [x] Implement ws mock for unit test ...
+- [x] Fix print to logger messages
