@@ -187,7 +187,6 @@ fn create_db_from_file_name(file_name: &String, dbs: &Arc<Databases>) -> (Databa
         let mut value_buffer = vec![0; value_length];
         let _ = values_file.read(&mut value_buffer);
         let value = str::from_utf8(&value_buffer).unwrap();
-
         if version != VERSION_DELETED {
             value_data.insert(
                 key.to_string(),

@@ -64,53 +64,56 @@ impl Handler for Server {
             thread_id::get(),
             clean_string_to_log(&message, &self.dbs)
         );
-        match process_request(&message, &self.dbs, &mut self.client) {
-            Response::Error { msg } => {
-                log::debug!("Error: {}", msg);
-                match self.client.sender.try_send(format!("error {} \n", msg)) {
-                    Ok(_) => {}
-                    Err(e) => log::warn!(
-                        "ws_ops::_read_thread::process_request::try_send::Error {}",
-                        e
-                    ),
+        let messages_part = message.split(";");
+        messages_part.for_each(|message| {
+            match process_request(&message, &self.dbs, &mut self.client) {
+                Response::Error { msg } => {
+                    log::debug!("Error: {}", msg);
+                    match self.client.sender.try_send(format!("error {} \n", msg)) {
+                        Ok(_) => {}
+                        Err(e) => log::warn!(
+                            "ws_ops::_read_thread::process_request::try_send::Error {}",
+                            e
+                        ),
+                    }
+                }
+                Response::VersionError {
+                    msg,
+                    key: _,
+                    old_version: _,
+                    version: _,
+                    old_value: _,
+                    state: _,
+                    change: _,
+                    db: _,
+                } => {
+                    log::debug!("Error: {}", msg);
+                    match self.client.sender.try_send(format!("error {} \n", msg)) {
+                        Ok(_) => {}
+                        Err(e) => log::warn!(
+                            "ws_ops::_read_thread::process_request::try_send::Error {}",
+                            e
+                        ),
+                    }
+                }
+                e => {
+                    log::debug!(
+                        "[{}] Server responded message  {:?} to {}",
+                        thread_id::get(),
+                        e,
+                        message
+                    );
+                    match self.client.sender.try_send(format!("ok \n")) {
+                        Ok(_) => {}
+                        Err(e) => log::warn!(
+                            "ws_ops::_read_thread::process_request::_::try_send::Error {}",
+                            e
+                        ),
+                    }
+                    log::debug!("ws::Success processed");
                 }
             }
-            Response::VersionError {
-                msg,
-                key: _,
-                old_version: _,
-                version: _,
-                old_value: _,
-                state: _,
-                change: _,
-                db: _,
-            } => {
-                log::debug!("Error: {}", msg);
-                match self.client.sender.try_send(format!("error {} \n", msg)) {
-                    Ok(_) => {}
-                    Err(e) => log::warn!(
-                        "ws_ops::_read_thread::process_request::try_send::Error {}",
-                        e
-                    ),
-                }
-            }
-            e => {
-                log::debug!(
-                    "[{}] Server responded message  {:?} to {}",
-                    thread_id::get(),
-                    e,
-                    message
-                );
-                match self.client.sender.try_send(format!("ok \n")) {
-                    Ok(_) => {}
-                    Err(e) => log::warn!(
-                        "ws_ops::_read_thread::process_request::_::try_send::Error {}",
-                        e
-                    ),
-                }
-                log::debug!("ws::Success processed");
-            }
-        }
+        });
 
         Ok(())
     }

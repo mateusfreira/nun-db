@@ -232,6 +232,7 @@ fn parse_get_safe_command(command: &mut std::str::SplitN<&str>) -> Result<Reques
     };
     Ok(Request::GetSafe { key })
 }
+
 fn parse_get_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     let key = match command.next() {
         Some(key) => key.replace("\n", ""),
@@ -239,6 +240,7 @@ fn parse_get_command(command: &mut std::str::SplitN<&str>) -> Result<Request, St
     };
     Ok(Request::Get { key })
 }
+
 fn parse_unwatch_command(command: &mut std::str::SplitN<&str>) -> Result<Request, String> {
     let key = match command.next() {
         Some(key) => key.replace("\n", ""),

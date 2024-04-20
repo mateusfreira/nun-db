@@ -101,3 +101,36 @@ nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-d
 [src/lib/process_request.rs:495 ]
 - [ ] Improve the code in 
 [src/lib/replication_ops.rs:908 ]
+
+
+## Sat Feb 17 13:11:37 2024
+- [ ] Rust ws client for Nun-db with TDD
+> Redis https://docs.rs/redis/latest/redis/
+```rust
+let client = redis::Client::open("redis://127.0.0.1/")?;
+let mut con = client.get_connection()?;
+let mut pubsub = con.as_pubsub();
+pubsub.subscribe("channel_1")?;
+pubsub.subscribe("channel_2")?;
+
+loop {
+    let msg = pubsub.get_message()?;
+    let payload : String = msg.get_payload()?;
+    println!("channel '{}': {}", msg.get_channel_name(), payload);
+}
+```
+> Firebase
+```rust
+let firebase = Firebase::new("https://myfirebase.firebaseio.com").at("users").unwrap();
+let stream = firebase.with_realtime_events().unwrap();
+stream
+.listen( | event_type, data| {
+println ! ("Type: {:?} Data: {:?}", event_type, data);
+}, | err| println!("{:?}", err), false).await;
+```
+- [x] Auth response should not be only ok
+- [x] Hold the same sonnection for multiple methods calls
+- [x] Find a name for the tmp class
+- [x] Finish the connect implementation
+- [x] Implement ws mock for unit test ...
+- [x] Fix print to logger messages
