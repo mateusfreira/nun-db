@@ -201,13 +201,13 @@ pub mod helpers {
         //cmd.assert().success();
     }
 
-    pub fn run_test<T>(test: T, setup: fn() -> (), teardown: fn() -> ()) -> ()
+    pub fn run_test<T>(test: T, setup: fn() -> Child, teardown: fn(Child) -> ()) -> ()
     where
         T: FnOnce() -> () + panic::UnwindSafe,
     {
-        setup();
+        let child = setup();
         let result = panic::catch_unwind(|| test());
-        teardown();
+        teardown(child);
         assert!(result.is_ok())
     }
 }

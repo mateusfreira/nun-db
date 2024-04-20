@@ -474,6 +474,12 @@ set-permissions $user_name $permissions $key_pattern|$permissions $key_pattern;
 
 set-permissions foo rw test-*|rwi count;
 # Grant permission to user called foo to read and write keys starting with test-, and read write and increment count key.
+# Permissions latter
+# r = Read,
+# w = Write,
+# i = Increment,
+# x = Remove,
+
 ```
 
 

@@ -73,10 +73,10 @@ create-vue: build
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db vue vue_pwd; use-db vue vue_pwd; snapshot;"
 
 create-sample:
-	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db sample sample-pwd; use-db sample sample-pwd; create-user user sample-pwd; set-permissions user rwdix *; snapshot;"
+	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db sample sample-pwd; use-db sample sample-pwd; snapshot; create-user user sample-pwd; set-permissions user rwix *"
 
 create-test:
-	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db test test-pwd arbiter; use-db test test-pwd; snapshot; create-user user sample-pwd; set-permissions user rwdix *; snapshot"
+	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db test test-pwd arbiter; use-db test test-pwd; snapshot;"
 
 create-blog: build
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db analitcs-blog analitcs-blog-2903uyi9ewrj; use-db analitcs-blog analitcs-blog-2903uyi9ewrj; snapshot;"
