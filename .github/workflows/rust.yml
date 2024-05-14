@@ -36,6 +36,8 @@ jobs:
         RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
         TIME_TO_START: 1
       run: mkdir dbs&&cargo test --verbose -- --test-threads=1  # threads=1 to avoid the problem with the in disk tests
+    - name: rust-grcov
+      uses: actions-rs/grcov@v0.1
     - name: Codecov
       uses: codecov/codecov-action@v4
       with:
