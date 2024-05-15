@@ -1375,6 +1375,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(tarpaulin_include))]
     fn restore_should_be_fast() {
         let (dbs, db_name, db) = create_db_with_10k_keys();
         clean_all_db_files(&db_name);
@@ -1421,6 +1422,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(tarpaulin_include))]
     fn should_store_all_keys_if_reclame_space_mode() {
         let (dbs, db_name, db) = create_db_with_10k_keys();
         clean_all_db_files(&db_name);
