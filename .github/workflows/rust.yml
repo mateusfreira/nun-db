@@ -35,6 +35,9 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Generate code coverage
+        env:
+          TIME_TO_START: 1
+          NUN_ELECTION_TIMEOUT: 3000
         run: |
           cargo +nightly tarpaulin --verbose --all-features --workspace --timeout 120 --out xml -- --test-threads=1
 
