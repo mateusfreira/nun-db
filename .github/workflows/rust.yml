@@ -24,7 +24,11 @@ jobs:
     - name: Build
       if: ${{ !env.ACT }}
       run: cargo build --verbose
-  test:
+    - name: Run tests
+      env:
+        TIME_TO_START: 1
+      run: mkdir dbs&&cargo test -- --test-threads=1 # threads=1 to avoid the problem with the in disk tests
+  coverage:
     name: coverage
     runs-on: ubuntu-latest
     container:
