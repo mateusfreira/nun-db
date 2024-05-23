@@ -43,7 +43,7 @@ jobs:
           TIME_TO_START: 1
           NUN_ELECTION_TIMEOUT: 3000
         run: |
-          mkdir dbs&&cargo +nightly tarpaulin --verbose --all-features --workspace --timeout 120 --out xml --lib -- --test-threads=1
+          mkdir dbs&&cargo +nightly tarpaulin --verbose --all-features --workspace --timeout 120 --out xml -- --test-threads=1
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v2
