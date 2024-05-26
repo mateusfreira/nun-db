@@ -1535,4 +1535,17 @@ mod tests {
             fs::remove_file(key_file_name).unwrap();
         }
     }
+
+    #[test]
+    fn should_store_and_load_keys() {
+        let mut keys = HashMap::new();
+        keys.insert(String::from("key_1"), 1);
+        keys.insert(String::from("key_2"), 2);
+        write_keys_map_to_disk(keys);
+        let keys_from_fisk = load_keys_map_from_disk();
+        assert_eq!(keys_from_fisk.get("key_1"), Some(&1));
+        assert_eq!(keys_from_fisk.get("key_2"), Some(&2));
+
+    }
+
 }
