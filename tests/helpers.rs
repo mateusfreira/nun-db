@@ -174,9 +174,11 @@ pub mod helpers {
     pub fn kill_replicas(
         mut replica_processes: (Child, Child, Child),
     ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Killing replicas");
         replica_processes.0.kill()?;
         replica_processes.1.kill()?;
         replica_processes.2.kill()?;
+        log::info!("Replicas killed");
         Ok(())
     }
 
