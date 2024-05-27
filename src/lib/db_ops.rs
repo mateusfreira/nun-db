@@ -65,13 +65,12 @@ pub fn create_db(
 }
 
 pub fn snapshot_db_by_name(name: &String, dbs: &Databases, reclaim_space: bool) -> Response {
-    {
-        dbs.to_snapshot
-            .write()
-            .unwrap()
-            .push((name.clone(), reclaim_space));
-    };
-    Response::Ok {}
+    match dbs.add_db_to_snapshot_by_name(name, reclaim_space) {
+        Ok(_) => Response::Ok {},
+        Err(e) => Response::Error {
+            msg: format!("Error trying to snapshot database: {}", e),
+        },
+    }
 }
 
 pub fn get_key_value(key: &String, sender: &Sender<String>, db: &Database) -> Response {
