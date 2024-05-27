@@ -292,17 +292,22 @@ pub fn db_name_from_file_name(full_name: &String) -> String {
     return db_name.to_string();
 }
 
+fn remove_backup_key_file(db_name: &String) {
+    let file_name = format!("{}.keys.old", file_name_from_db_name(&db_name));
+    if Path::new(&file_name).exists() {
+        fs::remove_file(file_name).unwrap();
+    }
+}
+
 fn get_key_file_append_mode(db_name: &String, reclame_space: bool) -> BufWriter<File> {
     let file_name = format!("{}.keys", file_name_from_db_name(&db_name));
 
-    // Todo missing test and it should not delete the file until the migration is safe
     if reclame_space && Path::new(&file_name).exists() {
         let backup_file = format!("{}.old", file_name);
         // Rename becuase remove may not be sync
+        // Will be removed latter once the new file is safe see method remove_backup_key_file
         fs::rename(&file_name, &backup_file)
             .expect("Could not rename the data file to reclame space");
-        // Todo Not a good ideia
-        fs::remove_file(&backup_file).expect("Could not delete the backup file to reclame  space");
     }
 
     BufWriter::with_capacity(
@@ -610,6 +615,7 @@ pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
             let db_opt = dbs_map.get(&database_name);
             if let Some(db) = db_opt {
                 storage_data_disk(db, &database_name, reclaim_space);
+                remove_backup_key_file(&database_name); 
             } else {
                 log::warn!("Database not found {}", database_name)
             }
@@ -1652,5 +1658,37 @@ mod tests {
 
         let final_size_after_reclame = loaded_db.data_disk_size();
         assert!(size_after > final_size_after_reclame);
+    }
+
+    #[test]
+    fn should_remove_the_backfile_after_snapshot() {
+        let dbs = create_test_dbs();
+        let db_name = String::from(format!("test-db_{}",Databases::next_op_log_id()));
+        let mut hash = HashMap::new();
+        hash.insert(String::from("some"), String::from("value"));
+        hash.insert(String::from("some1"), String::from("value1"));
+        let db = Database::create_db_from_hash(
+            db_name.clone(),
+            hash,
+            DatabaseMataData::new(0, ConsensuStrategy::Arbiter),
+        );
+        dbs.add_database(db);
+        dbs.add_db_to_snapshot_by_name(&db_name, false).unwrap();
+        let queue_size = {
+            dbs.to_snapshot.read().unwrap().len()
+        };
+        assert_eq!(queue_size, 1);
+        snapshot_all_pendding_dbs(&dbs);
+
+        let dbs_after_save = create_test_dbs();
+        load_all_dbs_from_disk(&dbs_after_save);
+        let dbs_map = dbs_after_save.map.read().expect("Could not lock the dbs mutex");
+        let loaded_db = dbs_map.get(&db_name).unwrap();
+        loaded_db.set_value(&Change::new(String::from("some"), String::from("value-jose"), 2));
+        dbs.add_db_to_snapshot_by_name(&db_name, true).unwrap();
+        snapshot_all_pendding_dbs(&dbs);
+
+        let backup_file_name = format!("{}.keys.old", file_name_from_db_name(&db_name));
+        assert_eq!(Path::new(&backup_file_name).exists(), false);
     }
 }
