@@ -1009,8 +1009,6 @@ mod tests {
         }
     }
 
-
-
     #[test]
     fn should_create_db() {
         let (mut receiver, dbs, mut client) = create_default_args();
