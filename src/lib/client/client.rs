@@ -121,7 +121,8 @@ impl Handler for NunDbCLientWsHandler<'_> {
     fn on_close(&mut self, code: CloseCode, reason: &str) {
         log::debug!(
             "Connection closed with code: {:?} and reason: {}",
-            code, reason
+            code,
+            reason
         );
     }
 }
