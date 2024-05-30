@@ -1,18 +1,18 @@
 # <img src="./logo-nundb.png" width="50" />  NunDB
 
-## What is Nun DB
+## What is NunDB
 
-Nun DB is an open source real-time database, made to be fast, light and easy to use.
+NunDB is an open source real-time database, made to be fast, light and easy to use.
 
-Nun DB is written to be memory safe and horizontal(soon) scalable.
+NunDB is written to be memory-safe and horizontal(soon) scalable.
 
-We believe we can keep Nun DB simple and at the same time it can power lots of different apps and use cases.
+We believe we can keep NunDB simple, and at the same time, it can power lots of different apps and use cases.
 
 ## Examples Use cases 
 
 Checkout our examples of integration and see what we can do for your app
 
-* [Vue.js + Nun DB jsfiddle](https://jsfiddle.net/2op63ctk/)
+* [Vue.js + NunDB jsfiddle](https://jsfiddle.net/2op63ctk/)
 * [React.js Realtime Todo app](https://github.com/mateusfreira/nun-db-js/tree/master/examples/react)
 
 
@@ -74,7 +74,7 @@ Once done, you now have NunDB running in your docker and exposing all the ports 
 
 * [How to create users with different permission levels in NunDB](https://mateusfreira.github.io/@mateusfreira-2023-09-17-how-to-create-users-in-nun-db/)
 
-* [How to Building a Trello-like React/Redux App with Nun-DB with offline and conflict resolution features](https://mateusfreira.github.io/@mateusfreira-trelo-clone-offline-first-with-nun-db-dealing-with-conflicts/)
+* [How to Building a Trello-like React/Redux App with NunDB with offline and conflict resolution features](https://mateusfreira.github.io/@mateusfreira-trelo-clone-offline-first-with-nun-db-dealing-with-conflicts/)
 
 * [How-to Make Redux TodoMVC Example a real-time multiuser with NunDB in 10 steps](https://mateusfreira.github.io/@mateusfreira-2021-06-30-how-to-making-redux-todomvc-example-a-real-time-multiuser-with-nun-db/)
 
