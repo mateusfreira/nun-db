@@ -843,6 +843,22 @@ mod tests {
     }
 
     #[test]
+    fn should_remove_key_via_replication_keys() {
+        let (mut _receiver, dbs, mut admin_client) = create_test_db();
+        let (mut receiver, _, mut client) = create_default_args();
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,$connections,name,name1\n");
+        process_request("replicate-remove test name1", &dbs, &mut admin_client);
+        process_request("keys", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,$connections,name\n");
+        let result = process_request("replicate-remove test1 name1", &dbs, &mut admin_client);
+        assert_eq!(Response::Error { msg: "Not a valid database name".to_string() }, result);
+    }
+
+    #[test]
     fn should_return_secret_keys_if_admin_auth() {
         let (mut receiver, dbs, mut client) = create_test_db();
         process_request("set name jose", &dbs, &mut client);
@@ -1026,8 +1042,6 @@ mod tests {
             panic!("Should return error");
         }
     }
-
-
 
     #[test]
     fn should_create_db() {
