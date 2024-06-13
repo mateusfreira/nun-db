@@ -855,7 +855,12 @@ mod tests {
         process_request("keys", &dbs, &mut client);
         assert_received(&mut receiver, "keys ,$connections,name\n");
         let result = process_request("replicate-remove test1 name1", &dbs, &mut admin_client);
-        assert_eq!(Response::Error { msg: "Not a valid database name".to_string() }, result);
+        assert_eq!(
+            Response::Error {
+                msg: "Not a valid database name".to_string()
+            },
+            result
+        );
     }
 
     #[test]
@@ -981,6 +986,14 @@ mod tests {
         process_request("replicate-increment test some 2", &dbs, &mut client);
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value 3\n");
+
+        let result = process_request("replicate-increment test-name some 2", &dbs, &mut client);
+        assert_eq!(
+            Response::Error {
+                msg: "Not a valid database name".to_string()
+            },
+            result
+        );
     }
 
     #[test]
