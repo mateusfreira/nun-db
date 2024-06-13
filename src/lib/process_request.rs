@@ -955,7 +955,7 @@ mod tests {
         process_request("replicate-increment test some", &dbs, &mut client);
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value 1\n");
-        process_request("replicate-increment test increment some", &dbs, &mut client);
+        process_request("replicate-increment test some", &dbs, &mut client);
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value 2\n");
         process_request("replicate-increment test some -1", &dbs, &mut client);
