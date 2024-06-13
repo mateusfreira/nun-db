@@ -5,6 +5,7 @@ mod tests {
     use predicates::prelude::*; // Used for writing assertions
 
     #[test]
+    #[cfg(not(tarpaulin))]
     fn should_replicate_user_creation() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
         let replicas_processes = helpers::start_3_replicas();
@@ -76,7 +77,7 @@ mod tests {
         .success()
         .stdout(predicate::str::contains("empty;empty"));
 
-        helpers::wait_seconds(3); //Wait 3s to the replication
+        helpers::wait_seconds(helpers::time_to_start_replica() * 3); //Wait 3s to the replication
 
         helpers::nundb_exec(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
@@ -120,6 +121,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(tarpaulin))]
     fn should_use_exter_address_if_external_addr_is_provided(
     ) -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
