@@ -1779,6 +1779,22 @@ mod tests {
             "pending_ops should stay 0, message already fully acknowledged"
         );
     }
+
+    #[test]
+    fn new_client_shuld_not_be_primary() {
+        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
+        let client = Client::new_empty(sender);
+        assert!(!client.is_primary());
+        {
+            let mut member_lock = client.cluster_member.lock().unwrap();
+            *member_lock = Some(ClusterMember {
+                name: String::from("any"),
+                role: ClusterRole::Primary,
+                sender: None,
+            });
+        }
+        assert!(client.is_primary());
+    }
 }
 
 pub fn get_var_type<T>(_: &T) -> String {

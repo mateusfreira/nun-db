@@ -843,6 +843,27 @@ mod tests {
     }
 
     #[test]
+    fn should_remove_key_via_replication_keys() {
+        let (mut _receiver, dbs, mut admin_client) = create_test_db();
+        let (mut receiver, _, mut client) = create_default_args();
+        process_request("use-db test test-1", &dbs, &mut client);
+        process_request("set name jose", &dbs, &mut client);
+        process_request("set name1 jose", &dbs, &mut client);
+        process_request("keys", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,$connections,name,name1\n");
+        process_request("replicate-remove test name1", &dbs, &mut admin_client);
+        process_request("keys", &dbs, &mut client);
+        assert_received(&mut receiver, "keys ,$connections,name\n");
+        let result = process_request("replicate-remove test1 name1", &dbs, &mut admin_client);
+        assert_eq!(
+            Response::Error {
+                msg: "Not a valid database name".to_string()
+            },
+            result
+        );
+    }
+
+    #[test]
     fn should_return_secret_keys_if_admin_auth() {
         let (mut receiver, dbs, mut client) = create_test_db();
         process_request("set name jose", &dbs, &mut client);
@@ -947,6 +968,32 @@ mod tests {
         process_request("increment some 2", &dbs, &mut client);
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value 3\n");
+    }
+
+    #[test]
+    fn should_process_replicate_increment() {
+        let (mut receiver, dbs, mut client) = create_test_db();
+        process_request("replicate-increment test some", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value 1\n");
+        process_request("replicate-increment test some", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value 2\n");
+        process_request("replicate-increment test some -1", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value 1\n");
+
+        process_request("replicate-increment test some 2", &dbs, &mut client);
+        process_request("get some", &dbs, &mut client);
+        assert_received(&mut receiver, "value 3\n");
+
+        let result = process_request("replicate-increment test-name some 2", &dbs, &mut client);
+        assert_eq!(
+            Response::Error {
+                msg: "Not a valid database name".to_string()
+            },
+            result
+        );
     }
 
     #[test]

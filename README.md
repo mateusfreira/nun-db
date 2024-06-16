@@ -101,6 +101,9 @@ nun-db --user $NUN_USER  -p $NUN_PWD --host "https://http.nundb.org" exec "use-d
 
 [Why does NunDB we have a Debug command?](https://mateusfreira.github.io/@mateusfreira-the-nun-db-debug-command/)
 
+[Code Coverage for Rust Projects with GitHub Actions](https://blog.freira.dev/@mateusfreira-2024-06-15-code-coverage-for-rust-projects-with-github-actions/)
+[![codecov](https://codecov.io/gh/mateusfreira/nun-db/graph/badge.svg?token=yPiTap1MPJ)](https://codecov.io/gh/mateusfreira/nun-db)
+
 ## Diagram
 
 ```bash

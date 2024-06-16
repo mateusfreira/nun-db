@@ -32,7 +32,7 @@ pub mod helpers {
 
     pub const REPLICATE_SET_ADDRS: &'static str = "127.0.0.1:3016,127.0.0.1:3017,127.0.0.1:3018";
 
-    fn time_to_start_replica() -> u64 {
+    pub fn time_to_start_replica() -> u64 {
         match env::var_os("TIME_TO_START") {
             Some(time_to_start) => time_to_start.into_string().unwrap().parse::<u64>().unwrap(),
             None => 1,
@@ -174,9 +174,11 @@ pub mod helpers {
     pub fn kill_replicas(
         mut replica_processes: (Child, Child, Child),
     ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Killing replicas");
         replica_processes.0.kill()?;
         replica_processes.1.kill()?;
         replica_processes.2.kill()?;
+        log::info!("Replicas killed");
         Ok(())
     }
 
