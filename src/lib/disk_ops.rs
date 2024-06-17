@@ -1587,6 +1587,7 @@ mod tests {
     #[test]
     fn should_store_all_dbs() {
         let dbs = create_test_dbs();
+        dbs.is_oplog_valid.store(true, Ordering::Relaxed);
         let db_name = String::from(format!("test-db_{}", Databases::next_op_log_id()));
         let mut hash = HashMap::new();
         hash.insert(String::from("some"), String::from("value"));
@@ -1605,6 +1606,7 @@ mod tests {
         assert_eq!(queue_size, 0);
 
         let dbs_after_save = create_test_dbs();
+        dbs_after_save.is_oplog_valid.store(true, Ordering::Relaxed);
         load_all_dbs_from_disk(&dbs_after_save);
         let dbs_map = dbs_after_save
             .map
