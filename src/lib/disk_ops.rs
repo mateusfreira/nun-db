@@ -1587,7 +1587,7 @@ mod tests {
     #[test]
     fn should_store_all_dbs() {
         let dbs = create_test_dbs();
-        // dbs.is_oplog_valid.store(false, Ordering::Relaxed);
+        dbs.is_oplog_valid.store(false, Ordering::Release);
         let db_name = String::from(format!("test-db_{}", Databases::next_op_log_id()));
         let mut hash = HashMap::new();
         hash.insert(String::from("some"), String::from("value"));
