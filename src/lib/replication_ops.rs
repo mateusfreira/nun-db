@@ -65,19 +65,6 @@ pub fn get_replicate_message(db_name: String, key: String, value: String, versio
     return format!("replicate {} {} {} {}", db_name, key, version, value);
 }
 
-pub fn get_replicate_resolve_message(
-    opp_id: u64,
-    db_name: String,
-    key: String,
-    value: String,
-    version: i32,
-) -> String {
-    return format!(
-        "resolve {} {} {} {} {}",
-        opp_id, db_name, key, version, value
-    );
-}
-
 pub fn get_resolve_message(
     opp_id: u64,
     db_name: String,
@@ -217,7 +204,7 @@ pub fn replicate_request(
                 );
                 replicate_web(
                     replication_sender,
-                    get_replicate_resolve_message(
+                    get_resolve_message(
                         opp_id,
                         db_name.to_string(),
                         key.clone(),

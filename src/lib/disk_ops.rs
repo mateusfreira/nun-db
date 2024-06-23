@@ -1616,7 +1616,6 @@ mod tests {
         assert_eq!(queue_size, 0);
 
         let dbs_after_save = create_test_dbs();
-        // dbs_after_save.is_oplog_valid.store(true, Ordering::Relaxed);
         load_all_dbs_from_disk(&dbs_after_save);
         let dbs_map = dbs_after_save
             .map
