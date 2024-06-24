@@ -65,19 +65,6 @@ pub fn get_replicate_message(db_name: String, key: String, value: String, versio
     return format!("replicate {} {} {} {}", db_name, key, version, value);
 }
 
-pub fn get_replicate_resolve_message(
-    opp_id: u64,
-    db_name: String,
-    key: String,
-    value: String,
-    version: i32,
-) -> String {
-    return format!(
-        "resolve {} {} {} {} {}",
-        opp_id, db_name, key, version, value
-    );
-}
-
 pub fn get_resolve_message(
     opp_id: u64,
     db_name: String,
@@ -217,7 +204,7 @@ pub fn replicate_request(
                 );
                 replicate_web(
                     replication_sender,
-                    get_replicate_resolve_message(
+                    get_resolve_message(
                         opp_id,
                         db_name.to_string(),
                         key.clone(),
@@ -1433,6 +1420,31 @@ mod tests {
         assert!(result, "should have returned an error!")
     }
 
+
+    #[test]
+    fn should_replicate_if_the_command_is_a_replicate_set_and_node_is_primary() {
+        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let resp_set = Response::Set {
+            key: "any_key".to_string(),
+            value: "any_value".to_string(),
+        };
+
+        let db_name = "some".to_string();
+        let req_set = Request::ReplicateSet {
+            key: "any_key".to_string(),
+            value: "any_value".to_string(),
+            db: db_name.to_string(),
+            version: -1,
+        };
+        let result = match replicate_request(req_set, &db_name, resp_set, &sender) {
+            Response::Ok {} => true,
+            _ => false,
+        };
+        assert!(result, "should have returned an ok response!");
+        let replicate_command = receiver.try_next().unwrap().unwrap();
+        assert!(replicate_command.ends_with("replicate some any_key -1 any_value"));
+    }
+
     #[test]
     fn should_replicate_if_the_command_is_a_set_and_node_is_primary() {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -1455,6 +1467,7 @@ mod tests {
         let replicate_command = receiver.try_next().unwrap().unwrap();
         assert!(replicate_command.ends_with("replicate some any_key -1 any_value"));
     }
+
 
     #[test]
     fn should_not_replicate_if_the_command_is_a_set_and_node_is_not_the_primary() {
@@ -1509,6 +1522,47 @@ mod tests {
         assert_eq!(receiver_replicate_result, None);
     }
 
+
+    #[test]
+    fn should_replicate_if_the_command_is_a_replicate_election_and_node_is_primary() {
+        let db_name = "some_db_name".to_string();
+        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let request = Request::Election {
+            id: 1,
+            node_name: "some_node".to_string(),
+        };
+
+        let resp_get = Response::Ok {};
+
+        let result = match replicate_request(request, &db_name, resp_get, &sender) {
+            Response::Ok {} => true,
+            _ => false,
+        };
+        assert!(result, "should have returned an Ok response!");
+        let receiver_replicate_result = receiver.try_next().unwrap().unwrap();
+        assert!(receiver_replicate_result.ends_with("election candidate 1 some_node"));
+    }
+
+    #[test]
+    fn should_replicate_if_the_command_is_a_replicate_snapshot_and_node_is_primary() {
+        let db_name = "some_db_name".to_string();
+        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let request = Request::ReplicateSnapshot {
+            reclaim_space: false,
+            db_names: vec![db_name.clone()],
+        };
+
+        let resp_get = Response::Ok {};
+
+        let result = match replicate_request(request, &db_name, resp_get, &sender) {
+            Response::Ok {} => true,
+            _ => false,
+        };
+        assert!(result, "should have returned an Ok response!");
+        let receiver_replicate_result = receiver.try_next().unwrap().unwrap();
+        assert!(receiver_replicate_result.ends_with("replicate-snapshot some_db_name false"));
+    }
+
     #[test]
     fn should_replicate_if_the_command_is_a_snapshot_and_node_is_primary() {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -1528,6 +1582,7 @@ mod tests {
         let receiver_replicate_result = receiver.try_next().unwrap().unwrap();
         assert!(receiver_replicate_result.ends_with("replicate-snapshot some_db_name false"));
     }
+
     #[test]
     fn should_replicate_if_the_command_is_a_create_db_and_node_is_primary() {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);

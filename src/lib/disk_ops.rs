@@ -1585,8 +1585,19 @@ mod tests {
     }
 
     #[test]
+    fn should_create_a_new_file_if_invalidate_file_does_not_exists() {
+        remove_invalidate_oplog_file();
+        let ifrm = get_invalidate_file_read_mode();
+        assert_eq!(ifrm.metadata().unwrap().len(), 0);
+        invalidate_oplog(&mut get_invalidate_file_write_mode(), &create_test_dbs()).unwrap();
+        let ifrm = get_invalidate_file_read_mode();
+        assert_eq!(ifrm.metadata().unwrap().len(), 1);
+    }
+
+    #[test]
     fn should_store_all_dbs() {
         let dbs = create_test_dbs();
+        dbs.is_oplog_valid.store(false, Ordering::Release);
         let db_name = String::from(format!("test-db_{}", Databases::next_op_log_id()));
         let mut hash = HashMap::new();
         hash.insert(String::from("some"), String::from("value"));
