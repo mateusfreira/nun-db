@@ -73,7 +73,7 @@ create-vue: build
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db vue vue_pwd; use-db vue vue_pwd; snapshot;"
 
 create-sample:
-	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db sample sample-pwd; use-db sample sample-pwd; snapshot; create-user user sample-pwd; set-permissions user rwix *"
+	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db sample sample-pwd; use-db sample sample-pwd; create-user user sample-pwd; set-permissions user rwix *; create-user test-uset test-user-pwd; set-permissions test-uset rwix *; create-user client client-pwd; set-permissions client rwix client-*|r *; snapshot; "
 
 create-test:
 	RUST_BACKTRACE=1 ./../../target/debug/nun-db -p $(password) -u $(user) --host "http://$(primaryHttpAddress)" exec "auth mateus mateus; create-db test test-pwd arbiter; use-db test test-pwd; snapshot;"
