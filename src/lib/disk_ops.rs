@@ -43,6 +43,7 @@ const U32_SIZE: usize = 4;
 const VERSION_DELETED: i32 = -1;
 
 use crate::configuration::NUN_DBS_DIR;
+use crate::configuration::NUN_MAX_OP_LOG_SIZE;
 
 impl Databases {
     pub fn add_db_to_snapshot_by_name(
@@ -641,7 +642,23 @@ pub fn snapshot_keys(dbs: &Arc<Databases>) {
     }
 }
 
+/*
+*  if let Ok(entries) = read_dir(get_dir_name()) {
+*      for entry in entries {
+*          load_one_db_from_disk(dbs, entry);
+*      }
+*  }
+*/
 pub fn get_log_file_append_mode() -> BufWriter<File> {
+    if get_file_size(&get_op_log_file_name()) >= *NUN_MAX_OP_LOG_SIZE {
+        let new_oplog_file_name = format!(
+            "{dir}/{sufix}",
+            dir = get_dir_name(),
+            sufix = format!("oplog-nun-{}.op", Databases::next_op_log_id())
+        );
+        fs::rename(&get_op_log_file_name(), &new_oplog_file_name)
+            .expect("Could not rename the oplog file");
+    }
     BufWriter::with_capacity(
         OP_RECORD_SIZE,
         OpenOptions::new()
@@ -665,9 +682,19 @@ fn remove_op_log_file() {
 pub fn clean_op_log_metadata_files() {
     remove_invalidate_oplog_file();
     remove_op_log_file();
+    if let Ok(entries) = read_dir(get_dir_name()) {
+        for entry in entries {
+            let file_name = entry.unwrap().file_name().into_string().unwrap();
+            if file_name.ends_with(".op") {
+                let full_path = format!("{}/{}", get_dir_name(), file_name);
+                println!("Will delete the file {}", full_path);
+                fs::remove_file(full_path.clone()).unwrap();
+            }
+        }
+    }
 }
 
-pub fn get_log_file_read_mode() -> File {
+fn get_log_file_read_mode() -> File {
     match OpenOptions::new().read(true).open(get_op_log_file_name()) {
         Err(e) => {
             log::error!("{:?}", e);
@@ -688,14 +715,56 @@ pub fn get_log_file_read_mode() -> File {
     }
 }
 
+
+pub fn try_write_op_log(
+    op_log_stream: &mut BufWriter<File>,
+    db_id: u64,
+    key_id: u64,
+    opp: &ReplicateOpp,
+    op_log_id_in: u64,
+) -> u64 {
+    match write_op_log(op_log_stream, db_id, key_id, &opp, op_log_id_in) {
+        Ok(id) => id,
+        Err(_) => {
+            *op_log_stream = get_log_file_append_mode();
+            write_op_log(
+                op_log_stream,
+                db_id,
+                key_id,
+                &ReplicateOpp::Snapshot,
+                op_log_id_in,
+            )
+            .unwrap()
+        }
+    }
+}
+pub fn _try_write_op_log(
+    mut stream: BufWriter<File>,
+    db_id: u64,
+    key: u64,
+    opp: &ReplicateOpp,
+    opp_id: u64,
+) -> Result<(u64, BufWriter<File>), String> {
+    match write_op_log(&mut stream, db_id, key, &opp, opp_id) {
+        Ok(_) => Ok((opp_id, stream)),
+        Err(_) => {
+            let mut new_stream = get_log_file_append_mode();
+            match write_op_log(&mut new_stream, db_id, key, &opp, opp_id) {
+                Ok(_) => Ok((opp_id, new_stream)),
+                Err(e) => Err(e),
+            }
+        }
+    }
+}
+
 pub fn write_op_log(
     stream: &mut BufWriter<File>,
     db_id: u64,
     key: u64,
-    opp: ReplicateOpp,
+    opp: &ReplicateOpp,
     opp_id: u64,
-) -> u64 {
-    let opp_to_write = opp as u8;
+) -> Result<u64, String> {
+    let opp_to_write = opp.to_u8();
 
     stream.write(&opp_id.to_le_bytes()).unwrap(); //8
     stream.write(&key.to_le_bytes()).unwrap(); // 8
@@ -703,7 +772,11 @@ pub fn write_op_log(
     stream.write(&[opp_to_write]).unwrap(); // 1
     stream.flush().unwrap();
     log::debug!("will write :  db: {db}", db = db_id);
-    opp_id
+    if stream.stream_position().unwrap() > *NUN_MAX_OP_LOG_SIZE {
+        Err(String::from("Oplog max size reached"))
+    } else {
+        Ok(opp_id)
+    }
 }
 
 pub fn last_op_time() -> u64 {
@@ -929,10 +1002,18 @@ pub fn get_key_value_files_name_from_file_name(file_name: String) -> (String, St
     (keys_file_name, values_file_name)
 }
 
+fn get_file_size(file_name: &String) -> u64 {
+    match fs::metadata(&file_name) {
+        Ok(metadata) => metadata.len(),
+        _ => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use futures::channel::mpsc::{channel, Receiver, Sender};
+    use std::env;
 
     const OLD_FILE_NAME: &'static str = BASE_FILE_NAME;
 
@@ -1045,23 +1126,91 @@ mod tests {
     }
 
     #[test]
+    fn should_generate_new_file_when_old_file_is_full() {
+        clean_op_log_metadata_files();
+        env::set_var("NUN_MAX_OP_LOG_SIZE", "100");
+        env::set_var("NUN_LOG_LEVEL", "debug");
+        {
+            let mut oplog_file = get_log_file_append_mode();
+            while let Ok(opp_id) = write_op_log(
+                &mut oplog_file,
+                1,
+                1,
+                &ReplicateOpp::Update,
+                Databases::next_op_log_id(),
+            ) {
+                log::debug!("opp_id: {}", opp_id);
+                let (size, _) = get_op_log_size();
+                assert!(size <= 100);
+            }
+            // Will free f and close the resource ...
+        } // oplog_file is closed here
+        let mut f = get_log_file_append_mode();
+        f.seek(SeekFrom::End(0)).unwrap();
+        // Because I expect this file to be new and the old one is moved to the old value
+        assert_eq!(f.stream_position().unwrap(), 0);
+        env::set_var("NUN_MAX_OP_LOG_SIZE", "100000000");
+    }
+
+    #[test]
+    fn should_cleanup_old_oplog_files() {
+        clean_op_log_metadata_files();
+        if let Ok(entries) = read_dir(get_dir_name()) {
+            for entry in entries {
+                let full_name = entry.unwrap().file_name().into_string().unwrap();
+                if full_name.contains("oplog-nun-") {
+                    // Should never happen
+                    assert!(false);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn should_reject_write_if_oplog_is_max_size() {
+        clean_op_log_metadata_files();
+        env::set_var("NUN_MAX_OP_LOG_SIZE", "100");
+        env::set_var("NUN_LOG_LEVEL", "debug");
+        let mut f = get_log_file_append_mode();
+        while let Ok(opp_id) = write_op_log(
+            &mut f,
+            1,
+            1,
+            &ReplicateOpp::Update,
+            Databases::next_op_log_id(),
+        ) {
+            log::debug!("opp_id: {}", opp_id);
+            let (size, _) = get_op_log_size();
+            assert!(size <= 100);
+        }
+        let (size, _) = get_op_log_size();
+        assert!(size > 70);
+        assert!(size <= 150);
+        env::set_var("NUN_MAX_OP_LOG_SIZE", "100000000");
+    }
+
+    #[test]
     fn should_write_op_log_and_return_opp_id() {
         let mut f = get_log_file_append_mode();
-        let opp_id = write_op_log(
+        if let Ok(opp_id) = write_op_log(
             &mut f,
             1,
             1,
-            ReplicateOpp::Update,
+            &ReplicateOpp::Update,
             Databases::next_op_log_id(),
-        );
-        let opp_id1 = write_op_log(
-            &mut f,
-            1,
-            1,
-            ReplicateOpp::Update,
-            Databases::next_op_log_id(),
-        );
-        assert_ne!(opp_id, opp_id1);
+        ) {
+            let opp_id1 = write_op_log(
+                &mut f,
+                1,
+                1,
+                &ReplicateOpp::Update,
+                Databases::next_op_log_id(),
+            )
+            .unwrap();
+            assert_ne!(opp_id, opp_id1);
+        } else {
+            panic!("Could not write to the op log file");
+        }
     }
 
     #[test]
@@ -1331,13 +1480,6 @@ mod tests {
         remove_database_file(&db_name);
         clean_op_log_metadata_files();
         remove_keys_file();
-    }
-
-    fn get_file_size(file_name: &String) -> u64 {
-        match fs::metadata(&file_name) {
-            Ok(metadata) => metadata.len(),
-            _ => 0,
-        }
     }
 
     #[test]

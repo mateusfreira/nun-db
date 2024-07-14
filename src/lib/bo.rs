@@ -1088,6 +1088,17 @@ pub enum ReplicateOpp {
     Snapshot = 3,
 }
 
+impl ReplicateOpp {
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            ReplicateOpp::Update => 0,
+            ReplicateOpp::Remove => 1,
+            ReplicateOpp::CreateDb => 2,
+            ReplicateOpp::Snapshot => 3,
+        }
+    }
+}
+
 impl From<u8> for ReplicateOpp {
     fn from(val: u8) -> Self {
         use self::ReplicateOpp::*;
@@ -1662,6 +1673,7 @@ mod tests {
 
     #[test]
     fn should_return_op_log_size() {
+        clean_op_log_metadata_files();
         let dbs = get_empty_dbs();
         assert_eq!(
             dbs.get_oplog_state(),

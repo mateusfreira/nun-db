@@ -510,3 +510,6 @@ $connections
 ## Configurations
 ###  NUN_ELECTION_TIMEOUT
 * Configurations are available to define the timeout period for elections to wait until they are acknowledged from all nodes. It is important to note that you should rarely change this variable since doing so could make elections slower. The value of this variable should be at least twice the latency value to ensure that the election process runs smoothly.
+
+### NUN_MAX_OPLOG_SIZE
+* Defines the max op log size in bytes, default value is 1G ...

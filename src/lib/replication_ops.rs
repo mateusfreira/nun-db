@@ -461,9 +461,10 @@ pub async fn start_replication_thread(
                             &mut op_log_stream,
                             db_id,
                             key_id,
-                            ReplicateOpp::CreateDb,
+                            &ReplicateOpp::CreateDb,
                             op_log_id_in,
                         )
+                        .unwrap()
                     }
                     Request::ReplicateSnapshot {
                         db_names,
@@ -476,11 +477,11 @@ pub async fn start_replication_thread(
                                 let db_id = get_db_id(db.to_string(), &dbs);
                                 let key_id = 2; //has to be different
                                 log::debug!("Will write ReplicateSnapshot");
-                                write_op_log(
+                                try_write_op_log(
                                     &mut op_log_stream,
                                     db_id,
                                     key_id,
-                                    ReplicateOpp::Snapshot,
+                                    &ReplicateOpp::Snapshot,
                                     op_log_id_in,
                                 )
                             })
@@ -494,11 +495,11 @@ pub async fn start_replication_thread(
                     } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(
+                        try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
-                            ReplicateOpp::Update,
+                            &ReplicateOpp::Update,
                             op_log_id_in,
                         )
                     }
@@ -510,9 +511,10 @@ pub async fn start_replication_thread(
                             &mut op_log_stream,
                             db_id,
                             key_id,
-                            ReplicateOpp::Update,
+                            &ReplicateOpp::Update,
                             op_log_id_in,
                         )
+                        .unwrap()
                     }
 
                     Request::ReplicateRemove { db, key } => {
@@ -522,9 +524,10 @@ pub async fn start_replication_thread(
                             &mut op_log_stream,
                             db_id,
                             key_id,
-                            ReplicateOpp::Remove,
+                            &ReplicateOpp::Remove,
                             op_log_id_in,
                         )
+                        .unwrap()
                     }
 
                     // Even if not in op log we need to return a valid id so the message can be ack
@@ -559,6 +562,7 @@ pub async fn start_replication_thread(
         }
     }
 }
+
 
 fn replicate_join(sender: Sender<String>, name: String) {
     match sender.clone().try_send(format!("replicate-join {}", name)) {
@@ -1081,6 +1085,7 @@ fn get_full_sync_opps(dbs: &Arc<Databases>) -> Vec<String> {
     opps_vec
 }
 
+// @todo consider all oplog files
 fn get_pendding_opps_since_from_sync(since: u64, dbs: &Arc<Databases>) -> Vec<String> {
     let opps = read_operations_since(since);
     let mut opps_vec = Vec::new();
@@ -1134,6 +1139,7 @@ fn get_pendding_opps_since_from_sync(since: u64, dbs: &Arc<Databases>) -> Vec<St
     opps_vec
 }
 
+// @todo consider all oplog files
 pub fn get_pendding_opps_since(since: u64, dbs: &Arc<Databases>) -> Vec<String> {
     if since == 0 {
         get_full_sync_opps(dbs)
@@ -1263,6 +1269,7 @@ mod tests {
 
     #[test]
     fn should_return_all_the_opps_if_since_is_0() {
+        clean_op_log_metadata_files();
         let (dbs, mut sender, replication_receiver) = prep_env();
         let dbs_to_thread = dbs.clone();
         let replication_thread = thread::spawn(|| async {
@@ -1420,7 +1427,6 @@ mod tests {
         assert!(result, "should have returned an error!")
     }
 
-
     #[test]
     fn should_replicate_if_the_command_is_a_replicate_set_and_node_is_primary() {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -1467,7 +1473,6 @@ mod tests {
         let replicate_command = receiver.try_next().unwrap().unwrap();
         assert!(replicate_command.ends_with("replicate some any_key -1 any_value"));
     }
-
 
     #[test]
     fn should_not_replicate_if_the_command_is_a_set_and_node_is_not_the_primary() {
@@ -1521,7 +1526,6 @@ mod tests {
         let receiver_replicate_result = receiver.try_next().unwrap_or(None);
         assert_eq!(receiver_replicate_result, None);
     }
-
 
     #[test]
     fn should_replicate_if_the_command_is_a_replicate_election_and_node_is_primary() {
