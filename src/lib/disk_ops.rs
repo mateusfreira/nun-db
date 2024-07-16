@@ -78,6 +78,10 @@ pub fn get_dir_name() -> String {
     NUN_DBS_DIR.to_string()
 }
 
+pub fn get_op_log_dir_name() -> String {
+    format!("{}/oplog", get_dir_name())
+}
+
 pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
     let mut initial_db = HashMap::new();
     let db_file_name = get_keys_map_file_name();
@@ -651,9 +655,13 @@ pub fn snapshot_keys(dbs: &Arc<Databases>) {
 */
 pub fn get_log_file_append_mode() -> BufWriter<File> {
     if get_file_size(&get_op_log_file_name()) >= *NUN_MAX_OP_LOG_SIZE {
+        let op_log_dir = get_op_log_dir_name();
+        if !Path::new(&op_log_dir).exists() {
+            create_dir_all(&op_log_dir).unwrap();
+        }
         let new_oplog_file_name = format!(
             "{dir}/{sufix}",
-            dir = get_dir_name(),
+            dir = op_log_dir,
             sufix = format!("oplog-nun-{}.op", Databases::next_op_log_id())
         );
         fs::rename(&get_op_log_file_name(), &new_oplog_file_name)
@@ -682,20 +690,20 @@ fn remove_op_log_file() {
 pub fn clean_op_log_metadata_files() {
     remove_invalidate_oplog_file();
     remove_op_log_file();
-    if let Ok(entries) = read_dir(get_dir_name()) {
+    if let Ok(entries) = read_dir(get_op_log_dir_name()) {
         for entry in entries {
             let file_name = entry.unwrap().file_name().into_string().unwrap();
             if file_name.ends_with(".op") {
-                let full_path = format!("{}/{}", get_dir_name(), file_name);
-                println!("Will delete the file {}", full_path);
+                let full_path = format!("{}/{}", get_op_log_dir_name(), file_name);
+                log::debug!("Will delete the file {}", full_path);
                 fs::remove_file(full_path.clone()).unwrap();
             }
         }
     }
 }
 
-fn get_log_file_read_mode() -> File {
-    match OpenOptions::new().read(true).open(get_op_log_file_name()) {
+fn get_log_file_read_mode(file_name: &String) -> File {
+    match OpenOptions::new().read(true).open(file_name) {
         Err(e) => {
             log::error!("{:?}", e);
             {
@@ -703,18 +711,14 @@ fn get_log_file_read_mode() -> File {
                 OpenOptions::new()
                     .write(true)
                     .create(true)
-                    .open(get_op_log_file_name())
+                    .open(file_name)
                     .unwrap();
             } // For creating the op log file, I don't return it here to avoid read processes holding the file in write more for too long
-            OpenOptions::new()
-                .read(true)
-                .open(get_op_log_file_name())
-                .unwrap()
+            OpenOptions::new().read(true).open(file_name).unwrap()
         }
         Ok(f) => f,
     }
 }
-
 
 pub fn try_write_op_log(
     op_log_stream: &mut BufWriter<File>,
@@ -780,7 +784,7 @@ pub fn write_op_log(
 }
 
 pub fn last_op_time() -> u64 {
-    let mut f = get_log_file_read_mode();
+    let mut f = get_log_file_read_mode(&get_op_log_file_name());
     let total_size = f.metadata().unwrap().len();
     let size_as_u64 = OP_RECORD_SIZE as u64;
     // if the file is empty return 0 to avoid  attempt to subtract with overflow error
@@ -799,7 +803,7 @@ pub fn last_op_time() -> u64 {
 
 /// Returns operations log file size and count
 pub fn get_op_log_size() -> (u64, u64) {
-    let f = get_log_file_read_mode();
+    let f = get_log_file_read_mode(&get_op_log_file_name());
     let size: u64 = match f.metadata() {
         Ok(f) => f.len(),
         Err(message) => {
@@ -812,7 +816,45 @@ pub fn get_op_log_size() -> (u64, u64) {
 
 pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
     let mut opps_since = HashMap::new();
-    let mut f = get_log_file_read_mode();
+    let f = get_log_file_read_mode(&get_op_log_file_name());
+    read_operations_since_from_file(f, since, &mut opps_since);
+
+    let oplog_entries = get_op_log_entries_by_creation_date();
+    for oplog_file_entry in oplog_entries {
+        let file_name = oplog_file_entry.file_name().into_string().unwrap();
+        if file_name.ends_with(".op") {
+            let full_path = format!("{}/{}", get_op_log_dir_name(), file_name);
+            let f = get_log_file_read_mode(&full_path);
+            read_operations_since_from_file(f, since, &mut opps_since);
+        }
+    }
+
+    opps_since
+}
+
+fn get_op_log_entries_by_creation_date() -> Vec<fs::DirEntry> {
+    let mut oplog_entries: Vec<_> = match fs::read_dir(get_op_log_dir_name()) {
+        Ok(entries) => entries.filter_map(Result::ok).collect(),
+        Err(err) => {
+            panic!("Could not read the oplog dir {}", err);
+        }
+    };
+    oplog_entries.sort_by(|a, b| {
+        let metadata_a = a.metadata().unwrap();
+        let metadata_b = b.metadata().unwrap();
+        metadata_b
+            .created()
+            .unwrap()
+            .cmp(&metadata_a.created().unwrap())
+    });
+    oplog_entries
+}
+
+fn read_operations_since_from_file(
+    mut f: File,
+    since: u64,
+    opps_since: &mut HashMap<String, OpLogRecord>,
+) {
     let total_size = f.metadata().unwrap().len();
     let size_as_u64 = OP_RECORD_SIZE as u64;
     let mut max = total_size;
@@ -908,10 +950,8 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
             log::debug!(" End of the file{:?} ms", now.elapsed());
             break;
         }
-
         f.seek(SeekFrom::Start(seek_point)).unwrap(); // Repoint disk seek
     }
-    opps_since
 }
 
 pub fn get_invalidate_file_write_mode() -> BufWriter<File> {

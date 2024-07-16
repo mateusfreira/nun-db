@@ -457,14 +457,13 @@ pub async fn start_replication_thread(
                         let db_id = get_db_id(name, &dbs);
                         let key_id = 1;
                         log::debug!("Will write CreateDb");
-                        write_op_log(
+                        try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
                             &ReplicateOpp::CreateDb,
                             op_log_id_in,
                         )
-                        .unwrap()
                     }
                     Request::ReplicateSnapshot {
                         db_names,
@@ -507,27 +506,25 @@ pub async fn start_replication_thread(
                     Request::ReplicateIncrement { db, key, inc: _ } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(
+                        try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
                             &ReplicateOpp::Update,
                             op_log_id_in,
                         )
-                        .unwrap()
                     }
 
                     Request::ReplicateRemove { db, key } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(
+                        try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
                             &ReplicateOpp::Remove,
                             op_log_id_in,
                         )
-                        .unwrap()
                     }
 
                     // Even if not in op log we need to return a valid id so the message can be ack
@@ -562,7 +559,6 @@ pub async fn start_replication_thread(
         }
     }
 }
-
 
 fn replicate_join(sender: Sender<String>, name: String) {
     match sender.clone().try_send(format!("replicate-join {}", name)) {
@@ -1211,6 +1207,7 @@ mod tests {
     }
 
     fn prep_env() -> (Arc<Databases>, Sender<String>, Receiver<String>) {
+        clean_op_log_metadata_files();
         thread::sleep(time::Duration::from_millis(50)); //give it time to the opperation to happen
         let (sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
 
@@ -1345,12 +1342,15 @@ mod tests {
         aw!(replication_thread.join().expect("thread died"));
         let commands = get_pendding_opps_since(test_start, &dbs);
         log::debug!("{:?}", commands);
+        println!("{:?}", commands);
         assert!(commands.len() == 3, "Only 3 command expected");
+        println!("{}", commands[0]);
         assert!(
             commands[0] == "create-db sample sample",
             "Create sample comman error"
         );
 
+        println!("{}", commands[1]);
         assert!(
             commands[1] == "replicate sample key value3",
             "Expected secound message to be sample key value3"
