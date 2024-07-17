@@ -16,6 +16,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::configuration::NUN_DBS_DIR;
+use crate::configuration::NUN_MAX_OP_LOG_SIZE;
 use crate::bo::*;
 
 const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
@@ -42,8 +44,7 @@ const U32_SIZE: usize = 4;
 
 const VERSION_DELETED: i32 = -1;
 
-use crate::configuration::NUN_DBS_DIR;
-use crate::configuration::NUN_MAX_OP_LOG_SIZE;
+
 
 impl Databases {
     pub fn add_db_to_snapshot_by_name(
@@ -654,7 +655,7 @@ pub fn snapshot_keys(dbs: &Arc<Databases>) {
 *  }
 */
 pub fn get_log_file_append_mode() -> BufWriter<File> {
-    if get_file_size(&get_op_log_file_name()) >= *NUN_MAX_OP_LOG_SIZE {
+    if get_file_size(&get_op_log_file_name()) >= single_op_log_file_size() {
         let op_log_dir = get_op_log_dir_name();
         if !Path::new(&op_log_dir).exists() {
             create_dir_all(&op_log_dir).unwrap();
@@ -675,6 +676,10 @@ pub fn get_log_file_append_mode() -> BufWriter<File> {
             .open(get_op_log_file_name())
             .unwrap(),
     )
+}
+
+fn single_op_log_file_size() -> u64 {
+   *NUN_MAX_OP_LOG_SIZE / 10
 }
 
 fn remove_op_log_file() {
@@ -742,24 +747,6 @@ pub fn try_write_op_log(
         }
     }
 }
-pub fn _try_write_op_log(
-    mut stream: BufWriter<File>,
-    db_id: u64,
-    key: u64,
-    opp: &ReplicateOpp,
-    opp_id: u64,
-) -> Result<(u64, BufWriter<File>), String> {
-    match write_op_log(&mut stream, db_id, key, &opp, opp_id) {
-        Ok(_) => Ok((opp_id, stream)),
-        Err(_) => {
-            let mut new_stream = get_log_file_append_mode();
-            match write_op_log(&mut new_stream, db_id, key, &opp, opp_id) {
-                Ok(_) => Ok((opp_id, new_stream)),
-                Err(e) => Err(e),
-            }
-        }
-    }
-}
 
 pub fn write_op_log(
     stream: &mut BufWriter<File>,
@@ -776,7 +763,7 @@ pub fn write_op_log(
     stream.write(&[opp_to_write]).unwrap(); // 1
     stream.flush().unwrap();
     log::debug!("will write :  db: {db}", db = db_id);
-    if stream.stream_position().unwrap() > *NUN_MAX_OP_LOG_SIZE {
+    if stream.stream_position().unwrap() > single_op_log_file_size() {
         Err(String::from("Oplog max size reached"))
     } else {
         Ok(opp_id)
@@ -803,6 +790,11 @@ pub fn last_op_time() -> u64 {
 
 /// Returns operations log file size and count
 pub fn get_op_log_size() -> (u64, u64) {
+    let oplog_entries = get_op_log_entries_by_creation_date();
+    let old_files_size = oplog_entries.iter().fold(0, |acc_size, entry| {
+        let size = entry.metadata().unwrap().len();
+        acc_size + size
+    });
     let f = get_log_file_read_mode(&get_op_log_file_name());
     let size: u64 = match f.metadata() {
         Ok(f) => f.len(),
@@ -811,7 +803,8 @@ pub fn get_op_log_size() -> (u64, u64) {
             0
         }
     };
-    (size, size / OP_RECORD_SIZE as u64)
+    let total_size = old_files_size + size;
+    (total_size, total_size / OP_RECORD_SIZE as u64)
 }
 
 pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
@@ -1168,7 +1161,7 @@ mod tests {
     #[test]
     fn should_generate_new_file_when_old_file_is_full() {
         clean_op_log_metadata_files();
-        env::set_var("NUN_MAX_OP_LOG_SIZE", "100");
+        env::set_var("NUN_MAX_OP_LOG_SIZE", "1000");
         env::set_var("NUN_LOG_LEVEL", "debug");
         {
             let mut oplog_file = get_log_file_append_mode();
@@ -1209,7 +1202,7 @@ mod tests {
     #[test]
     fn should_reject_write_if_oplog_is_max_size() {
         clean_op_log_metadata_files();
-        env::set_var("NUN_MAX_OP_LOG_SIZE", "100");
+        env::set_var("NUN_MAX_OP_LOG_SIZE", "1000");
         env::set_var("NUN_LOG_LEVEL", "debug");
         let mut f = get_log_file_append_mode();
         while let Ok(opp_id) = write_op_log(

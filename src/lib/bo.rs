@@ -1683,6 +1683,7 @@ mod tests {
 
     #[test]
     fn should_count_the_number_of_replications() {
+        clean_op_log_metadata_files();
         let dbs = get_empty_dbs();
         let id = Databases::next_op_log_id();
         let server_1_name = String::from("server_1");
