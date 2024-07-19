@@ -16,9 +16,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::bo::*;
 use crate::configuration::NUN_DBS_DIR;
 use crate::configuration::NUN_MAX_OP_LOG_SIZE;
-use crate::bo::*;
 
 const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
 const BASE_FILE_NAME: &'static str = "-nun.data";
@@ -43,8 +43,6 @@ const U64_SIZE: usize = 8;
 const U32_SIZE: usize = 4;
 
 const VERSION_DELETED: i32 = -1;
-
-
 
 impl Databases {
     pub fn add_db_to_snapshot_by_name(
@@ -679,7 +677,7 @@ pub fn get_log_file_append_mode() -> BufWriter<File> {
 }
 
 fn single_op_log_file_size() -> u64 {
-   *NUN_MAX_OP_LOG_SIZE / 10
+    *NUN_MAX_OP_LOG_SIZE / 10
 }
 
 fn remove_op_log_file() {
@@ -733,8 +731,12 @@ pub fn try_write_op_log(
     op_log_id_in: u64,
 ) -> u64 {
     match write_op_log(op_log_stream, db_id, key_id, &opp, op_log_id_in) {
-        Ok(id) => id,
+        Ok(id) => {
+            //println!("Writo fine");
+            id
+        }
         Err(_) => {
+            //println!("Failed to write will crate a new file");
             *op_log_stream = get_log_file_append_mode();
             write_op_log(
                 op_log_stream,
@@ -826,7 +828,11 @@ pub fn read_operations_since(since: u64) -> HashMap<String, OpLogRecord> {
 }
 
 fn get_op_log_entries_by_creation_date() -> Vec<fs::DirEntry> {
-    let mut oplog_entries: Vec<_> = match fs::read_dir(get_op_log_dir_name()) {
+    let oplog_dir_name = get_op_log_dir_name();
+    if !Path::new(&oplog_dir_name).exists() {
+        return vec![];
+    }
+    let mut oplog_entries: Vec<_> = match fs::read_dir(&oplog_dir_name) {
         Ok(entries) => entries.filter_map(Result::ok).collect(),
         Err(err) => {
             panic!("Could not read the oplog dir {}", err);
@@ -1045,6 +1051,8 @@ fn get_file_size(file_name: &String) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::configuration::NUN_LOG_LEVEL;
+    use env_logger::{Builder, Env, Target};
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::env;
 
@@ -1631,6 +1639,29 @@ mod tests {
         remove_database_file(&db_name);
         clean_op_log_metadata_files();
         remove_keys_file();
+    }
+
+    #[test]
+    #[cfg(not(tarpaulin))]
+    fn write_op_log_should_be_fast() {
+        clean_op_log_metadata_files();
+        env::set_var("NUN_MAX_OP_LOG_SIZE", "12500000");
+        let mut oplog_file = get_log_file_append_mode();
+        let mut i = 0;
+        let start = Instant::now();
+        while i < 100_000 {
+            try_write_op_log(
+                &mut oplog_file,
+                1,
+                1,
+                &ReplicateOpp::Update,
+                Databases::next_op_log_id(),
+            ); // Will free f and close the resource ..
+            i = i + 1;
+        } // oplog_file is closed here;
+        let duration = start.elapsed();
+        println!("Time elapsed in try_write_op_log is: {:?} {}", duration, i);
+        assert_eq!(false, true);
     }
 
     #[test]
