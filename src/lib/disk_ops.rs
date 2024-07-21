@@ -732,11 +732,9 @@ pub fn try_write_op_log(
 ) -> u64 {
     match write_op_log(op_log_stream, db_id, key_id, &opp, op_log_id_in) {
         Ok(id) => {
-            //println!("Writo fine");
             id
         }
         Err(_) => {
-            //println!("Failed to write will crate a new file");
             *op_log_stream = get_log_file_append_mode();
             write_op_log(
                 op_log_stream,
@@ -1055,6 +1053,14 @@ mod tests {
     use env_logger::{Builder, Env, Target};
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::env;
+    fn init_logger() {
+        let env = Env::default().filter_or("NUN_LOG_LEVEL", NUN_LOG_LEVEL.as_str());
+        Builder::from_env(env)
+            .format_level(false)
+            .target(Target::Stdout)
+            .format_timestamp_nanos()
+            .init();
+    }
 
     const OLD_FILE_NAME: &'static str = BASE_FILE_NAME;
 
@@ -1646,10 +1652,13 @@ mod tests {
     fn write_op_log_should_be_fast() {
         clean_op_log_metadata_files();
         env::set_var("NUN_MAX_OP_LOG_SIZE", "12500000");
+        //env::set_var("NUN_LOG_LEVEL", "debug");
+        init_logger();
         let mut oplog_file = get_log_file_append_mode();
         let mut i = 0;
         let start = Instant::now();
         while i < 100_000 {
+            let singl_write = Instant::now();
             try_write_op_log(
                 &mut oplog_file,
                 1,
@@ -1658,10 +1667,14 @@ mod tests {
                 Databases::next_op_log_id(),
             ); // Will free f and close the resource ..
             i = i + 1;
+            let duration = singl_write.elapsed();
+            println!("Time elapsed in try_write_op_log is: {:?} {}", duration, i);
         } // oplog_file is closed here;
         let duration = start.elapsed();
-        println!("Time elapsed in try_write_op_log is: {:?} {}", duration, i);
-        assert_eq!(false, true);
+        println!("Time elapsed in total is: {:?} {}", duration, i);
+        let time_in_ms = start.elapsed().as_millis();
+        // make sure we can do 300k a secound
+        assert!(time_in_ms < 300);
     }
 
     #[test]
