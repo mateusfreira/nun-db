@@ -1176,7 +1176,6 @@ mod tests {
     fn should_generate_new_file_when_old_file_is_full() {
         clean_op_log_metadata_files();
         env::set_var("NUN_MAX_OP_LOG_SIZE", "1000");
-        env::set_var("NUN_LOG_LEVEL", "debug");
         {
             let mut oplog_file = get_log_file_append_mode();
             while let Ok(opp_id) = write_op_log(
@@ -1217,7 +1216,6 @@ mod tests {
     fn should_reject_write_if_oplog_is_max_size() {
         clean_op_log_metadata_files();
         env::set_var("NUN_MAX_OP_LOG_SIZE", "1000");
-        env::set_var("NUN_LOG_LEVEL", "debug");
         let mut f = get_log_file_append_mode();
         while let Ok(opp_id) = write_op_log(
             &mut f,
