@@ -1666,7 +1666,6 @@ mod tests {
             ); // Will free f and close the resource ..
             i = i + 1;
             let duration = singl_write.elapsed();
-            println!("Time elapsed in try_write_op_log is: {:?} {}", duration, i);
         } // oplog_file is closed here;
         let duration = start.elapsed();
         println!("Time elapsed in total is: {:?} {}", duration, i);
