@@ -1655,8 +1655,8 @@ mod tests {
         let mut oplog_file = get_log_file_append_mode();
         let mut i = 0;
         let start = Instant::now();
-        while i < 100_000 {
-            let singl_write = Instant::now();
+        //while i < 100_000 {// To run locally
+        while i < 10_000 {
             try_write_op_log(
                 &mut oplog_file,
                 1,
@@ -1665,7 +1665,6 @@ mod tests {
                 Databases::next_op_log_id(),
             ); // Will free f and close the resource ..
             i = i + 1;
-            let duration = singl_write.elapsed();
         } // oplog_file is closed here;
         let duration = start.elapsed();
         println!("Time elapsed in total is: {:?} {}", duration, i);
