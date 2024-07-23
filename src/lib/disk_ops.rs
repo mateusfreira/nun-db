@@ -591,8 +591,21 @@ fn write_metadata_file(db_name: &String, db: &Database) {
         .unwrap();
 }
 
+fn remove_old_db_files() {
+    let op_log_files = get_op_log_entries_by_creation_date();
+    if op_log_files.len() < 10 {
+        log::debug!("No files to remove");
+        return;
+    }
+    let files_to_remove = &op_log_files[9..];
+    files_to_remove.iter().for_each(|entry| {
+        let file_path = entry.path().to_str().unwrap().to_string();
+        log::debug!("Will delete the file {}", file_path);
+        fs::remove_file(file_path).unwrap();
+    });
+}
 // calls storage_data_disk each $SNAPSHOT_TIME seconds
-pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
+pub fn declutter_scheduler(timer: timer::Timer, dbs: Arc<Databases>) {
     log::info!("Will start_snap_shot_timer");
     let (_tx, rx): (
         std::sync::mpsc::Sender<String>,
@@ -600,10 +613,15 @@ pub fn start_snap_shot_timer(timer: timer::Timer, dbs: Arc<Databases>) {
     ) = std::sync::mpsc::channel(); // Visit this again
     let _guard = {
         timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
-            snapshot_all_pendding_dbs(&dbs);
+            declutter(&dbs)
         })
     };
     rx.recv().unwrap(); // Thread will run for ever
+}
+
+pub fn declutter(dbs: &Arc<Databases>) {
+    snapshot_all_pendding_dbs(&dbs);
+    remove_old_db_files();
 }
 
 pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
@@ -731,9 +749,7 @@ pub fn try_write_op_log(
     op_log_id_in: u64,
 ) -> u64 {
     match write_op_log(op_log_stream, db_id, key_id, &opp, op_log_id_in) {
-        Ok(id) => {
-            id
-        }
+        Ok(id) => id,
         Err(_) => {
             *op_log_stream = get_log_file_append_mode();
             write_op_log(
@@ -1647,6 +1663,33 @@ mod tests {
 
     #[test]
     #[cfg(not(tarpaulin))]
+    fn should_clean_up_all_files_that_are_more_10() {
+        clean_op_log_metadata_files();
+        let dbs = create_test_dbs();
+        env::set_var("NUN_MAX_OP_LOG_SIZE", "1000");
+        let mut oplog_file = get_log_file_append_mode();
+        let mut i = 0;
+        while i < 1000 {
+            try_write_op_log(
+                &mut oplog_file,
+                1,
+                1,
+                &ReplicateOpp::Update,
+                Databases::next_op_log_id(),
+            ); // Will free f and close the resource ..
+            i = i + 1;
+        } // oplog_file is closed here;
+          // make sure we can do 300k a secound
+        let old_oplog_files = get_op_log_entries_by_creation_date();
+        assert_eq!(old_oplog_files.len() > 10, true);
+        declutter(&dbs);
+        let old_oplog_files = get_op_log_entries_by_creation_date();
+        assert_eq!(old_oplog_files.len(), 9);
+        env::set_var("NUN_MAX_OP_LOG_SIZE", "100000000");
+    }
+
+    #[test]
+    #[cfg(not(tarpaulin))]
     fn write_op_log_should_be_fast() {
         clean_op_log_metadata_files();
         env::set_var("NUN_MAX_OP_LOG_SIZE", "12500000");
@@ -1655,7 +1698,7 @@ mod tests {
         let mut oplog_file = get_log_file_append_mode();
         let mut i = 0;
         let start = Instant::now();
-        //while i < 100_000 {// To run locally
+        //while i < 100_000 {
         while i < 10_000 {
             try_write_op_log(
                 &mut oplog_file,

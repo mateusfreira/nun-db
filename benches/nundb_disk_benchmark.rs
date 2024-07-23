@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use nundb::disk_ops::*;
 use nundb::bo::*;
+use nundb::disk_ops::*;
 use std::env;
 
 fn criterion_benchmark(c: &mut Criterion) {

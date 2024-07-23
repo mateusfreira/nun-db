@@ -153,7 +153,7 @@ fn start_db(
     let timer = timer::Timer::new();
     let db_snap = dbs.clone();
     // Disck thread
-    let _snapshot_thread = thread::spawn(|| nundb::disk_ops::start_snap_shot_timer(timer, db_snap));
+    let _snapshot_thread = thread::spawn(|| nundb::disk_ops::declutter_scheduler(timer, db_snap));
 
     let db_socket = dbs.clone();
     let db_http = dbs.clone();
