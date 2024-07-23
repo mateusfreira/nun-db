@@ -1662,7 +1662,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(tarpaulin))]
     fn should_clean_up_all_files_that_are_more_10() {
         clean_op_log_metadata_files();
         let dbs = create_test_dbs();
