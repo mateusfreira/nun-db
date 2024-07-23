@@ -1206,6 +1206,12 @@ mod tests {
         process_request("set test-jose jose", &dbs, &mut client);
         process_request("get test-jose", &dbs, &mut client);
         assert_received(&mut receiver, "value jose\n");
+
+        // Admin again to test replicate set
+        client.auth.store(true, Ordering::Relaxed);
+        process_request("replicate my-db test-jose -1 maria", &dbs, &mut client);
+        process_request("get test-jose", &dbs, &mut client);
+        assert_received(&mut receiver, "value maria\n");
     }
 
     #[test]
@@ -1270,6 +1276,9 @@ mod tests {
         process_request("set some value", &dbs, &mut client);
         process_request("get some", &dbs, &mut client);
         assert_received(&mut receiver, "value value\n");
+
+        process_request("get-safe some", &dbs, &mut client);
+        assert_received(&mut receiver, "value-version 0 value\n");
     }
 
     #[test]
