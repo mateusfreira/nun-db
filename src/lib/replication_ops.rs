@@ -1342,15 +1342,12 @@ mod tests {
         aw!(replication_thread.join().expect("thread died"));
         let commands = get_pendding_opps_since(test_start, &dbs);
         log::debug!("{:?}", commands);
-        println!("{:?}", commands);
         assert!(commands.len() == 3, "Only 3 command expected");
-        println!("{}", commands[0]);
         assert!(
             commands[0] == "create-db sample sample",
             "Create sample comman error"
         );
 
-        println!("{}", commands[1]);
         assert!(
             commands[1] == "replicate sample key value3",
             "Expected secound message to be sample key value3"
