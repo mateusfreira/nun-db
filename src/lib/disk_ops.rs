@@ -19,8 +19,8 @@ use std::time::Instant;
 use crate::bo::*;
 use crate::configuration::NUN_DBS_DIR;
 use crate::configuration::NUN_MAX_OP_LOG_SIZE;
+use crate::configuration::NUN_DECLUTTER_INTERVAL;
 
-const SNAPSHOT_TIME: i64 = 3000; // 30 secounds
 const BASE_FILE_NAME: &'static str = "-nun.data";
 const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
 const META_FILE_NAME: &'static str = "-nun.madadata";
@@ -612,7 +612,7 @@ pub fn declutter_scheduler(timer: timer::Timer, dbs: Arc<Databases>) {
         std::sync::mpsc::Receiver<String>,
     ) = std::sync::mpsc::channel(); // Visit this again
     let _guard = {
-        timer.schedule_repeating(chrono::Duration::milliseconds(SNAPSHOT_TIME), move || {
+        timer.schedule_repeating(chrono::Duration::seconds(*NUN_DECLUTTER_INTERVAL), move || {
             declutter(&dbs)
         })
     };
