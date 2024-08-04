@@ -1,6 +1,11 @@
 use crate::process_request::process_request;
 use async_std::io::WriteExt;
 use futures::AsyncWriteExt;
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 
 use crate::security::permissions_key_from_user_name;
 use crate::security::user_name_key_from_user_name;
@@ -96,7 +101,89 @@ impl Databases {
             }
         }
     }
+}
 
+impl ReplicationMessage {
+    pub fn get_copy(&self) -> ReplicationMessage {
+        ReplicationMessage {
+            opp_id: self.opp_id,
+            message: self.message.clone(),
+            ack_count: AtomicUsize::new(self.ack_count.load(Ordering::Relaxed)),
+            replicate_count: AtomicUsize::new(self.replicate_count.load(Ordering::Relaxed)),
+            start_time: self.start_time,
+            replications: Mutex::new(self.replications.lock().unwrap().clone()),
+        }
+    }
+    pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
+        ReplicationMessage {
+            opp_id,
+            message,
+            ack_count: AtomicUsize::new(0),
+            replicate_count: AtomicUsize::new(0),
+            start_time: Instant::now(),
+            replications: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn ack(&self, server_name: &String) -> bool {
+        let not_full_ack: bool = {
+            //let relations =
+            match self
+                .replications
+                .lock()
+                .unwrap()
+                .insert(server_name.to_string(), true)
+            {
+                None => {
+                    log::warn!(
+                        "trying to ack {} but not pedding from the server {}",
+                        self.opp_id,
+                        server_name
+                    );
+                    false
+                }
+                Some(is_ack) => {
+                    if !is_ack {
+                        self.ack_count.fetch_add(1, Ordering::Relaxed);
+                        true
+                    } else {
+                        log::warn!(
+                            "trying to ack {} but already ack from the server {}",
+                            self.opp_id,
+                            server_name
+                        );
+                        false
+                    }
+                }
+            }
+        };
+        not_full_ack
+    }
+
+    pub fn replicated(&self, server_name: &String) -> &ReplicationMessage {
+        self.replicate_count.fetch_add(1, Ordering::Relaxed);
+        self.replications
+            .lock()
+            .unwrap()
+            .insert(server_name.to_string(), false);
+        return self;
+    }
+
+    pub fn is_full_acknowledged(&self) -> bool {
+        self.replicate_count.load(Ordering::Relaxed) == self.ack_count.load(Ordering::Relaxed)
+    }
+
+    pub fn count_replication(&self) -> usize {
+        self.replicate_count.load(Ordering::Relaxed)
+    }
+
+    pub fn count_acknowledged(&self) -> usize {
+        self.ack_count.load(Ordering::Relaxed)
+    }
+
+    pub fn message_to_replicate(&self) -> String {
+        format!("rp {} {}", self.opp_id, self.message)
+    }
 }
 
 pub fn replicate_message_with_sender(

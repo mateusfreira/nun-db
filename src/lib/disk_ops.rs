@@ -18,8 +18,8 @@ use std::time::Instant;
 
 use crate::bo::*;
 use crate::configuration::NUN_DBS_DIR;
-use crate::configuration::NUN_MAX_OP_LOG_SIZE;
 use crate::configuration::NUN_DECLUTTER_INTERVAL;
+use crate::configuration::NUN_MAX_OP_LOG_SIZE;
 
 const BASE_FILE_NAME: &'static str = "-nun.data";
 const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
@@ -612,9 +612,10 @@ pub fn declutter_scheduler(timer: timer::Timer, dbs: Arc<Databases>) {
         std::sync::mpsc::Receiver<String>,
     ) = std::sync::mpsc::channel(); // Visit this again
     let _guard = {
-        timer.schedule_repeating(chrono::Duration::seconds(*NUN_DECLUTTER_INTERVAL), move || {
-            declutter(&dbs)
-        })
+        timer.schedule_repeating(
+            chrono::Duration::seconds(*NUN_DECLUTTER_INTERVAL),
+            move || declutter(&dbs),
+        )
     };
     rx.recv().unwrap(); // Thread will run for ever
 }

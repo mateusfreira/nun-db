@@ -1,19 +1,13 @@
 use atomic_float::*;
-use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::RwLock;
-use std::sync::RwLockReadGuard;
-use std::time::Instant;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
+use futures::channel::mpsc::{channel, Receiver, Sender};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use futures::channel::mpsc::{channel, Receiver, Sender};
 
-use crate::db_ops::*;
-use crate::disk_ops::*;
-use crate::security::SECURY_KEYS_PREFIX;
+use crate::{db_ops::*, disk_ops::*, security::SECURY_KEYS_PREFIX};
 
 pub const IN_CONFLICT_RESOLUTION_KEY_VERSION: i32 = -2;
 
@@ -416,6 +410,15 @@ pub struct NunEma {
     pub ema: AtomicF64,
     pub init: bool,
     pub k: f64,
+}
+
+pub struct ReplicationMessage {
+    pub opp_id: u64,
+    pub message: String,
+    pub ack_count: AtomicUsize,
+    pub replicate_count: AtomicUsize,
+    pub start_time: Instant,
+    pub replications: Mutex<HashMap<String, bool>>, // Key ServerName value ack or not
 }
 
 pub struct Database {
@@ -973,7 +976,6 @@ impl Databases {
         members.remove(&name.to_string());
     }
 
-
     pub fn get_oplog_state(&self) -> String {
         let pending_opps = self.pending_opps.read().unwrap();
         let (file_size, count) = get_op_log_size();
@@ -1336,97 +1338,6 @@ pub enum Response {
         change: Change,
         db: String,
     },
-}
-
-pub struct ReplicationMessage {
-    pub opp_id: u64,
-    pub message: String,
-    pub ack_count: AtomicUsize,
-    pub replicate_count: AtomicUsize,
-    pub start_time: Instant,
-    pub replications: Mutex<HashMap<String, bool>>, // Key ServerName value ack or not
-}
-impl ReplicationMessage {
-    pub fn get_copy(&self) -> ReplicationMessage {
-        ReplicationMessage {
-            opp_id: self.opp_id,
-            message: self.message.clone(),
-            ack_count: AtomicUsize::new(self.ack_count.load(Ordering::Relaxed)),
-            replicate_count: AtomicUsize::new(self.replicate_count.load(Ordering::Relaxed)),
-            start_time: self.start_time,
-            replications: Mutex::new(self.replications.lock().unwrap().clone()),
-        }
-    }
-    pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
-        ReplicationMessage {
-            opp_id,
-            message,
-            ack_count: AtomicUsize::new(0),
-            replicate_count: AtomicUsize::new(0),
-            start_time: Instant::now(),
-            replications: Mutex::new(HashMap::new()),
-        }
-    }
-
-    pub fn ack(&self, server_name: &String) -> bool {
-        let not_full_ack: bool = {
-            //let relations =
-            match self
-                .replications
-                .lock()
-                .unwrap()
-                .insert(server_name.to_string(), true)
-            {
-                None => {
-                    log::warn!(
-                        "trying to ack {} but not pedding from the server {}",
-                        self.opp_id,
-                        server_name
-                    );
-                    false
-                }
-                Some(is_ack) => {
-                    if !is_ack {
-                        self.ack_count.fetch_add(1, Ordering::Relaxed);
-                        true
-                    } else {
-                        log::warn!(
-                            "trying to ack {} but already ack from the server {}",
-                            self.opp_id,
-                            server_name
-                        );
-                        false
-                    }
-                }
-            }
-        };
-        not_full_ack
-    }
-
-    pub fn replicated(&self, server_name: &String) -> &ReplicationMessage {
-        self.replicate_count.fetch_add(1, Ordering::Relaxed);
-        self.replications
-            .lock()
-            .unwrap()
-            .insert(server_name.to_string(), false);
-        return self;
-    }
-
-    pub fn is_full_acknowledged(&self) -> bool {
-        self.replicate_count.load(Ordering::Relaxed) == self.ack_count.load(Ordering::Relaxed)
-    }
-
-    pub fn count_replication(&self) -> usize {
-        self.replicate_count.load(Ordering::Relaxed)
-    }
-
-    pub fn count_acknowledged(&self) -> usize {
-        self.ack_count.load(Ordering::Relaxed)
-    }
-
-    pub fn message_to_replicate(&self) -> String {
-        format!("rp {} {}", self.opp_id, self.message)
-    }
 }
 
 #[cfg(test)]
