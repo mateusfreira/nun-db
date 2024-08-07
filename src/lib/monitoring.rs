@@ -49,7 +49,6 @@ impl NunEma {
         } else {
             let current_ema = self.ema.load(Ordering::Relaxed);
             let new_ema = (1_f64 - self.k) * current_ema + self.k * input;
-            //@todo check this is ultra scale
             self.ema
                 .compare_and_swap(current_ema, new_ema, Ordering::Release);
             new_ema

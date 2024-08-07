@@ -1,6 +1,11 @@
 use crate::process_request::process_request;
 use async_std::io::WriteExt;
 use futures::AsyncWriteExt;
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 
 use crate::security::permissions_key_from_user_name;
 use crate::security::user_name_key_from_user_name;
@@ -29,6 +34,155 @@ use crate::disk_ops::*;
 impl Databases {
     pub fn replicate_message(&self, message: String) -> Result<u64, String> {
         replicate_message_with_sender(&self.replication_sender, message)
+    }
+    /**
+     * Registers the message as pending from replication and return the message_to_replicate.
+     * The method ensures that the message are registered only once
+     * @todo this method has 2 locks for the pending_opps to make it safe ideally no lock would be
+     * needed but for now they are.
+     */
+    pub fn register_pending_opp(
+        &self,
+        op_log_id: u64,
+        message: String,
+        server_name: &String,
+    ) -> String {
+        let mut pending_opps = self.pending_opps.write().unwrap();
+        match pending_opps.get(&op_log_id) {
+            Some(pendding_opp) => pendding_opp.replicated(server_name).message_to_replicate(),
+            None => {
+                let replication_message = ReplicationMessage::new(op_log_id, message.clone());
+                let message_to_replicate = replication_message.message_to_replicate();
+                replication_message.replicated(server_name);
+                pending_opps.insert(replication_message.opp_id, replication_message);
+                message_to_replicate
+            }
+        }
+    }
+
+    pub fn get_pending_opp_copy(&self, opp_id: u64) -> Option<ReplicationMessage> {
+        let pending_opps = self.pending_opps.read().unwrap();
+        match pending_opps.get(&opp_id) {
+            Some(pendding_opp) => Some(pendding_opp.get_copy()),
+            None => None,
+        }
+    }
+
+    pub fn acknowledge_pending_opp(&self, opp_id: u64, server_name: &String) -> bool {
+        let mut pending_opps = self.pending_opps.write().unwrap();
+        match pending_opps.get_mut(&opp_id) {
+            Some(replicated_opp) => {
+                let is_replicated = replicated_opp.ack(server_name);
+                if is_replicated {
+                    let elapsed = replicated_opp.start_time.elapsed();
+                    self.update_replication_time_moving_avg(elapsed.as_millis());
+                    log::debug!(
+                        "Acknowledged opp {} from {} in {:?}",
+                        opp_id,
+                        server_name,
+                        elapsed
+                    );
+                    if replicated_opp.is_full_acknowledged() {
+                        pending_opps.remove(&opp_id);
+                        log::debug!(
+                            "All replications Acknowledged removing opp {} from {} in {:?}, {} pending",
+                            opp_id,
+                            server_name,
+                            elapsed,
+                            pending_opps.keys().len()
+                        );
+                    }
+                }
+                is_replicated
+            }
+            None => {
+                log::warn!("Acknowledging invalid opp {}", opp_id);
+                false
+            }
+        }
+    }
+}
+
+impl ReplicationMessage {
+    pub fn get_copy(&self) -> ReplicationMessage {
+        ReplicationMessage {
+            opp_id: self.opp_id,
+            message: self.message.clone(),
+            ack_count: AtomicUsize::new(self.ack_count.load(Ordering::Relaxed)),
+            replicate_count: AtomicUsize::new(self.replicate_count.load(Ordering::Relaxed)),
+            start_time: self.start_time,
+            replications: Mutex::new(self.replications.lock().unwrap().clone()),
+        }
+    }
+    pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
+        ReplicationMessage {
+            opp_id,
+            message,
+            ack_count: AtomicUsize::new(0),
+            replicate_count: AtomicUsize::new(0),
+            start_time: Instant::now(),
+            replications: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn ack(&self, server_name: &String) -> bool {
+        let not_full_ack: bool = {
+            //let relations =
+            match self
+                .replications
+                .lock()
+                .unwrap()
+                .insert(server_name.to_string(), true)
+            {
+                None => {
+                    log::warn!(
+                        "trying to ack {} but not pedding from the server {}",
+                        self.opp_id,
+                        server_name
+                    );
+                    false
+                }
+                Some(is_ack) => {
+                    if !is_ack {
+                        self.ack_count.fetch_add(1, Ordering::Relaxed);
+                        true
+                    } else {
+                        log::warn!(
+                            "trying to ack {} but already ack from the server {}",
+                            self.opp_id,
+                            server_name
+                        );
+                        false
+                    }
+                }
+            }
+        };
+        not_full_ack
+    }
+
+    pub fn replicated(&self, server_name: &String) -> &ReplicationMessage {
+        self.replicate_count.fetch_add(1, Ordering::Relaxed);
+        self.replications
+            .lock()
+            .unwrap()
+            .insert(server_name.to_string(), false);
+        return self;
+    }
+
+    pub fn is_full_acknowledged(&self) -> bool {
+        self.replicate_count.load(Ordering::Relaxed) == self.ack_count.load(Ordering::Relaxed)
+    }
+
+    pub fn count_replication(&self) -> usize {
+        self.replicate_count.load(Ordering::Relaxed)
+    }
+
+    pub fn count_acknowledged(&self) -> usize {
+        self.ack_count.load(Ordering::Relaxed)
+    }
+
+    pub fn message_to_replicate(&self) -> String {
+        format!("rp {} {}", self.opp_id, self.message)
     }
 }
 
@@ -457,11 +611,11 @@ pub async fn start_replication_thread(
                         let db_id = get_db_id(name, &dbs);
                         let key_id = 1;
                         log::debug!("Will write CreateDb");
-                        write_op_log(
+                        try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
-                            ReplicateOpp::CreateDb,
+                            &ReplicateOpp::CreateDb,
                             op_log_id_in,
                         )
                     }
@@ -476,11 +630,11 @@ pub async fn start_replication_thread(
                                 let db_id = get_db_id(db.to_string(), &dbs);
                                 let key_id = 2; //has to be different
                                 log::debug!("Will write ReplicateSnapshot");
-                                write_op_log(
+                                try_write_op_log(
                                     &mut op_log_stream,
                                     db_id,
                                     key_id,
-                                    ReplicateOpp::Snapshot,
+                                    &ReplicateOpp::Snapshot,
                                     op_log_id_in,
                                 )
                             })
@@ -494,11 +648,11 @@ pub async fn start_replication_thread(
                     } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(
+                        try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
-                            ReplicateOpp::Update,
+                            &ReplicateOpp::Update,
                             op_log_id_in,
                         )
                     }
@@ -506,11 +660,11 @@ pub async fn start_replication_thread(
                     Request::ReplicateIncrement { db, key, inc: _ } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(
+                        try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
-                            ReplicateOpp::Update,
+                            &ReplicateOpp::Update,
                             op_log_id_in,
                         )
                     }
@@ -518,11 +672,11 @@ pub async fn start_replication_thread(
                     Request::ReplicateRemove { db, key } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        write_op_log(
+                        try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
-                            ReplicateOpp::Remove,
+                            &ReplicateOpp::Remove,
                             op_log_id_in,
                         )
                     }
@@ -1081,6 +1235,7 @@ fn get_full_sync_opps(dbs: &Arc<Databases>) -> Vec<String> {
     opps_vec
 }
 
+// @todo consider all oplog files
 fn get_pendding_opps_since_from_sync(since: u64, dbs: &Arc<Databases>) -> Vec<String> {
     let opps = read_operations_since(since);
     let mut opps_vec = Vec::new();
@@ -1134,6 +1289,7 @@ fn get_pendding_opps_since_from_sync(since: u64, dbs: &Arc<Databases>) -> Vec<St
     opps_vec
 }
 
+// @todo consider all oplog files
 pub fn get_pendding_opps_since(since: u64, dbs: &Arc<Databases>) -> Vec<String> {
     if since == 0 {
         get_full_sync_opps(dbs)
@@ -1205,6 +1361,7 @@ mod tests {
     }
 
     fn prep_env() -> (Arc<Databases>, Sender<String>, Receiver<String>) {
+        clean_op_log_metadata_files();
         thread::sleep(time::Duration::from_millis(50)); //give it time to the opperation to happen
         let (sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
 
@@ -1263,6 +1420,7 @@ mod tests {
 
     #[test]
     fn should_return_all_the_opps_if_since_is_0() {
+        clean_op_log_metadata_files();
         let (dbs, mut sender, replication_receiver) = prep_env();
         let dbs_to_thread = dbs.clone();
         let replication_thread = thread::spawn(|| async {
@@ -1420,7 +1578,6 @@ mod tests {
         assert!(result, "should have returned an error!")
     }
 
-
     #[test]
     fn should_replicate_if_the_command_is_a_replicate_set_and_node_is_primary() {
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -1467,7 +1624,6 @@ mod tests {
         let replicate_command = receiver.try_next().unwrap().unwrap();
         assert!(replicate_command.ends_with("replicate some any_key -1 any_value"));
     }
-
 
     #[test]
     fn should_not_replicate_if_the_command_is_a_set_and_node_is_not_the_primary() {
@@ -1521,7 +1677,6 @@ mod tests {
         let receiver_replicate_result = receiver.try_next().unwrap_or(None);
         assert_eq!(receiver_replicate_result, None);
     }
-
 
     #[test]
     fn should_replicate_if_the_command_is_a_replicate_election_and_node_is_primary() {

@@ -510,3 +510,10 @@ $connections
 ## Configurations
 ###  NUN_ELECTION_TIMEOUT
 * Configurations are available to define the timeout period for elections to wait until they are acknowledged from all nodes. It is important to note that you should rarely change this variable since doing so could make elections slower. The value of this variable should be at least twice the latency value to ensure that the election process runs smoothly.
+
+### NUN_MAX_OPLOG_SIZE
+* Defines the max op log size in bytes, default value is 1G. NunDb keeps up to 10 uplog files each one containing at max 10% of the max size in bytes of the Oplog max size. When there are more than 10 oplog files the oldest one will be removed in the next time the declutter disk runs. Declutter run on a scheduler evert every 300s (5 minutes), that can be changed by the environment var NUN_DECLUTTER_INTERVAL that defines the interval secound. That means when cleaning up space 10% of the operations are cleaned at a time.
+
+
+### NUN_DECLUTTER_INTERVAL
+* Defines the interval in seconds that the declutter process will run, default value is 300s (5 minutes).

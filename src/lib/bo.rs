@@ -3,17 +3,10 @@ use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::RwLock;
-use std::sync::RwLockReadGuard;
-use std::time::Instant;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use crate::db_ops::*;
-use crate::disk_ops::*;
-use crate::security::SECURY_KEYS_PREFIX;
+use crate::{db_ops::*, disk_ops::*, security::SECURY_KEYS_PREFIX};
 
 pub const IN_CONFLICT_RESOLUTION_KEY_VERSION: i32 = -2;
 
@@ -416,6 +409,15 @@ pub struct NunEma {
     pub ema: AtomicF64,
     pub init: bool,
     pub k: f64,
+}
+
+pub struct ReplicationMessage {
+    pub opp_id: u64,
+    pub message: String,
+    pub ack_count: AtomicUsize,
+    pub replicate_count: AtomicUsize,
+    pub start_time: Instant,
+    pub replications: Mutex<HashMap<String, bool>>, // Key ServerName value ack or not
 }
 
 pub struct Database {
@@ -973,72 +975,6 @@ impl Databases {
         members.remove(&name.to_string());
     }
 
-    /**
-     * Registers the message as pending from replication and return the message_to_replicate.
-     * The method ensures that the message are registered only once
-     * @todo this method has 2 locks for the pending_opps to make it safe ideally no lock would be
-     * needed but for now they are.
-     */
-    pub fn register_pending_opp(
-        &self,
-        op_log_id: u64,
-        message: String,
-        server_name: &String,
-    ) -> String {
-        let mut pending_opps = self.pending_opps.write().unwrap();
-        match pending_opps.get(&op_log_id) {
-            Some(pendding_opp) => pendding_opp.replicated(server_name).message_to_replicate(),
-            None => {
-                let replication_message = ReplicationMessage::new(op_log_id, message.clone());
-                let message_to_replicate = replication_message.message_to_replicate();
-                replication_message.replicated(server_name);
-                pending_opps.insert(replication_message.opp_id, replication_message);
-                message_to_replicate
-            }
-        }
-    }
-
-    pub fn get_pending_opp_copy(&self, opp_id: u64) -> Option<ReplicationMessage> {
-        let pending_opps = self.pending_opps.read().unwrap();
-        match pending_opps.get(&opp_id) {
-            Some(pendding_opp) => Some(pendding_opp.get_copy()),
-            None => None,
-        }
-    }
-    pub fn acknowledge_pending_opp(&self, opp_id: u64, server_name: &String) -> bool {
-        let mut pending_opps = self.pending_opps.write().unwrap();
-        match pending_opps.get_mut(&opp_id) {
-            Some(replicated_opp) => {
-                let is_replicated = replicated_opp.ack(server_name);
-                if is_replicated {
-                    let elapsed = replicated_opp.start_time.elapsed();
-                    self.update_replication_time_moving_avg(elapsed.as_millis());
-                    log::debug!(
-                        "Acknowledged opp {} from {} in {:?}",
-                        opp_id,
-                        server_name,
-                        elapsed
-                    );
-                    if replicated_opp.is_full_acknowledged() {
-                        pending_opps.remove(&opp_id);
-                        log::debug!(
-                            "All replications Acknowledged removing opp {} from {} in {:?}, {} pending",
-                            opp_id,
-                            server_name,
-                            elapsed,
-                            pending_opps.keys().len()
-                        );
-                    }
-                }
-                is_replicated
-            }
-            None => {
-                log::warn!("Acknowledging invalid opp {}", opp_id);
-                false
-            }
-        }
-    }
-
     pub fn get_oplog_state(&self) -> String {
         let pending_opps = self.pending_opps.read().unwrap();
         let (file_size, count) = get_op_log_size();
@@ -1086,6 +1022,17 @@ pub enum ReplicateOpp {
     Remove = 1,
     CreateDb = 2,
     Snapshot = 3,
+}
+
+impl ReplicateOpp {
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            ReplicateOpp::Update => 0,
+            ReplicateOpp::Remove => 1,
+            ReplicateOpp::CreateDb => 2,
+            ReplicateOpp::Snapshot => 3,
+        }
+    }
 }
 
 impl From<u8> for ReplicateOpp {
@@ -1392,97 +1339,6 @@ pub enum Response {
     },
 }
 
-pub struct ReplicationMessage {
-    pub opp_id: u64,
-    pub message: String,
-    pub ack_count: AtomicUsize,
-    pub replicate_count: AtomicUsize,
-    pub start_time: Instant,
-    pub replications: Mutex<HashMap<String, bool>>, // Key ServerName value ack or not
-}
-impl ReplicationMessage {
-    pub fn get_copy(&self) -> ReplicationMessage {
-        ReplicationMessage {
-            opp_id: self.opp_id,
-            message: self.message.clone(),
-            ack_count: AtomicUsize::new(self.ack_count.load(Ordering::Relaxed)),
-            replicate_count: AtomicUsize::new(self.replicate_count.load(Ordering::Relaxed)),
-            start_time: self.start_time,
-            replications: Mutex::new(self.replications.lock().unwrap().clone()),
-        }
-    }
-    pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
-        ReplicationMessage {
-            opp_id,
-            message,
-            ack_count: AtomicUsize::new(0),
-            replicate_count: AtomicUsize::new(0),
-            start_time: Instant::now(),
-            replications: Mutex::new(HashMap::new()),
-        }
-    }
-
-    pub fn ack(&self, server_name: &String) -> bool {
-        let not_full_ack: bool = {
-            //let relations =
-            match self
-                .replications
-                .lock()
-                .unwrap()
-                .insert(server_name.to_string(), true)
-            {
-                None => {
-                    log::warn!(
-                        "trying to ack {} but not pedding from the server {}",
-                        self.opp_id,
-                        server_name
-                    );
-                    false
-                }
-                Some(is_ack) => {
-                    if !is_ack {
-                        self.ack_count.fetch_add(1, Ordering::Relaxed);
-                        true
-                    } else {
-                        log::warn!(
-                            "trying to ack {} but already ack from the server {}",
-                            self.opp_id,
-                            server_name
-                        );
-                        false
-                    }
-                }
-            }
-        };
-        not_full_ack
-    }
-
-    pub fn replicated(&self, server_name: &String) -> &ReplicationMessage {
-        self.replicate_count.fetch_add(1, Ordering::Relaxed);
-        self.replications
-            .lock()
-            .unwrap()
-            .insert(server_name.to_string(), false);
-        return self;
-    }
-
-    pub fn is_full_acknowledged(&self) -> bool {
-        self.replicate_count.load(Ordering::Relaxed) == self.ack_count.load(Ordering::Relaxed)
-    }
-
-    pub fn count_replication(&self) -> usize {
-        self.replicate_count.load(Ordering::Relaxed)
-    }
-
-    pub fn count_acknowledged(&self) -> usize {
-        self.ack_count.load(Ordering::Relaxed)
-    }
-
-    pub fn message_to_replicate(&self) -> String {
-        format!("rp {} {}", self.opp_id, self.message)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1662,6 +1518,7 @@ mod tests {
 
     #[test]
     fn should_return_op_log_size() {
+        clean_op_log_metadata_files();
         let dbs = get_empty_dbs();
         assert_eq!(
             dbs.get_oplog_state(),
@@ -1671,6 +1528,7 @@ mod tests {
 
     #[test]
     fn should_count_the_number_of_replications() {
+        clean_op_log_metadata_files();
         let dbs = get_empty_dbs();
         let id = Databases::next_op_log_id();
         let server_1_name = String::from("server_1");

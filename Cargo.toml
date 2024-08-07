@@ -41,7 +41,7 @@ criterion = { version = "0.4", features = ["html_reports"] }
 
 
 [[bench]]
-name = "nundb_benchmark"
+name = "nundb_disk_benchmark"
 harness = false
 
 
