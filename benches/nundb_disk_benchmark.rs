@@ -3,7 +3,7 @@ use nundb::bo::*;
 use nundb::disk_ops::*;
 use std::env;
 
-fn criterion_benchmark(c: &mut Criterion) {
+fn nundb_disk_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("write_op_log_group");
     //group.significance_level(0.01).sample_size(100000);
     //group.sampling_mode(criterion::SamplingMode::Linear);
@@ -24,5 +24,5 @@ fn criterion_benchmark(c: &mut Criterion) {
         });
     });
 }
-criterion_group!(benches, criterion_benchmark);
+criterion_group!(benches, nundb_disk_benchmark);
 criterion_main!(benches);

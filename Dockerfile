@@ -1,4 +1,4 @@
-FROM rust:1.70.0-slim as builder
+FROM rust:1.78.0-slim as builder
 RUN apt-get update
 RUN apt-get -y install libssl-dev pkg-config
 RUN cargo new --bin nun-db
@@ -7,7 +7,7 @@ COPY ./Cargo.toml ./Cargo.toml
 RUN mkdir benches/
 RUN mkdir src/lib/
 RUN mkdir src/bin/
-RUN touch benches/nundb_benchmark.rs
+RUN touch benches/nundb_disk_benchmark.rs
 RUN touch src/lib/lib.rs
 RUN mv src/main.rs src/bin/main.rs
 RUN cargo build --release
