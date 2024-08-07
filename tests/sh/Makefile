@@ -1,7 +1,7 @@
 include ../../Makefile
 # Variables
-primaryTcpAddress="0.0.0.0:3017"
-primaryHttpAddress = "0.0.0.0:9092"
+primaryTcpAddress="127.0.0.1:3017"
+primaryHttpAddress = "127.0.0.1:9092"
 secoundary1HttpAddress = "127.0.0.1:9093"
 secoundary2HttpAddress = "127.0.0.1:9094"
 user = "mateus"
@@ -34,7 +34,7 @@ clean:
 
 start-1: build
 	@echo "Starting the primary"
-	NUN_DBS_DIR=/tmp/dbs RUST_BACKTRACE=1 ./../../target/debug/nun-db --user $(user) -p $(user) start --http-address "$(primaryHttpAddress)" --tcp-address "$(primaryTcpAddress)" --ws-address "0.0.0.0:3058" --replicate-address "$(replicaSetAddrs)" >> primary.log &
+	NUN_DBS_DIR=/tmp/dbs RUST_BACKTRACE=1 ./../../target/debug/nun-db --user $(user) -p $(user) start --http-address "$(primaryHttpAddress)" --tcp-address "$(primaryTcpAddress)" --ws-address "127.0.0.1:3058" --replicate-address "$(replicaSetAddrs)" >> primary.log &
 	echo $$! >> .primary.pid
 	sleep $(timeoutSpeep)
 
