@@ -1,11 +1,10 @@
 use atomic_float::*;
+use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
-use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use futures::channel::mpsc::{channel, Receiver, Sender};
 
 use crate::{db_ops::*, disk_ops::*, security::SECURY_KEYS_PREFIX};
 
