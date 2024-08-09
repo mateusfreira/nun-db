@@ -42,11 +42,11 @@ jobs:
         with:
           timeout_minutes: 10
           max_attempts: 3
+          command: |
+            mkdir dbs&&cargo +nightly tarpaulin --follow-exec --engine llvm --verbose --all-features --workspace --timeout 120 --out xml -- --test-threads=1
         env:
           TIME_TO_START: 4
           NUN_ELECTION_TIMEOUT: 3000
-        command: |
-          mkdir dbs&&cargo +nightly tarpaulin --follow-exec --engine llvm --verbose --all-features --workspace --timeout 120 --out xml -- --test-threads=1
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v2
         with:
