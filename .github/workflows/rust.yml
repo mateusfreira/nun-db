@@ -37,8 +37,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
-
       - name: Generate code coverage
+        uses: nick-fields/retry@v2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
         env:
           TIME_TO_START: 4
           NUN_ELECTION_TIMEOUT: 3000
