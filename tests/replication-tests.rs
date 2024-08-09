@@ -41,24 +41,37 @@ mod tests {
 
     #[test]
     fn should_replicate_as_expected() -> Result<(), Box<dyn std::error::Error>> {
+        let (_db_name, create_db_command, use_db_command) = helpers::initial_db_commands();
+        let commands = vec![
+            create_db_command,
+            use_db_command.to_string(),
+            "set-safe name 0 mateus;".to_string(),
+        ];
         helpers::clean_env();
         let replicas_processes = helpers::start_3_replicas();
         helpers::nundb_exec(
             &helpers::PRIMARY_HTTP_URI.to_string(),
-            &String::from("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus;"),
+            &helpers::join_commands(commands),
         )
         .success()
         .stdout(predicate::str::contains("empty")); // Empty is the expected response here
         helpers::wait_seconds(3); //Wait 1s to the replication
+
         helpers::nundb_exec(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
-            &String::from("use-db test test-pwd;get name"),
+            &helpers::join_commands(vec![
+                use_db_command.to_string(),
+                "get name".to_string(),
+            ]),
         )
         .success()
         .stdout(predicate::str::contains("value mateus"));
         helpers::nundb_exec(
             &helpers::SECOUNDAR2_HTTP_URI.to_string(),
-            &String::from("use-db test test-pwd;get name"),
+            &helpers::join_commands(vec![
+                use_db_command.to_string(),
+                "get name".to_string(),
+            ])
         )
         .success()
         .stdout(predicate::str::contains("value mateus"));
@@ -68,11 +81,13 @@ mod tests {
 
     #[test]
     fn should_replicate_as_expected_set_safe() -> Result<(), Box<dyn std::error::Error>> {
+        let new_db_name = format!("test-{}", helpers::get_db_name_seed());
+        let use_db_command = format!("use-db {} test-pwd;", new_db_name);
         helpers::clean_env();
         let replicas_processes = helpers::start_3_replicas();
         helpers::nundb_exec(
             &helpers::PRIMARY_HTTP_URI.to_string(),
-            &String::from("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus;"),
+            &String::from(format!("create-db {} test-pwd; {use_db_command}; set-safe name 0 mateus; set-safe name 0 maria;", new_db_name, use_db_command = use_db_command)),
         )
         .success()
         .stdout(predicate::str::contains("empty;empty"));
@@ -81,14 +96,20 @@ mod tests {
 
         helpers::nundb_exec(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
-            &String::from("use-db test test-pwd;get-safe name"),
+            &String::from(format!(
+                "{use_db_command} get-safe name",
+                use_db_command = use_db_command
+            )),
         )
         .success()
         .stdout(predicate::str::contains("value-version 1 mateus"));
 
         helpers::nundb_exec(
             &helpers::SECOUNDAR2_HTTP_URI.to_string(),
-            &String::from("use-db test test-pwd;get-safe name"),
+            &String::from(format!(
+                "{use_db_command} get-safe name",
+                use_db_command = use_db_command
+            )),
         )
         .success()
         .stdout(predicate::str::contains("value-version 1 mateus"));
@@ -96,14 +117,20 @@ mod tests {
         //Save from secoundary 2 read from primary and secoundary 1
         helpers::nundb_exec(
             &helpers::SECOUNDAR2_HTTP_URI.to_string(),
-            &String::from("use-db test test-pwd;set-safe name 1 maria;"),
+            &String::from(format!(
+                "{use_db_command} set-safe name 1 maria;",
+                use_db_command = use_db_command
+            )),
         )
         .success()
         .stdout(predicate::str::contains("empty;empty"));
 
         helpers::nundb_exec(
             &helpers::PRIMARY_HTTP_URI.to_string(),
-            &String::from("use-db test test-pwd;get name;get-safe name"),
+            &String::from(format!(
+                "{use_db_command}; get name; get-safe name",
+                use_db_command = use_db_command
+            )),
         )
         .success()
         .stdout(predicate::str::contains("value maria"))
@@ -111,7 +138,10 @@ mod tests {
 
         helpers::nundb_exec(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
-            &String::from("use-db test test-pwd;get name;get-safe name"),
+            &String::from(format!(
+                "{use_db_command} get name; get-safe name",
+                use_db_command = use_db_command
+            )),
         )
         .success()
         .stdout(predicate::str::contains("value maria"))

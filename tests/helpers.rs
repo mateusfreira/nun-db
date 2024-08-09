@@ -212,4 +212,15 @@ pub mod helpers {
         teardown(child);
         assert!(result.is_ok())
     }
+
+    pub fn initial_db_commands() -> (String, String, String) {
+        let db_name = format!("test-{}", get_db_name_seed());
+        let create_db_command = format!("create-db {} test-pwd;", db_name);
+        let use_db_command = format!("use-db {} test-pwd;", db_name);
+        (db_name, create_db_command, use_db_command)
+    }
+
+    pub fn join_commands(commands: Vec<String>) -> String {
+        commands.join(";")
+    }
 }
