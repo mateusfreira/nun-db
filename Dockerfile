@@ -20,7 +20,7 @@ RUN touch src/lib/lib.rs
 
 RUN cargo build --release
 
-FROM bitnami/minideb:bullseye
+FROM bitnami/minideb:bookworm
 
 RUN apt-get update
 RUN apt-get -y install libssl-dev pkg-config
