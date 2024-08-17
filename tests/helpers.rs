@@ -39,6 +39,24 @@ pub mod helpers {
         }
     }
 
+    pub fn create_test_env_bag(mut seed_port: i32) -> (String, String, String, String) {
+        seed_port += 1;
+        let ip = "127.0.0.1".to_string();
+        let port = seed_port.to_string();
+        let http_port = (seed_port + 10).to_string();
+        let primary_tcp_address = format!("{}:{}", ip, port);
+
+        let primary_http_address = format!("{}:{}", ip, http_port);
+        let primary_ws_address = format!("{}:{}", ip, seed_port + 20);
+        let primary_http_uri = format!("http://{}:{}", ip, http_port);
+        return (
+            primary_tcp_address,
+            primary_http_address,
+            primary_ws_address,
+            primary_http_uri,
+        );
+    }
+
     pub fn start_primary() -> std::process::Child {
         let mut cmd = Command::cargo_bin("nun-db").unwrap();
         let db_process = cmd
@@ -54,6 +72,25 @@ pub mod helpers {
             .unwrap();
         wait_seconds(time_to_start_replica()); // Need 1s here to run initial election
         db_process
+    }
+
+    pub fn start_primary_uri(seed_port: i32) -> (std::process::Child, String) {
+        let (primary_tcp_address, primary_http_address, primary_ws_address, primary_http_uri) =
+            create_test_env_bag(seed_port);
+        let mut cmd = Command::cargo_bin("nun-db").unwrap();
+        let db_process = cmd
+            .args(["-p", PWD])
+            .args(["--user", USER_NAME])
+            .arg("start")
+            .args(["--http-address", &primary_http_address])
+            .args(["--tcp-address", &primary_tcp_address])
+            .args(["--ws-address", &primary_ws_address])
+            .args(["--replicate-address", REPLICATE_SET_ADDRS])
+            .env("NUN_DBS_DIR", "/tmp/dbs")
+            .spawn()
+            .unwrap();
+        wait_seconds(time_to_start_replica()); // Need 1s here to run initial election
+        (db_process, primary_http_uri)
     }
 
     pub fn start_secoundary() -> std::process::Child {
@@ -144,9 +181,23 @@ pub mod helpers {
     }
 
     pub fn clean_env() {
+        Command::new("bash")
+            .args(["-c", "killall nun-db || true"])
+            .assert()
+            .success();
         let mut cmd = Command::new("bash");
-        let clen_cmd = cmd.args(["-c", "rm -Rf /tmp/dbs||true&&rm -Rf /tmp/dbs1||true&&rm -Rf /tmp/dbs2||true/&&mkdir  /tmp/dbs2||true/&&mkdir /tmp/dbs1||true&&mkdir /tmp/dbs||true&&killall nun-db|true"]);
+        let clen_cmd = cmd.args(["-c", "rm -Rf /tmp/dbs || true && rm -Rf /tmp/dbs1 || true && rm -Rf /tmp/dbs2 || true && mkdir  /tmp/dbs2 || true && mkdir /tmp/dbs1 || true && mkdir /tmp/dbs || true"]);
         clen_cmd.assert().success();
+    }
+
+    pub fn start_3_replicas_uri(seed_port: i32) -> (Child, Child, Child, String) {
+        let (db_process, primary_uri) = start_primary_uri(seed_port);
+        (
+            db_process,
+            start_secoundary(),
+            start_secoundary_2(),
+            primary_uri,
+        )
     }
 
     pub fn start_3_replicas() -> (Child, Child, Child) {

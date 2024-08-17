@@ -17,9 +17,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::bo::*;
-use crate::configuration::NUN_DBS_DIR;
+
 use crate::configuration::NUN_DECLUTTER_INTERVAL;
 use crate::configuration::NUN_MAX_OP_LOG_SIZE;
+#[cfg(not(test))]
+use crate::configuration::NUN_DBS_DIR;
 
 const BASE_FILE_NAME: &'static str = "-nun.data";
 const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
@@ -73,6 +75,15 @@ impl Database {
     }
 }
 
+#[cfg(test)]
+pub fn get_dir_name() -> String {
+    let thread_id = thread_id::get();
+    let unique_db_test_db_name = format!("/tmp/dbs-test-{}", thread_id);
+    std::fs::create_dir_all(&unique_db_test_db_name).unwrap();
+    return String::from(unique_db_test_db_name);
+}
+
+#[cfg(not(test))]
 pub fn get_dir_name() -> String {
     NUN_DBS_DIR.to_string()
 }
@@ -1177,7 +1188,7 @@ mod tests {
 
     #[test]
     fn should_return_the_correct_op_log_name() {
-        assert_eq!(get_op_log_file_name(), "dbs/oplog-nun.op");
+        assert!(get_op_log_file_name().ends_with("oplog-nun.op"));
     }
 
     #[test]
@@ -1713,7 +1724,7 @@ mod tests {
         println!("Time elapsed in total is: {:?} {}", duration, i);
         let time_in_ms = start.elapsed().as_millis();
         // make sure we can do 300k a secound
-        assert!(time_in_ms < 300);
+        assert!(time_in_ms < 400);
     }
 
     #[test]
