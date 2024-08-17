@@ -10,11 +10,11 @@ mod tests {
     #[test]
     fn should_start_the_primary() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
-        let mut db_process = helpers::start_primary();
+        let (mut db_process, primary_uri) = helpers::start_primary_uri(3030);
         let mut cmd = Command::cargo_bin("nun-db")?;
         let get_cmd = cmd.args(["-p", "mateus"])
             .args(["--user", "mateus"])
-            .args(["--host", helpers::PRIMARY_HTTP_URI])
+            .args(["--host", &primary_uri])
             .arg("exec")
             .arg("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; get-safe name");
 
@@ -29,17 +29,20 @@ mod tests {
     #[test]
     fn older_process_should_be_the_primary() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
-        let replicas_processes = helpers::start_3_replicas();
-        helpers::nundb_exec(
-            &helpers::PRIMARY_HTTP_URI.to_string(),
-            &String::from("cluster-state"),
-        )
-        .success()
-        .stdout(predicate::str::contains(format!(
-            "{}(self):Primary",
-            helpers::PRIMARY_TCP_ADDRESS
-        )));
-        helpers::kill_replicas(replicas_processes)?;
+        let replicas_processes = helpers::start_3_replicas_uri(3016);
+        let primary_http = replicas_processes.3;
+        let processes = (
+            replicas_processes.0,
+            replicas_processes.1,
+            replicas_processes.2,
+        );
+        helpers::nundb_exec(&primary_http, &String::from("cluster-state"))
+            .success()
+            .stdout(predicate::str::contains(format!(
+                "{}(self):Primary",
+                helpers::PRIMARY_TCP_ADDRESS
+            )));
+        helpers::kill_replicas(processes)?;
         Ok(())
     }
 

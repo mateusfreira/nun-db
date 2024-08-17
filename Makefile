@@ -41,3 +41,6 @@ add-full-latency:
 
 restart-all-replicas:
 	@docker-compose restart nun-db-primary nun-db-secondary-1 nun-db-secondary-2
+
+clean-test-folders:
+	rm -Rf /tmp/dbs-test-*

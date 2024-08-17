@@ -16,9 +16,10 @@ lazy_static! {
     pub static ref NUN_DECLUTTER_INTERVAL: i64 = optional_env_var("NUN_DECLUTTER_INTERVAL", "300").to_string().parse::<i64>().unwrap();
 }
 
-fn optional_env_var(name: &str, default: &str) -> String {
+pub fn optional_env_var(name: &str, default: &str) -> String {
     return env::var(name).unwrap_or(String::from(default));
 }
+
 #[cfg(debug_assertions)]
 fn expect_env_var(name: &str, default: &str, _required: bool) -> String {
     return env::var(name).unwrap_or(String::from(default));
