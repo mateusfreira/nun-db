@@ -6,6 +6,7 @@ mod tests {
 
     #[test]
     fn should_safe_sate_a_value() -> Result<(), Box<dyn std::error::Error>> {
+        helpers::clean_env();
         let mut db_process = helpers::start_primary();
         helpers::nundb_exec_primary(
             "create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; get-safe name",
@@ -33,6 +34,7 @@ mod tests {
 
     #[test]
     fn should_set_if_set_safe_is_valid() -> Result<(), Box<dyn std::error::Error>> {
+        helpers::clean_env();
         let mut db_process = helpers::start_primary();
         helpers::nundb_exec_primary("create-db test test-pwd; use-db test test-pwd;set-safe name 0 mateus; set-safe name 2 maria;get-safe name")
             .stdout(predicate::str::contains("value-version 3 maria"));

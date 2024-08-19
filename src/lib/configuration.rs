@@ -41,6 +41,7 @@ fn expect_env_var(name: &str, _default: &str, required: bool) -> String {
 mod tests {
     use crate::configuration::expect_env_var;
     use crate::configuration::optional_env_var;
+    use std::env;
 
     #[test]
     fn run_mode_should_get_empty_but_debug_mode_got_value() {
@@ -53,6 +54,7 @@ mod tests {
 
     #[test]
     fn optional_env_var_should_default_value_if_not_present() {
+        env::remove_var("NUN_USER");
         assert_eq!(optional_env_var("NUN_USER", "jose"), "jose".to_string());
     }
 }

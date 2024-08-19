@@ -15,7 +15,7 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains("create-db success")); // Empty is the expected response here
-        let  create_commands_set_permisions = vec![
+        let create_commands_set_permisions = vec![
             use_db_command.to_string(),
             "create-user foo bar".to_string(),
             "set-permissions foo rw *;".to_string(),
@@ -28,10 +28,7 @@ mod tests {
         .success()
         .stdout(predicate::str::contains("empty")); // Empty is the expected response here
         helpers::wait_seconds(3);
-        let get_commands = vec![
-            use_db_command.to_string(),
-            "get name".to_string(),
-        ];
+        let get_commands = vec![use_db_command.to_string(), "get name".to_string()];
         helpers::nundb_exec(
             //&helpers::PRIMARY_HTTP_URI.to_string(),
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
@@ -39,10 +36,7 @@ mod tests {
         )
         .success()
         .stdout(predicate::str::contains("value mateus"));
-        let commands = vec![
-            use_db_command.to_string(),
-            "get name".to_string(),
-        ];
+        let commands = vec![use_db_command.to_string(), "get name".to_string()];
         helpers::nundb_exec(
             &helpers::SECOUNDAR2_HTTP_URI.to_string(),
             &helpers::join_commands(commands),
@@ -55,13 +49,13 @@ mod tests {
 
     #[test]
     fn should_replicate_as_expected() -> Result<(), Box<dyn std::error::Error>> {
+        helpers::clean_env();
         let (_db_name, create_db_command, use_db_command) = helpers::initial_db_commands();
         let commands = vec![
             create_db_command,
             use_db_command.to_string(),
             "set-safe name 0 mateus;".to_string(),
         ];
-        helpers::clean_env();
         let replicas_processes = helpers::start_3_replicas();
         helpers::nundb_exec(
             &helpers::PRIMARY_HTTP_URI.to_string(),
@@ -73,19 +67,13 @@ mod tests {
 
         helpers::nundb_exec(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
-            &helpers::join_commands(vec![
-                use_db_command.to_string(),
-                "get name".to_string(),
-            ]),
+            &helpers::join_commands(vec![use_db_command.to_string(), "get name".to_string()]),
         )
         .success()
         .stdout(predicate::str::contains("value mateus"));
         helpers::nundb_exec(
             &helpers::SECOUNDAR2_HTTP_URI.to_string(),
-            &helpers::join_commands(vec![
-                use_db_command.to_string(),
-                "get name".to_string(),
-            ])
+            &helpers::join_commands(vec![use_db_command.to_string(), "get name".to_string()]),
         )
         .success()
         .stdout(predicate::str::contains("value mateus"));
@@ -95,15 +83,14 @@ mod tests {
 
     #[test]
     fn should_replicate_as_expected_set_safe() -> Result<(), Box<dyn std::error::Error>> {
+        helpers::clean_env();
         let (_new_db_name, create_db_command, use_db_command) = helpers::initial_db_commands();
         let init_commands = vec![
             create_db_command,
             use_db_command.to_string(),
             "set-safe name 0 mateus".to_string(),
             "set-safe name 0 maria".to_string(),
-
         ];
-        helpers::clean_env();
         let replicas_processes = helpers::start_3_replicas();
         helpers::nundb_exec(
             &helpers::PRIMARY_HTTP_URI.to_string(),
@@ -113,10 +100,7 @@ mod tests {
         .stdout(predicate::str::contains("empty;empty"));
 
         helpers::wait_seconds(helpers::time_to_start_replica() * 3); //Wait 3s to the replication
-        let get_commands = vec![
-            use_db_command.to_string(),
-            "get-safe name".to_string(),
-        ];
+        let get_commands = vec![use_db_command.to_string(), "get-safe name".to_string()];
         helpers::nundb_exec(
             &helpers::SECOUNDAR_HTTP_URI.to_string(),
             &helpers::join_commands(get_commands.clone()),
@@ -124,10 +108,7 @@ mod tests {
         .success()
         .stdout(predicate::str::contains("value-version 1 mateus"));
 
-        let get_commands = vec![
-            use_db_command.to_string(),
-            "get-safe name".to_string(),
-        ];
+        let get_commands = vec![use_db_command.to_string(), "get-safe name".to_string()];
         helpers::nundb_exec(
             &helpers::SECOUNDAR2_HTTP_URI.to_string(),
             &helpers::join_commands(get_commands),
