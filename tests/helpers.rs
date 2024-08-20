@@ -191,13 +191,8 @@ pub mod helpers {
     }
 
     pub fn start_3_replicas_uri(seed_port: i32) -> (Child, Child, Child, String) {
-        let (db_process, primary_uri) = start_primary_uri(seed_port);
-        (
-            db_process,
-            start_secoundary(),
-            start_secoundary_2(),
-            primary_uri,
-        )
+        let (mut db_process, primary_uri) = start_primary_uri(seed_port);
+        (db_process, start_secoundary(), start_secoundary_2(), primary_uri)
     }
 
     pub fn start_3_replicas() -> (Child, Child, Child) {

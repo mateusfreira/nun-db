@@ -729,7 +729,14 @@ pub fn clean_op_log_metadata_files() {
             if file_name.ends_with(".op") {
                 let full_path = format!("{}/{}", get_op_log_dir_name(), file_name);
                 log::debug!("Will delete the file {}", full_path);
-                fs::remove_file(full_path.clone()).unwrap();
+                match fs::remove_file(full_path.clone()) {
+                    Err(e) => log::warn!(
+                        "Could not delete the {}, {} probably currency problem",
+                        full_path,
+                        e
+                    ),
+                    _ => (),
+                }; //clean file
             }
         }
     }
