@@ -49,39 +49,41 @@ mod tests {
     #[test]
     fn should_elect_a_new_primary_if_the_primary_die() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
-        let mut replicas_processes = helpers::start_3_replicas();
+        let (test_env, mut primary, secoundary, secoundary2) =
+            helpers::start_full_replica_set(1217);
         helpers::nundb_exec(
-            &helpers::PRIMARY_HTTP_URI.to_string(),
+            &test_env.primary.get_http_uri(),
             &String::from("cluster-state"),
         )
         .success()
         .stdout(predicate::str::contains(format!(
             "{}(self):Primary",
-            helpers::PRIMARY_TCP_ADDRESS
+            &test_env.primary.tcp_address
         )));
-        replicas_processes.0.kill()?; //Kill Primary
+        primary.kill()?; //Kill Primary
         helpers::wait_seconds(5); //Give it 5 seconds to elect the new leader
                                   // revisit
         helpers::nundb_exec(
-            &helpers::SECOUNDAR_HTTP_URI.to_string(),
+            &test_env.secoundary.get_http_uri(),
             &String::from("cluster-state"),
         )
         .success()
         .stdout(predicate::str::contains(format!(
             "{}(self):Primary",
-            helpers::SECOUNDARY_TCP_ADDRESS
+            &test_env.secoundary.tcp_address
         )));
         helpers::nundb_exec(
-            &helpers::SECOUNDAR2_HTTP_URI.to_string(),
+            &test_env.secoundary2.get_http_uri(),
             &String::from("cluster-state"),
         )
         .success()
         .stdout(predicate::str::contains(format!(
             "{}(Connected):Primary",
-            helpers::SECOUNDARY_TCP_ADDRESS
+            &test_env.secoundary.tcp_address
         )));
 
-        helpers::kill_replicas(replicas_processes)?;
+        let processes = (secoundary, secoundary2, primary);
+        helpers::kill_replicas(processes)?;
         Ok(())
     }
 

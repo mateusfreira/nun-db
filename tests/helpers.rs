@@ -107,7 +107,7 @@ pub mod helpers {
                 http_address: secoundary_2_http_address,
                 ws_address: secoundary_2_ws_address,
                 dbs_dir: dbs_dir_sec2,
-            }
+            },
         };
     }
 
@@ -145,9 +145,15 @@ pub mod helpers {
         db_process
     }
 
-
-    pub fn start_full_replica_set() -> (TestEnv, std::process::Child, std::process::Child, std::process::Child) {
-        let  test_env = create_test_env_bag(3011);
+    pub fn start_full_replica_set(
+        seed_port: i32,
+    ) -> (
+        TestEnv,
+        std::process::Child,
+        std::process::Child,
+        std::process::Child,
+    ) {
+        let test_env = create_test_env_bag(seed_port);
         let primary = start_env(&test_env.primary, &test_env.get_replicate_set_addrs());
         wait_seconds(2);
         let secoundary = start_env(&test_env.secoundary, &test_env.get_replicate_set_addrs());
@@ -156,8 +162,11 @@ pub mod helpers {
     }
 
     pub fn start_primary_uri(seed_port: i32) -> (std::process::Child, String) {
-        let  test_env = create_test_env_bag(seed_port);
-        (start_env(&test_env.primary, &test_env.get_replicate_set_addrs()), test_env.primary.get_http_uri())
+        let test_env = create_test_env_bag(seed_port);
+        (
+            start_env(&test_env.primary, &test_env.get_replicate_set_addrs()),
+            test_env.primary.get_http_uri(),
+        )
     }
 
     pub fn start_secoundary() -> std::process::Child {
@@ -255,12 +264,18 @@ pub mod helpers {
         let mut cmd = Command::new("bash");
         let clen_cmd = cmd.args(["-c", "rm -Rf /tmp/dbs || true && rm -Rf /tmp/dbs1 || true && rm -Rf /tmp/dbs2 || true && mkdir  /tmp/dbs2 || true && mkdir /tmp/dbs1 || true && mkdir /tmp/dbs || true"]);
         Command::new("bash")
-            .args(["-c", r"find  '/tmp/' -name 'test-nun-dbs*' -exec rm -Rf {} \; || true"])
+            .args([
+                "-c",
+                r"find  '/tmp/' -name 'test-nun-dbs*' -exec rm -Rf {} \; || true",
+            ])
             .assert()
             .success();
 
         Command::new("bash")
-            .args(["-c", r"find  '/tmp/' -name 'dbs-test-*' -exec rm -Rf {} \; || true"])
+            .args([
+                "-c",
+                r"find  '/tmp/' -name 'dbs-test-*' -exec rm -Rf {} \; || true",
+            ])
             .assert()
             .success();
         clen_cmd.assert().success();
@@ -268,7 +283,12 @@ pub mod helpers {
 
     pub fn start_3_replicas_uri(seed_port: i32) -> (Child, Child, Child, String) {
         let (db_process, primary_uri) = start_primary_uri(seed_port);
-        (db_process, start_secoundary(), start_secoundary_2(), primary_uri)
+        (
+            db_process,
+            start_secoundary(),
+            start_secoundary_2(),
+            primary_uri,
+        )
     }
 
     pub fn start_3_replicas() -> (Child, Child, Child) {

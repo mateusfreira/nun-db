@@ -11,7 +11,7 @@ mod tests {
     #[test]
     fn should_chain_conflicts() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
-        let (test_env, primary, secoundary, secoundary2) = helpers::start_full_replica_set();
+        let (test_env, primary, secoundary, secoundary2) = helpers::start_full_replica_set(300);
 
         helpers::nundb_exec(
             &test_env.primary.get_http_uri(),
@@ -62,28 +62,23 @@ mod tests {
             .stdout(predicate::str::contains("test 2 name mateus change-1"));
 
         let get_command_conflict2 = format!("use test test-pwd;get {}", conflict2);
-        helpers::nundb_exec( &test_env.secoundary.get_http_uri(), &get_command_conflict2)
+        helpers::nundb_exec(&test_env.secoundary.get_http_uri(), &get_command_conflict2)
             .stdout(predicate::str::contains(conflict1));
 
         let get_command_conflict3 = format!("use test test-pwd;get {}", conflict3);
-        helpers::nundb_exec(&test_env.secoundary.get_http_uri(), &get_command_conflict3, )
+        helpers::nundb_exec(&test_env.secoundary.get_http_uri(), &get_command_conflict3)
             .stdout(predicate::str::contains(conflict2));
 
-        let processes = (
-            primary,
-            secoundary,
-            secoundary2,
-        );
+        let processes = (primary, secoundary, secoundary2);
         helpers::kill_replicas(processes)?;
 
         Ok(())
     }
 
-
     #[test]
     fn should_replicate_conflicts_keys_to_all_replicas() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
-        let (test_env, primary, secoundary, secoundary2) = helpers::start_full_replica_set();
+        let (test_env, primary, secoundary, secoundary2) = helpers::start_full_replica_set(200);
         helpers::nundb_exec(
             &test_env.primary.get_http_uri(),
             "create-db test test-pwd arbiter; use-db test test-pwd;set-safe name 1 mateus; get-safe name;",
@@ -114,15 +109,11 @@ mod tests {
             .trim(); // set command
                      // Should be working, replication implemented, maybe timing?
         let get_command = format!("use test test-pwd;get {}", conflict1);
-        helpers::nundb_exec(&test_env.primary.get_http_uri(),&get_command)
+        helpers::nundb_exec(&test_env.primary.get_http_uri(), &get_command)
             // value resolve ${change_id} test 2 name mateus change-1
             .stdout(predicate::str::contains("test 2 name mateus change-1"));
 
-        let replicas_processes = (
-            primary,
-            secoundary,
-            secoundary2,
-        );
+        let replicas_processes = (primary, secoundary, secoundary2);
         helpers::kill_replicas(replicas_processes)?;
         Ok(())
     }
