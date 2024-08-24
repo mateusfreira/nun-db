@@ -11,7 +11,7 @@ mod tests {
     #[test]
     fn should_chain_conflicts() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
-        let (test_env, primary, secoundary, secoundary2) = helpers::start_full_replica_set(300);
+        let (test_env, primary, secoundary, secoundary2) = helpers::start_full_replica_set(2300);
 
         helpers::nundb_exec(
             &test_env.primary.get_http_uri(),
@@ -78,7 +78,7 @@ mod tests {
     #[test]
     fn should_replicate_conflicts_keys_to_all_replicas() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
-        let (test_env, primary, secoundary, secoundary2) = helpers::start_full_replica_set(200);
+        let (test_env, primary, secoundary, secoundary2) = helpers::start_full_replica_set(3200);
         helpers::nundb_exec(
             &test_env.primary.get_http_uri(),
             "create-db test test-pwd arbiter; use-db test test-pwd;set-safe name 1 mateus; get-safe name;",
