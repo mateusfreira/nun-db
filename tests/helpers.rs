@@ -1,6 +1,5 @@
 #[cfg(test)]
 pub mod helpers {
-
     use assert_cmd::prelude::*; // Add methods on commands
     use predicates::prelude::*;
     use std::env;
@@ -11,6 +10,30 @@ pub mod helpers {
     use std::time::UNIX_EPOCH;
     use std::{thread, time}; // Used for writing assertions
 
+    pub struct Env {
+        pub tcp_address: String,
+        pub http_address: String,
+        pub ws_address: String,
+        pub dbs_dir: String,
+    }
+    impl Env {
+        pub fn get_http_uri(&self) -> String {
+            format!("http://{}", self.http_address)
+        }
+    }
+    pub struct TestEnv {
+        pub primary: Env,
+        pub secoundary: Env,
+        pub secoundary2: Env,
+    }
+    impl TestEnv {
+        pub fn get_replicate_set_addrs(&self) -> String {
+            format!(
+                "{},{},{}",
+                self.primary.tcp_address, self.secoundary.tcp_address, self.secoundary2.tcp_address
+            )
+        }
+    }
     pub const USER_NAME: &'static str = "mateus";
     pub const PWD: &'static str = "mateus";
 
@@ -39,22 +62,53 @@ pub mod helpers {
         }
     }
 
-    pub fn create_test_env_bag(mut seed_port: i32) -> (String, String, String, String) {
+    pub fn create_test_env_bag(mut seed_port: i32) -> TestEnv {
         seed_port += 1;
         let ip = "127.0.0.1".to_string();
         let port = seed_port.to_string();
         let http_port = (seed_port + 10).to_string();
-        let primary_tcp_address = format!("{}:{}", ip, port);
+        let primary_tcp_address = format!("{}:{}", &ip, port);
+        let secoundary_tcp_address = format!("{}:{}", &ip, (seed_port + 1));
+        let secoundary_2_tcp_address = format!("{}:{}", &ip, (seed_port + 2));
+
+        let dbs_dir_primary = format!("/tmp/test-nun-dbs-primary-{}", seed_port);
+        std::fs::create_dir_all(&dbs_dir_primary).unwrap();
+
+        let dbs_dir_sec = format!("/tmp/test-nun-dbs-sec-{}", seed_port);
+        std::fs::create_dir_all(&dbs_dir_sec).unwrap();
+
+        let dbs_dir_sec2 = format!("/tmp/test-nun-dbs-sec2-{}", seed_port);
+        std::fs::create_dir_all(&dbs_dir_sec2).unwrap();
 
         let primary_http_address = format!("{}:{}", ip, http_port);
         let primary_ws_address = format!("{}:{}", ip, seed_port + 20);
-        let primary_http_uri = format!("http://{}:{}", ip, http_port);
-        return (
-            primary_tcp_address,
-            primary_http_address,
-            primary_ws_address,
-            primary_http_uri,
-        );
+
+        let secoundary_http_address = format!("{}:{}", ip, seed_port + 11);
+        let secoundary_ws_address = format!("{}:{}", ip, seed_port + 21);
+
+        let secoundary_2_http_address = format!("{}:{}", ip, seed_port + 12);
+        let secoundary_2_ws_address = format!("{}:{}", ip, seed_port + 22);
+
+        return TestEnv {
+            primary: Env {
+                tcp_address: primary_tcp_address,
+                http_address: primary_http_address,
+                ws_address: primary_ws_address,
+                dbs_dir: dbs_dir_primary,
+            },
+            secoundary: Env {
+                tcp_address: secoundary_tcp_address,
+                http_address: secoundary_http_address,
+                ws_address: secoundary_ws_address,
+                dbs_dir: dbs_dir_sec,
+            },
+            secoundary2: Env {
+                tcp_address: secoundary_2_tcp_address,
+                http_address: secoundary_2_http_address,
+                ws_address: secoundary_2_ws_address,
+                dbs_dir: dbs_dir_sec2,
+            }
+        };
     }
 
     pub fn start_primary() -> std::process::Child {
@@ -74,23 +128,36 @@ pub mod helpers {
         db_process
     }
 
-    pub fn start_primary_uri(seed_port: i32) -> (std::process::Child, String) {
-        let (primary_tcp_address, primary_http_address, primary_ws_address, primary_http_uri) =
-            create_test_env_bag(seed_port);
+    pub fn start_env(env: &Env, replication_address: &String) -> std::process::Child {
         let mut cmd = Command::cargo_bin("nun-db").unwrap();
         let db_process = cmd
             .args(["-p", PWD])
             .args(["--user", USER_NAME])
             .arg("start")
-            .args(["--http-address", &primary_http_address])
-            .args(["--tcp-address", &primary_tcp_address])
-            .args(["--ws-address", &primary_ws_address])
-            .args(["--replicate-address", REPLICATE_SET_ADDRS])
+            .args(["--http-address", &env.http_address])
+            .args(["--tcp-address", &env.tcp_address])
+            .args(["--ws-address", &env.ws_address])
+            .args(["--replicate-address", replication_address])
             .env("NUN_DBS_DIR", "/tmp/dbs")
             .spawn()
             .unwrap();
         wait_seconds(time_to_start_replica()); // Need 1s here to run initial election
-        (db_process, primary_http_uri)
+        db_process
+    }
+
+
+    pub fn start_full_replica_set() -> (TestEnv, std::process::Child, std::process::Child, std::process::Child) {
+        let  test_env = create_test_env_bag(3011);
+        let primary = start_env(&test_env.primary, &test_env.get_replicate_set_addrs());
+        wait_seconds(2);
+        let secoundary = start_env(&test_env.secoundary, &test_env.get_replicate_set_addrs());
+        let secoundary2 = start_env(&test_env.secoundary2, &test_env.get_replicate_set_addrs());
+        (test_env, primary, secoundary, secoundary2)
+    }
+
+    pub fn start_primary_uri(seed_port: i32) -> (std::process::Child, String) {
+        let  test_env = create_test_env_bag(seed_port);
+        (start_env(&test_env.primary, &test_env.get_replicate_set_addrs()), test_env.primary.get_http_uri())
     }
 
     pub fn start_secoundary() -> std::process::Child {
@@ -187,11 +254,20 @@ pub mod helpers {
             .success();
         let mut cmd = Command::new("bash");
         let clen_cmd = cmd.args(["-c", "rm -Rf /tmp/dbs || true && rm -Rf /tmp/dbs1 || true && rm -Rf /tmp/dbs2 || true && mkdir  /tmp/dbs2 || true && mkdir /tmp/dbs1 || true && mkdir /tmp/dbs || true"]);
+        Command::new("bash")
+            .args(["-c", r"find  '/tmp/' -name 'test-nun-dbs*' -exec rm -Rf {} \; || true"])
+            .assert()
+            .success();
+
+        Command::new("bash")
+            .args(["-c", r"find  '/tmp/' -name 'dbs-test-*' -exec rm -Rf {} \; || true"])
+            .assert()
+            .success();
         clen_cmd.assert().success();
     }
 
     pub fn start_3_replicas_uri(seed_port: i32) -> (Child, Child, Child, String) {
-        let (mut db_process, primary_uri) = start_primary_uri(seed_port);
+        let (db_process, primary_uri) = start_primary_uri(seed_port);
         (db_process, start_secoundary(), start_secoundary_2(), primary_uri)
     }
 

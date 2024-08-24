@@ -11,8 +11,10 @@ mod tests {
     #[test]
     fn should_chain_conflicts() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
-        let replicas_processes = helpers::start_3_replicas();
-        helpers::nundb_exec_primary(
+        let (test_env, primary, secoundary, secoundary2) = helpers::start_full_replica_set();
+
+        helpers::nundb_exec(
+            &test_env.primary.get_http_uri(),
             "create-db test test-pwd arbiter; use-db test test-pwd;set-safe name 1 mateus; get-safe name;",
         )
         .stdout(predicate::str::contains("value-version 2 mateus"));
@@ -20,7 +22,7 @@ mod tests {
         helpers::wait_seconds(3); //Give it 2 seconds to elect the new leader
                                   // revisit
         let output =  helpers::nundb_call(
-            &helpers::SECOUNDAR_HTTP_URI.to_string(),
+            &test_env.secoundary.get_http_uri(),
             &String::from("use test test-pwd;arbiter;set-safe name 0 change-1; set-safe name 0 change-2;set-safe name 0 change-3;ls"),
         );
 
@@ -55,35 +57,42 @@ mod tests {
             .trim(); // set command
         helpers::wait_seconds(2);
         let get_command = format!("use test test-pwd;get {}", conflict1);
-        helpers::nundb_exec_secondary(&get_command)
+        helpers::nundb_exec(&test_env.secoundary.get_http_uri(), &get_command)
             // value resolve ${change_id} test 2 name mateus change-1
             .stdout(predicate::str::contains("test 2 name mateus change-1"));
 
         let get_command_conflict2 = format!("use test test-pwd;get {}", conflict2);
-        helpers::nundb_exec_secondary(&get_command_conflict2)
+        helpers::nundb_exec( &test_env.secoundary.get_http_uri(), &get_command_conflict2)
             .stdout(predicate::str::contains(conflict1));
 
         let get_command_conflict3 = format!("use test test-pwd;get {}", conflict3);
-        helpers::nundb_exec_secondary(&get_command_conflict3)
+        helpers::nundb_exec(&test_env.secoundary.get_http_uri(), &get_command_conflict3, )
             .stdout(predicate::str::contains(conflict2));
 
-        helpers::kill_replicas(replicas_processes)?;
+        let processes = (
+            primary,
+            secoundary,
+            secoundary2,
+        );
+        helpers::kill_replicas(processes)?;
 
         Ok(())
     }
 
+
     #[test]
     fn should_replicate_conflicts_keys_to_all_replicas() -> Result<(), Box<dyn std::error::Error>> {
         helpers::clean_env();
-        let replicas_processes = helpers::start_3_replicas();
-        helpers::nundb_exec_primary(
+        let (test_env, primary, secoundary, secoundary2) = helpers::start_full_replica_set();
+        helpers::nundb_exec(
+            &test_env.primary.get_http_uri(),
             "create-db test test-pwd arbiter; use-db test test-pwd;set-safe name 1 mateus; get-safe name;",
         )
         .stdout(predicate::str::contains("value-version 2 mateus"));
 
         helpers::wait_seconds(2);
         let output =  helpers::nundb_call(
-            &helpers::SECOUNDAR_HTTP_URI.to_string(),
+            &test_env.primary.get_http_uri(),
             &String::from("use test test-pwd;arbiter;set-safe name 0 change-1; set-safe name 0 change-2;set-safe name 0 change-3;ls"),
         );
 
@@ -105,10 +114,15 @@ mod tests {
             .trim(); // set command
                      // Should be working, replication implemented, maybe timing?
         let get_command = format!("use test test-pwd;get {}", conflict1);
-        helpers::nundb_exec_primary(&get_command)
+        helpers::nundb_exec(&test_env.primary.get_http_uri(),&get_command)
             // value resolve ${change_id} test 2 name mateus change-1
             .stdout(predicate::str::contains("test 2 name mateus change-1"));
 
+        let replicas_processes = (
+            primary,
+            secoundary,
+            secoundary2,
+        );
         helpers::kill_replicas(replicas_processes)?;
         Ok(())
     }
