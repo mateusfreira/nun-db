@@ -776,7 +776,7 @@ fn add_primary_to_secoundary(
     guard
 }
 
-fn add_sencoundary_to_primary(
+fn add_secondary_to_primary(
     sender: &Sender<String>,
     name: String,
     tcp_addr: &String,
@@ -806,7 +806,7 @@ fn add_sencoundary_to_primary(
         );
 
         log::info!(
-            "Removing member {} from cluster add_sencoundary_to_primary died!",
+            "Removing member {} from cluster add_secondary_to_primary died!",
             name
         );
         dbs.remove_cluster_member(&name);
@@ -814,7 +814,7 @@ fn add_sencoundary_to_primary(
     guard
 }
 
-fn add_sencoundary_to_secoundary(
+fn add_secondary_to_secoundary(
     sender: &Sender<String>,
     name: String,
     tcp_addr: &String,
@@ -844,7 +844,7 @@ fn add_sencoundary_to_secoundary(
         );
 
         log::info!(
-            "Removing member {} from cluster add_sencoundary_to_secoundary!",
+            "Removing member {} from cluster add_secondary_to_secoundary!",
             name
         );
 
@@ -897,7 +897,7 @@ pub async fn start_replication_supervisor(
                         if !dbs.has_cluster_memeber(&name) {
                             // Notify the members in the cluster about the new member
                             send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                            let guard = add_sencoundary_to_primary(
+                            let guard = add_secondary_to_primary(
                                 &sender,
                                 name.clone(),
                                 &tcp_addr,
@@ -944,7 +944,7 @@ pub async fn start_replication_supervisor(
                         if !dbs.has_cluster_memeber(&name) {
                             // Notify the members in the cluster about the new member
                             send_cluster_state_to_the_new_member(&sender, &dbs, &name);
-                            let guard = add_sencoundary_to_secoundary(
+                            let guard = add_secondary_to_secoundary(
                                 &sender,
                                 name.clone(),
                                 &tcp_addr,
