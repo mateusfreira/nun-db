@@ -1,3 +1,4 @@
+use bytes::{BufMut, BytesMut};
 use log;
 use std::collections::HashMap;
 use std::fs;
@@ -489,24 +490,50 @@ fn get_values_file_append_mode(db_name: &String, reclame_space: bool) -> (BufWri
 }
 
 fn storage_data_disk(db: &Database, db_name: &String, reclame_space: bool) -> u32 {
-    let keys_to_update = get_keys_to_save_to_disck(db, reclame_space);
-    let mut keys_file = get_key_file_append_mode(&db_name, reclame_space);
-    let (mut values_file, current_value_file_size) =
-        get_values_file_append_mode(&db_name, reclame_space);
-    // To inplace update
-    let (mut keys_file_write, current_key_file_size) = get_key_write_mode(&db_name);
-    log::debug!("current_key_file_size: {}", current_key_file_size);
+    NodeDrive::storage_data_disk(db, reclame_space, db_name)
+    //S3Storage::storage_data_disk(db, reclame_space, db_name)
+}
 
-    let mut value_addr = current_value_file_size;
-    let mut next_key_addr = current_key_file_size;
-    let mut changed_keys = 0;
+struct S3Storage {}
+impl S3Storage {
+    fn storage_data_disk(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
+        let keys_to_update = get_keys_to_save_to_disck(db, reclame_space);
 
-    for (key, value) in keys_to_update {
-        match value.state {
-            ValueStatus::Ok => {
-                if !reclame_space {
-                    panic!("Values Ok should never get here")
-                } else {
+        let mut key_buffer = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
+
+        let mut keys_file = key_buffer.writer();
+
+        //let (mut values_file, current_value_file_size) = get_values_file_append_mode(&db_name, reclame_space);
+        // To inplace update
+        /** thigs will get wiled here
+        let (mut keys_file_write, current_key_file_size) = (keys_file, 0)
+        log::debug!("current_key_file_size: {}", current_key_file_size);
+
+        let mut value_addr = current_value_file_size;
+        let mut next_key_addr = current_key_file_size;
+        let mut changed_keys = 0;
+
+        for (key, value) in keys_to_update {
+            match value.state {
+                ValueStatus::Ok => {
+                    if !reclame_space {
+                        panic!("Values Ok should never get here")
+                    } else {
+                        changed_keys = changed_keys + 1;
+                        let (record_size, key_size) = write_new_key_value(
+                            &mut values_file,
+                            &value,
+                            &key,
+                            next_key_addr,
+                            value_addr,
+                            &mut keys_file,
+                            db,
+                        );
+                        value_addr = value_addr + record_size;
+                        next_key_addr = next_key_addr + key_size;
+                    }
+                }
+                ValueStatus::New => {
                     changed_keys = changed_keys + 1;
                     let (record_size, key_size) = write_new_key_value(
                         &mut values_file,
@@ -520,83 +547,184 @@ fn storage_data_disk(db: &Database, db_name: &String, reclame_space: bool) -> u3
                     value_addr = value_addr + record_size;
                     next_key_addr = next_key_addr + key_size;
                 }
-            }
-            ValueStatus::New => {
-                changed_keys = changed_keys + 1;
-                let (record_size, key_size) = write_new_key_value(
-                    &mut values_file,
-                    &value,
-                    &key,
-                    next_key_addr,
-                    value_addr,
-                    &mut keys_file,
-                    db,
-                );
-                value_addr = value_addr + record_size;
-                next_key_addr = next_key_addr + key_size;
-            }
 
-            ValueStatus::Updated => {
-                changed_keys = changed_keys + 1;
-                // Append value file
-                let record_size = write_value(&mut values_file, &value, ValueStatus::Ok);
-
-                if !reclame_space {
-                    // In place upate in key file
-                    update_key(
-                        &mut keys_file_write,
-                        &key,
-                        value.version,
-                        value_addr,
-                        value.key_disk_addr,
-                    );
-                    db.set_value_as_ok(
-                        &key,
-                        &value,
-                        value_addr,
-                        value.key_disk_addr,
-                        Databases::next_op_log_id(),
-                    );
-                    // Append key file
-                } else {
-                    let key_size = write_key(&mut keys_file, &key, &value, value_addr);
-                    db.set_value_as_ok(
-                        &key,
-                        &value,
-                        value_addr,
-                        next_key_addr,
-                        Databases::next_op_log_id(),
-                    );
-                    next_key_addr = next_key_addr + key_size;
-                }
-                value_addr = value_addr + record_size;
-            }
-
-            ValueStatus::Deleted => {
-                if !reclame_space {
+                ValueStatus::Updated => {
                     changed_keys = changed_keys + 1;
-                    // In place upate in key file
-                    update_key(
-                        &mut keys_file_write,
-                        &key,
-                        VERSION_DELETED, // Version -1 means deleted
-                        0,
-                        value.key_disk_addr,
-                    );
-                } else {
-                    log::debug!("To reclame_space nothing need to be done on delete");
+                    // Append value file
+                    let record_size = write_value(&mut values_file, &value, ValueStatus::Ok);
+
+                    if !reclame_space {
+                        // In place upate in key file
+                        update_key(
+                            &mut keys_file_write,
+                            &key,
+                            value.version,
+                            value_addr,
+                            value.key_disk_addr,
+                        );
+                        db.set_value_as_ok(
+                            &key,
+                            &value,
+                            value_addr,
+                            value.key_disk_addr,
+                            Databases::next_op_log_id(),
+                        );
+                        // Append key file
+                    } else {
+                        let key_size = write_key(&mut keys_file, &key, &value, value_addr);
+                        db.set_value_as_ok(
+                            &key,
+                            &value,
+                            value_addr,
+                            next_key_addr,
+                            Databases::next_op_log_id(),
+                        );
+                        next_key_addr = next_key_addr + key_size;
+                    }
+                    value_addr = value_addr + record_size;
+                }
+
+                ValueStatus::Deleted => {
+                    if !reclame_space {
+                        changed_keys = changed_keys + 1;
+                        // In place upate in key file
+                        update_key(
+                            &mut keys_file_write,
+                            &key,
+                            VERSION_DELETED, // Version -1 means deleted
+                            0,
+                            value.key_disk_addr,
+                        );
+                    } else {
+                        log::debug!("To reclame_space nothing need to be done on delete");
+                    }
                 }
             }
         }
+
+        keys_file.flush().unwrap();
+        keys_file_write.flush().unwrap();
+        values_file.flush().unwrap();
+
+        write_metadata_file(db_name, db);
+        log::debug!("snapshoted {} keys", changed_keys);
+        changed_keys
     }
+    */
+    0
+}
+struct NodeDrive {}
+impl NodeDrive {
+    fn storage_data_disk(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
+        let keys_to_update = get_keys_to_save_to_disck(db, reclame_space);
+        let mut keys_file = get_key_file_append_mode(&db_name, reclame_space);
+        let (mut values_file, current_value_file_size) =
+            get_values_file_append_mode(&db_name, reclame_space);
+        // To inplace update
+        let (mut keys_file_write, current_key_file_size) = get_key_write_mode(&db_name);
+        log::debug!("current_key_file_size: {}", current_key_file_size);
 
-    keys_file.flush().unwrap();
-    keys_file_write.flush().unwrap();
-    values_file.flush().unwrap();
+        let mut value_addr = current_value_file_size;
+        let mut next_key_addr = current_key_file_size;
+        let mut changed_keys = 0;
 
-    write_metadata_file(db_name, db);
-    log::debug!("snapshoted {} keys", changed_keys);
-    changed_keys
+        for (key, value) in keys_to_update {
+            match value.state {
+                ValueStatus::Ok => {
+                    if !reclame_space {
+                        panic!("Values Ok should never get here")
+                    } else {
+                        changed_keys = changed_keys + 1;
+                        let (record_size, key_size) = write_new_key_value(
+                            &mut values_file,
+                            &value,
+                            &key,
+                            next_key_addr,
+                            value_addr,
+                            &mut keys_file,
+                            db,
+                        );
+                        value_addr = value_addr + record_size;
+                        next_key_addr = next_key_addr + key_size;
+                    }
+                }
+                ValueStatus::New => {
+                    changed_keys = changed_keys + 1;
+                    let (record_size, key_size) = write_new_key_value(
+                        &mut values_file,
+                        &value,
+                        &key,
+                        next_key_addr,
+                        value_addr,
+                        &mut keys_file,
+                        db,
+                    );
+                    value_addr = value_addr + record_size;
+                    next_key_addr = next_key_addr + key_size;
+                }
+
+                ValueStatus::Updated => {
+                    changed_keys = changed_keys + 1;
+                    // Append value file
+                    let record_size = write_value(&mut values_file, &value, ValueStatus::Ok);
+
+                    if !reclame_space {
+                        // In place upate in key file
+                        update_key(
+                            &mut keys_file_write,
+                            &key,
+                            value.version,
+                            value_addr,
+                            value.key_disk_addr,
+                        );
+                        db.set_value_as_ok(
+                            &key,
+                            &value,
+                            value_addr,
+                            value.key_disk_addr,
+                            Databases::next_op_log_id(),
+                        );
+                        // Append key file
+                    } else {
+                        let key_size = write_key(&mut keys_file, &key, &value, value_addr);
+                        db.set_value_as_ok(
+                            &key,
+                            &value,
+                            value_addr,
+                            next_key_addr,
+                            Databases::next_op_log_id(),
+                        );
+                        next_key_addr = next_key_addr + key_size;
+                    }
+                    value_addr = value_addr + record_size;
+                }
+
+                ValueStatus::Deleted => {
+                    if !reclame_space {
+                        changed_keys = changed_keys + 1;
+                        // In place upate in key file
+                        update_key(
+                            &mut keys_file_write,
+                            &key,
+                            VERSION_DELETED, // Version -1 means deleted
+                            0,
+                            value.key_disk_addr,
+                        );
+                    } else {
+                        log::debug!("To reclame_space nothing need to be done on delete");
+                    }
+                }
+            }
+        }
+
+        keys_file.flush().unwrap();
+        keys_file_write.flush().unwrap();
+        values_file.flush().unwrap();
+
+        write_metadata_file(db_name, db);
+        log::debug!("snapshoted {} keys", changed_keys);
+        changed_keys
+    }
 }
 
 fn write_new_key_value(
