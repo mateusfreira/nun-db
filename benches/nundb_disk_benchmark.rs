@@ -10,11 +10,11 @@ fn nundb_disk_benchmark(c: &mut Criterion) {
     group.sample_size(10);
     group.bench_function("write_op_log", |b| {
         env::set_var("NUN_MAX_OP_LOG_SIZE", "12500000");
-        clean_op_log_metadata_files();
-        let mut oplog_file = get_log_file_append_mode();
+        Oplog::clean_op_log_metadata_files();
+        let mut oplog_file = Oplog::get_log_file_append_mode();
         b.iter(|| {
             env::set_var("NUN_MAX_OP_LOG_SIZE", "12500000");
-            try_write_op_log(
+            Oplog::try_write_op_log(
                 &mut oplog_file,
                 1,
                 1,

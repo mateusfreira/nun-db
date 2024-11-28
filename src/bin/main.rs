@@ -81,7 +81,7 @@ fn start_db(
         log::debug!("All fine with op-log metadafiles");
     } else {
         log::warn!("Nun-db has restarted with op-log in a invalid state, oplog and keys metadafile will be deleted!");
-        disk_ops::clean_op_log_metadata_files();
+        disk_ops::Oplog::clean_op_log_metadata_files();
     }
 
     let dbs = nundb::db_ops::create_init_dbs(

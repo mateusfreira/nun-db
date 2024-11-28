@@ -572,7 +572,7 @@ pub async fn start_replication_thread(
     mut replication_receiver: Receiver<String>,
     dbs: Arc<Databases>,
 ) {
-    let mut op_log_stream = get_log_file_append_mode();
+    let mut op_log_stream = Oplog::get_log_file_append_mode();
     let mut invalidate_stream = get_invalidate_file_write_mode();
     // Loop replicating messages
     loop {
@@ -611,7 +611,7 @@ pub async fn start_replication_thread(
                         let db_id = get_db_id(name, &dbs);
                         let key_id = 1;
                         log::debug!("Will write CreateDb");
-                        try_write_op_log(
+                        Oplog::try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
@@ -630,7 +630,7 @@ pub async fn start_replication_thread(
                                 let db_id = get_db_id(db.to_string(), &dbs);
                                 let key_id = 2; //has to be different
                                 log::debug!("Will write ReplicateSnapshot");
-                                try_write_op_log(
+                                Oplog::try_write_op_log(
                                     &mut op_log_stream,
                                     db_id,
                                     key_id,
@@ -648,7 +648,7 @@ pub async fn start_replication_thread(
                     } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        try_write_op_log(
+                        Oplog::try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
@@ -660,7 +660,7 @@ pub async fn start_replication_thread(
                     Request::ReplicateIncrement { db, key, inc: _ } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        try_write_op_log(
+                        Oplog::try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
@@ -672,7 +672,7 @@ pub async fn start_replication_thread(
                     Request::ReplicateRemove { db, key } => {
                         let db_id = get_db_id(db, &dbs);
                         let key_id = generate_key_id(key, &dbs, &mut invalidate_stream);
-                        try_write_op_log(
+                        Oplog::try_write_op_log(
                             &mut op_log_stream,
                             db_id,
                             key_id,
@@ -1305,7 +1305,7 @@ async fn start_sync_process(writer: &mut futures::io::BufWriter<&TcpStream>, tcp
         .write_fmt(format_args!(
             "replicate-since {} {}\n",
             tcp_addr.to_string(),
-            last_op_time()
+            Oplog::last_op_time()
         ))
         .await
     {
@@ -1356,12 +1356,12 @@ mod tests {
     }
 
     fn clean_env() {
-        fs::remove_file(get_op_log_file_name()).unwrap(); //clean file
-        let _f = get_log_file_append_mode(); //Get here to ensure the file exists
+        fs::remove_file(Oplog::get_op_log_file_name()).unwrap(); //clean file
+        let _f = Oplog::get_log_file_append_mode(); //Get here to ensure the file exists
     }
 
     fn prep_env() -> (Arc<Databases>, Sender<String>, Receiver<String>) {
-        clean_op_log_metadata_files();
+        Oplog::clean_op_log_metadata_files();
         thread::sleep(time::Duration::from_millis(50)); //give it time to the opperation to happen
         let (sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
 
@@ -1420,7 +1420,7 @@ mod tests {
 
     #[test]
     fn should_return_all_the_opps_if_since_is_0() {
-        clean_op_log_metadata_files();
+        Oplog::clean_op_log_metadata_files();
         let (dbs, mut sender, replication_receiver) = prep_env();
         let dbs_to_thread = dbs.clone();
         let replication_thread = thread::spawn(|| async {

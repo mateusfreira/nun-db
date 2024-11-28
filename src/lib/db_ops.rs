@@ -297,15 +297,15 @@ pub fn get_function_by_pattern(
     query_function
 }
 
-pub fn starts_with(key: &String, pattern: &String) -> bool {
+fn starts_with(key: &String, pattern: &String) -> bool {
     key.starts_with(&pattern.replace("*", ""))
 }
 
-pub fn ends_with(key: &String, pattern: &String) -> bool {
+fn ends_with(key: &String, pattern: &String) -> bool {
     key.ends_with(&pattern.replace("*", ""))
 }
 
-pub fn contains(key: &String, pattern: &String) -> bool {
+fn contains(key: &String, pattern: &String) -> bool {
     key.contains(pattern)
 }
 
