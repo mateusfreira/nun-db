@@ -227,7 +227,7 @@ fn remove_invalidate_oplog_file() {
     }
 }
 
-// @todo speed up saving
+// @todo speed up saving use the same key general and local
 fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
     let keys_file_name = get_keys_map_file_name();
     log::debug!("Will write the keys {} from disk", keys_file_name);

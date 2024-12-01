@@ -1,11 +1,14 @@
-use std::{future::Future, io::Write};
+use core::str;
 
 use aws_config::Region;
 use aws_sdk_s3::config::Credentials;
 use bytes::{BufMut, BytesMut};
+use futures::io::Cursor;
+use futures::{AsyncReadExt, AsyncSeekExt};
+use std::collections::HashMap;
 use tokio::runtime::Runtime;
 
-use crate::bo::{Database, Databases, Value, ValueStatus};
+use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
 
 const VERSION_SIZE: usize = 4;
 const ADDR_SIZE: usize = 8;
@@ -36,16 +39,16 @@ fn get_keys_to_push(db: &Database, reclame_space: bool) -> Vec<(String, Value)> 
 
 pub struct S3Storage {}
 impl S3Storage {
-    pub fn storage_data_disk(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
-        let rt  = Runtime::new().unwrap();
+    pub fn storage_data_on_cloud(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
+        let rt = Runtime::new().unwrap();
         let keys_to_update = get_keys_to_push(db, reclame_space);
 
         let key_buffer = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
         //@todo should this really be te buffer size of the values????
         let value_buffer = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
         {
-            let mut keys_file = key_buffer;//.writer();
-            let mut values_file = value_buffer.writer();
+            let mut keys_file = key_buffer;
+            let mut values_file = value_buffer;
             let current_key_file_size = 0;
 
             //let (mut values_file, current_value_file_size) = get_values_file_append_mode(&db_name, reclame_space);
@@ -64,14 +67,15 @@ impl S3Storage {
                         } else {
                             changed_keys = changed_keys + 1;
 
-                            values_file.write(&value.value.len().to_le_bytes()).unwrap();
+                            values_file.put_slice(&value.value.len().to_le_bytes());
                             //8bytes
                             let value_as_bytes = value.value.as_bytes();
                             //Nth bytes
-                            values_file.write(&value_as_bytes).unwrap();
+                            values_file.put_slice(&value_as_bytes);
                             //4 bytes
-                            values_file.write(&value.state.to_le_bytes()).unwrap();
-                            let record_size = (U64_SIZE + value_as_bytes.len() + VERSION_SIZE) as u64;
+                            values_file.put_slice(&value.state.to_le_bytes());
+                            let record_size =
+                                (U64_SIZE + value_as_bytes.len() + VERSION_SIZE) as u64;
                             log::debug!(
                                 "Write key: {}, addr: {} value_addr: {} ",
                                 key,
@@ -102,14 +106,21 @@ impl S3Storage {
                             next_key_addr = next_key_addr + key_size;
                         }
                     }
-                    ValueStatus::Ok => {},
+                    ValueStatus::Ok => {}
                     ValueStatus::Updated => {}
                     ValueStatus::Deleted => {}
                 }
             }
 
             //keys_file.flush().unwrap();
-            rt.block_on(S3Storage::store_buffer_to_s3(keys_file));
+            rt.block_on(S3Storage::store_buffer_to_s3(
+                keys_file,
+                &format!("{}/nun.keys", db_name),
+            ));
+            rt.block_on(S3Storage::store_buffer_to_s3(
+                values_file,
+                &format!("{}/nun.values", db_name),
+            ));
         }
         //keys_file.
         //values_file.flush().unwrap();
@@ -119,9 +130,9 @@ impl S3Storage {
         0
     }
 
-    async fn store_buffer_to_s3(mut buff: BytesMut) -> Option<bool> {
+    async fn store_buffer_to_s3(mut buff: BytesMut, db_name: &String) -> Option<bool> {
         let bucket = "nun-db";
-        let key = "this-is-going-to-be-amazing/focking-key.text";
+        let key = format!("this-is-going-to-be-amazing/{}", db_name);
         let key_id = "B5ODvogu80CtAKna";
         let secret_key = "B5ODvogu80CtAKna-dush";
         let url = "http://127.0.0.1:9000";
@@ -149,52 +160,150 @@ impl S3Storage {
             Err(_) => None,
         }
     }
-    //0
-}
 
+    fn read_data_from_cloud(db_name: &String, key: &String) -> Option<Database> {
+        let keys_key_file = format!("this-is-going-to-be-amazing/{}/nun.keys", db_name);
+        let values_key_file = format!("this-is-going-to-be-amazing/{}/nun.values", db_name);
+        let bucket = "nun-db";
+        let key_id = "B5ODvogu80CtAKna";
+        let secret_key = "B5ODvogu80CtAKna-dush";
+        let url = "http://127.0.0.1:9000";
+        let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
+        let mut value_data: HashMap<String, Value> = HashMap::new();
+        let s3_config = aws_sdk_s3::config::Builder::new()
+            .endpoint_url(url)
+            .credentials_provider(cred)
+            .region(Region::new("us-east"))
+            .force_path_style(true)
+            .build();
+
+        let client = aws_sdk_s3::Client::from_conf(s3_config);
+        let rt = Runtime::new().unwrap();
+        let mut values_cursor = rt.block_on(async {
+            let r = client
+                .get_object()
+                .bucket(bucket)
+                .key(values_key_file)
+                .send()
+                .await
+                .unwrap();
+            Cursor::new(r.body.collect().await.unwrap().into_bytes())
+        });
+        rt.block_on(async {
+            match client
+                .get_object()
+                .bucket(bucket)
+                .key(keys_key_file)
+                .send()
+                .await
+            {
+                Ok(r) => {
+                    log::debug!("Reading the file");
+                    let keys_file = r.body.collect().await.unwrap().into_bytes();
+                    let mut cursor = Cursor::new(keys_file);
+
+                    //bytes.read(buf)
+                    let mut length_buffer = [0; U64_SIZE];
+                    let mut value_addr_buffer = [0; U64_SIZE];
+                    let mut version_buffer = [0; VERSION_SIZE];
+
+                    while let Ok(read) = cursor.read(&mut length_buffer).await {
+                        if read == 0 {
+                            //If could not read anything stop
+                            break;
+                        }
+
+                        //Read key
+                        let key_length: usize = usize::from_le_bytes(length_buffer);
+                        let mut key_buffer = vec![0; key_length];
+
+                        cursor.read(&mut key_buffer).await.unwrap();
+                        let key = str::from_utf8(&key_buffer).unwrap();
+                        log::debug!("{}, key: {}", key_length, key);
+
+                        //Read version
+                        let _ = cursor.read(&mut version_buffer).await.unwrap();
+                        let version = i32::from_le_bytes(version_buffer);
+
+                        //Read value addr
+                        let _ = cursor.read(&mut value_addr_buffer).await.unwrap();
+                        let value_addr = u64::from_le_bytes(value_addr_buffer);
+
+                        log::debug!("Value addr {}", value_addr);
+                        let _ = values_cursor.seek(std::io::SeekFrom::Start(value_addr));
+
+                        let mut length_buffer = [0; U64_SIZE];
+                        values_cursor.read(&mut length_buffer).await.unwrap();
+                        let value_length: usize = usize::from_le_bytes(length_buffer);
+                        let mut value_buffer = vec![0; value_length];
+                        let _ = values_cursor.read(&mut value_buffer);
+                        let value = str::from_utf8(&value_buffer).unwrap();
+                        log::debug!("Will add the value : {} to the hash, length: {}", value, value_length);
+
+                        let value_object = Value {
+                            version,
+                            value: value.to_string(),
+                            state: ValueStatus::Ok,
+                            value_disk_addr: value_addr,
+                            key_disk_addr: 0,// todo Is this needed?
+                            opp_id: Databases::next_op_log_id(),
+                        };
+
+                        //Read value value
+                        value_data.insert(key.to_string(), Value::from(value));
+                    }
+                    Some(Database::create_db_from_value_hash(
+                        db_name.to_string(),
+                        value_data,
+                        DatabaseMataData::new(1, ConsensuStrategy::Arbiter),
+                    ))
+                }
+                Err(e) => {
+                    log::debug!("{}", e);
+                    None
+                }
+            }
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use std::{collections::HashMap, sync::Arc};
-    use futures::channel::mpsc::{channel, Receiver, Sender};
 
     use super::*;
+    use env_logger::{Builder, Env, Target};
 
-    use crate::bo::{ClusterRole, ConsensuStrategy, Database, DatabaseMataData};
+    use crate::bo::{ConsensuStrategy, Database, DatabaseMataData};
 
-    fn create_test_dbs() -> Arc<Databases> {
-        let (sender, _replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
-        let keys_map = HashMap::new();
-        let dbs = Arc::new(Databases::new(
-            String::from(""),
-            String::from(""),
-            String::from(""),
-            String::from(""),
-            sender.clone(),
-            sender.clone(),
-            keys_map,
-            1 as u128,
-            true,
-        ));
-
-        dbs.node_state
-            .swap(ClusterRole::Primary as usize, std::sync::atomic::Ordering::Relaxed);
-        dbs
+    fn init_logger() {
+        let env = Env::default().filter_or("NUN_LOG_LEVEL", "debug");
+        Builder::from_env(env)
+            .format_level(false)
+            .target(Target::Stdout)
+            .format_timestamp_nanos()
+            .init();
     }
 
     #[test]
     fn should_store_data_in_s3() {
-        let dbs = create_test_dbs();
+        init_logger();
         let db_name = String::from("test-db");
         let mut hash = HashMap::new();
         hash.insert(String::from("some"), String::from("value"));
         hash.insert(String::from("some1"), String::from("value1"));
+        hash.insert(String::from("some2"), String::from("value1"));
+        hash.insert(String::from("some3"), String::from("value1"));
+        hash.insert(String::from("some4"), String::from("value1"));
         let db = Database::create_db_from_hash(
             db_name.clone(),
             hash,
             DatabaseMataData::new(0, ConsensuStrategy::Arbiter),
         );
-        S3Storage::storage_data_disk(&db, true, &String::from("test"));
+        S3Storage::storage_data_on_cloud(&db, true, &String::from("test"));
+        let db =
+            S3Storage::read_data_from_cloud(&String::from("test"), &String::from("test")).unwrap();
+        assert!(db.count_keys() == 5);
+        assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
     }
-
 }
