@@ -1,5 +1,21 @@
-version: "3.9"  # optional since v1.27.0
 services:
+  minio:
+    image: docker.io/bitnami/minio:2022
+    container_name: minio
+    networks:
+      - minionetwork
+    volumes:
+      - 'minio_data:/data'
+    environment:
+      MINIO_ACCESS_KEY: minio
+      MINIO_SECRET_KEY: minio
+      MINIO_ROOT_USER: nun-db
+      MINIO_ROOT_PASSWORD: nun-db-something-dork
+      MINIO_DEFAULT_BUCKETS: nun-db
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+
   toxiproxy:
     image: "shopify/toxiproxy"
     ports:
@@ -177,3 +193,10 @@ services:
 
       - "traefik.tcp.routers.nun-db-3.rule=HostSNI(`nun-db-3.localhost`)"
       - "traefik.tcp.services.nun-db-3.loadbalancer.server.port=3019"
+volumes:
+  minio_data:
+    driver: local
+networks:
+  minionetwork:
+    driver: bridge
+
