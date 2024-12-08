@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use tokio::runtime::Runtime;
 
 use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
+use crate::configuration::{NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_SECRET_KEY};
 
 const VERSION_SIZE: usize = 4;
 const ADDR_SIZE: usize = 8;
@@ -135,9 +136,13 @@ impl S3Storage {
     async fn store_buffer_to_s3(mut buff: BytesMut, db_name: &String) -> Option<bool> {
         let bucket = "nun-db";
         let key = format!("this-is-going-to-be-amazing/{}", db_name);
-        let key_id = "B5ODvogu80CtAKna";
-        let secret_key = "B5ODvogu80CtAKna-dush";
-        let url = "http://127.0.0.1:9000";
+
+        let url = NUN_S3_API_URL.as_str();
+        let bucket = NUN_S3_BUCKET.as_str();
+        let key_id = NUN_S3_KEY_ID.as_str();
+        let secret_key = NUN_S3_SECRET_KEY.as_str();
+        print!("Reading from s3, buket: {}, key_id: {}, secret_key: {}, server: {}\n", bucket, key_id, secret_key, NUN_S3_API_URL.as_str());
+
         let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
         let s3_config = aws_sdk_s3::config::Builder::new()
             .endpoint_url(url)
@@ -166,14 +171,17 @@ impl S3Storage {
     fn read_data_from_cloud(db_name: &String, key: &String) -> Option<Database> {
         let keys_key_file = format!("this-is-going-to-be-amazing/{}/nun.keys", db_name);
         let values_key_file = format!("this-is-going-to-be-amazing/{}/nun.values", db_name);
-        let bucket = "nun-db";
-        let key_id = "B5ODvogu80CtAKna";
-        let secret_key = "B5ODvogu80CtAKna-dush";
-        let url = "http://127.0.0.1:9000";
+
+        let url = NUN_S3_API_URL.as_str();
+        let bucket = NUN_S3_BUCKET.as_str();
+        let key_id = NUN_S3_KEY_ID.as_str();
+        let secret_key = NUN_S3_SECRET_KEY.as_str();
+        print!("Reading from s3, key: {}, values: {}, buket: {}, key_id: {}, secret_key: {}, server: {}\n", keys_key_file, values_key_file, bucket, key_id, secret_key, url);
+
         let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
         let mut value_data: HashMap<String, Value> = HashMap::new();
         let s3_config = aws_sdk_s3::config::Builder::new()
-            .endpoint_url(url)
+            .endpoint_url(NUN_S3_API_URL.as_str())
             .credentials_provider(cred)
             .region(Region::new("us-east"))
             .force_path_style(true)
