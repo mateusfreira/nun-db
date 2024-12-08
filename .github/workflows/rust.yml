@@ -24,10 +24,13 @@ jobs:
     - name: Build
       if: ${{ !env.ACT }}
       run: cargo build --verbose
-
+    - name: Start Minio
+      if: ${{ !env.ACT }}
+      run: docker compose up -d minio
     - name: Run Unt tests
       env:
         TIME_TO_START: 1
+        RUST_BACKTRACE: 1
       run: cargo test --lib
     - name: Run integration tests
       env:

@@ -10,7 +10,7 @@ services:
       MINIO_ACCESS_KEY: minio
       MINIO_SECRET_KEY: minio
       MINIO_ROOT_USER: nun-db
-      MINIO_ROOT_PASSWORD: nun-db-something-dork
+      MINIO_ROOT_PASSWORD: nun-db-something-more
       MINIO_DEFAULT_BUCKETS: nun-db
     ports:
       - '9000:9000'
