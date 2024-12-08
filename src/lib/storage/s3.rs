@@ -77,10 +77,11 @@ impl S3Storage {
                             let record_size =
                                 (U64_SIZE + value_as_bytes.len() + VERSION_SIZE) as u64;
                             log::debug!(
-                                "Write key: {}, addr: {} value_addr: {} ",
+                                "Write key: {}, addr: {} value_addr: {}, record_size: {}",
                                 key,
                                 next_key_addr,
-                                value_addr
+                                value_addr,
+                                record_size
                             );
                             // Append key file
                             // Write key
@@ -103,6 +104,7 @@ impl S3Storage {
                                 Databases::next_op_log_id(),
                             );
                             value_addr = value_addr + record_size;
+                            log::debug!("Next Value addr: {}", value_addr);
                             next_key_addr = next_key_addr + key_size;
                         }
                     }
@@ -230,15 +232,22 @@ impl S3Storage {
                         let value_addr = u64::from_le_bytes(value_addr_buffer);
 
                         log::debug!("Value addr {}", value_addr);
-                        let _ = values_cursor.seek(std::io::SeekFrom::Start(value_addr));
+                        let before_cursor_position = values_cursor.position();
+                        values_cursor.seek(std::io::SeekFrom::Start(value_addr)).await.unwrap();
 
                         let mut length_buffer = [0; U64_SIZE];
                         values_cursor.read(&mut length_buffer).await.unwrap();
                         let value_length: usize = usize::from_le_bytes(length_buffer);
+                        log::debug!("Value length {}", value_length);
                         let mut value_buffer = vec![0; value_length];
-                        let _ = values_cursor.read(&mut value_buffer);
+                        let cursor_position = values_cursor.position();
+                        log::debug!("Cursor position {}, before reading", cursor_position);
+                        values_cursor.read(&mut value_buffer).await.unwrap();
                         let value = str::from_utf8(&value_buffer).unwrap();
-                        log::debug!("Will add the value : {} to the hash, length: {}", value, value_length);
+                        log::debug!("Value: {} after readig", value);
+
+                        let after_cursor_position = values_cursor.position();
+                        log::debug!("Will add the value : {} to the hash, length: {}, cursor position, {}, before: {}, after: {}", value, value_length, cursor_position, before_cursor_position, after_cursor_position);
 
                         let value_object = Value {
                             version,
@@ -250,7 +259,7 @@ impl S3Storage {
                         };
 
                         //Read value value
-                        value_data.insert(key.to_string(), Value::from(value));
+                        value_data.insert(key.to_string(), value_object);
                     }
                     Some(Database::create_db_from_value_hash(
                         db_name.to_string(),
@@ -304,6 +313,7 @@ mod tests {
         let db =
             S3Storage::read_data_from_cloud(&String::from("test"), &String::from("test")).unwrap();
         assert!(db.count_keys() == 5);
+        println!("{:?}", db.get_value("some".to_string()).unwrap());
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
     }
 }
