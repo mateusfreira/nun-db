@@ -30,8 +30,6 @@ jobs:
     - name: Run Unt tests
       env:
         TIME_TO_START: 1
-        RUST_BACKTRACE: 1
-        NUN_LOG_LEVEL: debug
       run: cargo test --lib
     - name: Run integration tests
       env:
