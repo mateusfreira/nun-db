@@ -202,14 +202,14 @@ impl S3Storage {
                 Ok(r) => {
                     log::debug!("Reading the file");
                     let keys_file = r.body.collect().await.unwrap().into_bytes();
-                    let mut cursor = Cursor::new(keys_file);
+                    let mut keys_cursor = Cursor::new(keys_file);
 
                     //bytes.read(buf)
                     let mut length_buffer = [0; U64_SIZE];
                     let mut value_addr_buffer = [0; U64_SIZE];
                     let mut version_buffer = [0; VERSION_SIZE];
 
-                    while let Ok(read) = cursor.read(&mut length_buffer).await {
+                    while let Ok(read) = keys_cursor.read(&mut length_buffer).await {
                         if read == 0 {
                             //If could not read anything stop
                             break;
@@ -219,16 +219,16 @@ impl S3Storage {
                         let key_length: usize = usize::from_le_bytes(length_buffer);
                         let mut key_buffer = vec![0; key_length];
 
-                        cursor.read(&mut key_buffer).await.unwrap();
+                        keys_cursor.read(&mut key_buffer).await.unwrap();
                         let key = str::from_utf8(&key_buffer).unwrap();
                         log::debug!("{}, key: {}", key_length, key);
 
                         //Read version
-                        let _ = cursor.read(&mut version_buffer).await.unwrap();
+                        let _ = keys_cursor.read(&mut version_buffer).await.unwrap();
                         let version = i32::from_le_bytes(version_buffer);
 
                         //Read value addr
-                        let _ = cursor.read(&mut value_addr_buffer).await.unwrap();
+                        let _ = keys_cursor.read(&mut value_addr_buffer).await.unwrap();
                         let value_addr = u64::from_le_bytes(value_addr_buffer);
 
                         log::debug!("Value addr {}", value_addr);
@@ -240,21 +240,21 @@ impl S3Storage {
                         let value_length: usize = usize::from_le_bytes(length_buffer);
                         log::debug!("Value length {}", value_length);
                         let mut value_buffer = vec![0; value_length];
-                        let cursor_position = values_cursor.position();
-                        log::debug!("Cursor position {}, before reading", cursor_position);
+                        let value_cursor_position = values_cursor.position();
+                        log::debug!("keys_Cursor position {}, before reading", value_cursor_position);
                         values_cursor.read(&mut value_buffer).await.unwrap();
                         let value = str::from_utf8(&value_buffer).unwrap();
                         log::debug!("Value: {} after readig", value);
 
                         let after_cursor_position = values_cursor.position();
-                        log::debug!("Will add the value : {} to the hash, length: {}, cursor position, {}, before: {}, after: {}", value, value_length, cursor_position, before_cursor_position, after_cursor_position);
+                        log::debug!("Will add the value : {} to the hash, length: {}, cursor position, {}, before: {}, after: {}", value, value_length, value_cursor_position, before_cursor_position, after_cursor_position);
 
                         let value_object = Value {
                             version,
                             value: value.to_string(),
                             state: ValueStatus::Ok,
                             value_disk_addr: value_addr,
-                            key_disk_addr: 0,// todo Is this needed?
+                            key_disk_addr: keys_cursor.position(),// todo Is this needed?
                             opp_id: Databases::next_op_log_id(),
                         };
 
