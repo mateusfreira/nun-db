@@ -30,6 +30,8 @@ jobs:
     - name: Run Unt tests
       env:
         TIME_TO_START: 1
+        NUN_S3_KEY_ID: nun-db
+        NUN_S3_SECRET_KEY: nun-db-something-more
       run: cargo test --lib
     - name: Run integration tests
       env:
