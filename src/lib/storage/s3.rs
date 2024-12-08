@@ -285,6 +285,7 @@ mod tests {
 
     use crate::bo::{ConsensuStrategy, Database, DatabaseMataData};
 
+    /*
     fn init_logger() {
         let env = Env::default().filter_or("NUN_LOG_LEVEL", "debug");
         Builder::from_env(env)
@@ -293,10 +294,11 @@ mod tests {
             .format_timestamp_nanos()
             .init();
     }
+    */
 
     #[test]
     fn should_store_data_in_s3() {
-        init_logger();
+        //init_logger();
         let db_name = String::from("test-db");
         let mut hash = HashMap::new();
         hash.insert(String::from("some"), String::from("value"));
