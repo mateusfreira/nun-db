@@ -156,11 +156,15 @@ To organize I will create sub structure inside disk, since I don't think at this
 #### Will have to change
 - [ ][src/lib/disk_ops.rs:639] -> Usd in db ops for snapshot re-think
 pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
-- [ ][src/lib/disk_ops.rs:95]  -> Used external to read the keys
+- [x][src/lib/disk_ops.rs:95]  -> Used external to read the keys
 
-pub fn load_keys_map_from_disk() -> HashMap<String, u64> {
+pub fn load_keys_map_from_disk() -> HashMap<String, u64> {// will not be needed
 - [ ][src/lib/disk_ops.rs:257] -> Used in the database staruo to read the databases 
 pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
+
+- [ ] write_keys_map_to_disk Will bot be needed
+[src/lib/disk_ops.rs:231]
+* ADR: We won't be storing oplog, nor global key map into s3 for performance reasons. To be able to process +300k/s we need ops to be light, if the keys map depends on the s3 call it will take at least 50ms and will block next ops. Therefore we will keep it locally and it can be deleted on every pods restarts. Each node will have its own keys ids and it don't be a single id for the full cluster, we accept that as better than slow opps.
 
 
 #### Oplog related (Won't change)
@@ -187,3 +191,5 @@ pub fn get_function_by_pattern(
 
 
 [k ]
+[ ]
+[l ]

@@ -1,4 +1,5 @@
 use core::str;
+use std::sync::Arc;
 
 use aws_config::Region;
 use aws_sdk_s3::config::Credentials;
@@ -9,12 +10,14 @@ use std::collections::HashMap;
 use tokio::runtime::Runtime;
 
 use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
-use crate::configuration::{NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_SECRET_KEY};
+use crate::configuration::{
+    NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_PREFIX, NUN_S3_SECRET_KEY,
+};
 
 const VERSION_SIZE: usize = 4;
 const ADDR_SIZE: usize = 8;
 const U64_SIZE: usize = 8;
-const U32_SIZE: usize = 4;
+// const U32_SIZE: usize = 4;
 
 const OP_KEY_SIZE: usize = 8;
 const OP_DB_ID_SIZE: usize = 8;
@@ -88,6 +91,7 @@ impl S3Storage {
                             // Write key
 
                             let len = key.len();
+
                             //8bytes
                             keys_file.put_slice(&len.to_le_bytes());
                             //Nth bytes
@@ -134,14 +138,19 @@ impl S3Storage {
     }
 
     async fn store_buffer_to_s3(mut buff: BytesMut, db_name: &String) -> Option<bool> {
-        let bucket = "nun-db";
-        let key = format!("this-is-going-to-be-amazing/{}", db_name);
+        let key = format!("{}/{}", NUN_S3_PREFIX.to_string(), db_name);
 
         let url = NUN_S3_API_URL.as_str();
         let bucket = NUN_S3_BUCKET.as_str();
         let key_id = NUN_S3_KEY_ID.as_str();
         let secret_key = NUN_S3_SECRET_KEY.as_str();
-        print!("Reading from s3, buket: {}, key_id: {}, secret_key: {}, server: {}\n", bucket, key_id, secret_key, NUN_S3_API_URL.as_str());
+        print!(
+            "Reading from s3, buket: {}, key_id: {}, secret_key: {}, server: {}\n",
+            bucket,
+            key_id,
+            secret_key,
+            NUN_S3_API_URL.as_str()
+        );
 
         let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
         let s3_config = aws_sdk_s3::config::Builder::new()
@@ -158,7 +167,6 @@ impl S3Storage {
             .put_object()
             .bucket(bucket)
             .key(key)
-            //.body(body)
             .body(body)
             .send()
             .await
@@ -168,9 +176,9 @@ impl S3Storage {
         }
     }
 
-    fn read_data_from_cloud(db_name: &String, key: &String) -> Option<Database> {
-        let keys_key_file = format!("this-is-going-to-be-amazing/{}/nun.keys", db_name);
-        let values_key_file = format!("this-is-going-to-be-amazing/{}/nun.values", db_name);
+    fn read_data_from_cloud(db_name: &String) -> Option<Database> {
+        let keys_key_file = format!("{}/{}/nun.keys", NUN_S3_PREFIX.to_string(), db_name);
+        let values_key_file = format!("{}/{}/nun.values", NUN_S3_PREFIX.to_string(), db_name);
 
         let url = NUN_S3_API_URL.as_str();
         let bucket = NUN_S3_BUCKET.as_str();
@@ -282,18 +290,64 @@ impl S3Storage {
             }
         })
     }
+
+    pub fn load_all_dbs_from_cloud(dbs: &Arc<Databases>) {
+        let bucket = NUN_S3_BUCKET.as_str();
+        let key_id = NUN_S3_KEY_ID.as_str();
+        let secret_key = NUN_S3_SECRET_KEY.as_str();
+
+        let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
+        let s3_config = aws_sdk_s3::config::Builder::new()
+            .endpoint_url(NUN_S3_API_URL.as_str())
+            .credentials_provider(cred)
+            .region(Region::new("us-east"))
+            .force_path_style(true)
+            .build();
+
+        let client = aws_sdk_s3::Client::from_conf(s3_config);
+        let rt = Runtime::new().unwrap();
+        let objects = rt.block_on(async {
+            client
+                .list_objects_v2()
+                .set_prefix(Some(NUN_S3_PREFIX.to_string()))
+                .bucket(bucket)
+                .send()
+                .await
+                .unwrap()
+                .contents()
+                .into_iter()
+                .flat_map(|x| x.key())
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+        });
+        log::debug!("Objects: {:?}", objects);
+        let db_names = objects
+            .iter()
+            .filter(|x| x.contains("nun.values")) // Filter only the values files
+            .map(|x| x.split("/").collect::<Vec<&str>>()[1].to_string())
+            .collect::<Vec<String>>();
+        log::debug!("DbsNames: {:?}", db_names);
+        db_names.iter().for_each(|db_name| {
+            let db = S3Storage::read_data_from_cloud(&db_name).unwrap();
+            dbs.add_database(db);
+        });
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, sync::Arc};
+    use core::time;
+    use std::{collections::HashMap, sync::atomic::Ordering, thread};
 
     use super::*;
     use env_logger::{Builder, Env, Target};
+    use futures::channel::mpsc::{channel, Receiver, Sender};
 
-    use crate::bo::{ConsensuStrategy, Database, DatabaseMataData};
+    use crate::{
+        bo::{Change, ClusterRole, ConsensuStrategy, Database, DatabaseMataData},
+        disk_ops::Oplog,
+    };
 
-    /*
     fn init_logger() {
         let env = Env::default().filter_or("NUN_LOG_LEVEL", "debug");
         Builder::from_env(env)
@@ -302,11 +356,49 @@ mod tests {
             .format_timestamp_nanos()
             .init();
     }
-    */
 
     #[test]
     fn should_store_data_in_s3() {
         //init_logger();
+        let db = create_test_db();
+        S3Storage::storage_data_on_cloud(&db, true, &String::from("test"));
+        let db = S3Storage::read_data_from_cloud(&String::from("test")).unwrap();
+        assert!(db.count_keys() == 5);
+        println!("{:?}", db.get_value("some".to_string()).unwrap());
+        assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
+    }
+
+    #[test]
+    fn should_read_all_dbs_from_s3() {
+       // init_logger();
+        let db = create_test_db();
+        let db1 = create_test_db();
+
+        let change = Change::new(
+            String::from("this_is_totally_new"),
+            String::from("jose"),
+            -1,
+        );
+        db1.set_value(&change);
+        S3Storage::storage_data_on_cloud(&db, true, &String::from("test"));
+        S3Storage::storage_data_on_cloud(&db1, true, &String::from("test-new-test"));
+        let db = S3Storage::read_data_from_cloud(&String::from("test")).unwrap();
+
+        assert!(db.count_keys() == 5);
+        assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
+
+        let dbs = prep_env();
+        S3Storage::load_all_dbs_from_cloud(&dbs);
+        let dbs_hash = dbs.acquire_dbs_read_lock();
+        let db = dbs_hash.get("test").unwrap();
+        let db1 = dbs_hash.get("test-new-test").unwrap();
+
+        assert!(db.count_keys() == 5);
+        assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
+        assert!(db1.get_value("this_is_totally_new".to_string()).unwrap() == String::from("jose"));
+    }
+
+    fn create_test_db() -> Database {
         let db_name = String::from("test-db");
         let mut hash = HashMap::new();
         hash.insert(String::from("some"), String::from("value"));
@@ -319,11 +411,29 @@ mod tests {
             hash,
             DatabaseMataData::new(0, ConsensuStrategy::Arbiter),
         );
-        S3Storage::storage_data_on_cloud(&db, true, &String::from("test"));
-        let db =
-            S3Storage::read_data_from_cloud(&String::from("test"), &String::from("test")).unwrap();
-        assert!(db.count_keys() == 5);
-        println!("{:?}", db.get_value("some".to_string()).unwrap());
-        assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
+        db
+    }
+
+    fn prep_env() -> Arc<Databases> {
+        Oplog::clean_op_log_metadata_files();
+        thread::sleep(time::Duration::from_millis(50)); //give it time to the opperation to happen
+        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
+
+        let keys_map = HashMap::new();
+        let dbs = Arc::new(Databases::new(
+            String::from(""),
+            String::from(""),
+            String::from(""),
+            String::from(""),
+            sender.clone(),
+            sender.clone(),
+            keys_map,
+            1 as u128,
+            true,
+        ));
+
+        dbs.node_state
+            .swap(ClusterRole::Primary as usize, Ordering::Relaxed);
+        dbs
     }
 }

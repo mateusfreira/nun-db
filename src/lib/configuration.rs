@@ -18,8 +18,9 @@ lazy_static! {
     pub static ref NUN_S3_KEY_ID: String = optional_env_var("NUN_S3_KEY_ID", "");
     pub static ref NUN_S3_SECRET_KEY: String = optional_env_var("NUN_S3_SECRET_KEY", "");
     pub static ref NUN_S3_BUCKET: String = optional_env_var("NUN_S3_BUCKET", "nun-db");
-    pub static ref NUN_S3_PREFIX: String = optional_env_var("NUN_S3_PREFIX", "");
+    pub static ref NUN_S3_PREFIX: String = optional_env_var("NUN_S3_PREFIX", "/");
     pub static ref NUN_S3_API_URL: String = optional_env_var("NUN_S3_API_URL", "http://127.0.0.1:9000");
+
 }
 
 pub fn optional_env_var(name: &str, default: &str) -> String {
