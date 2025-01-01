@@ -347,7 +347,7 @@ mod tests {
     use std::{collections::HashMap, sync::atomic::Ordering, thread};
 
     use super::*;
-    use env_logger::{Builder, Env, Target};
+    //use env_logger::{Builder, Env, Target};
     use futures::channel::mpsc::{channel, Receiver, Sender};
 
     use crate::{
@@ -355,6 +355,7 @@ mod tests {
         disk_ops::Oplog,
     };
 
+    /*
     fn init_logger() {
         let env = Env::default().filter_or("NUN_LOG_LEVEL", "debug");
         Builder::from_env(env)
@@ -363,6 +364,7 @@ mod tests {
             .format_timestamp_nanos()
             .init();
     }
+    */
 
     #[test]
     fn should_store_data_in_s3() {

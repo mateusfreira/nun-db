@@ -13,7 +13,7 @@ mod tests {
 
         helpers::nundb_exec(&uri, "create-db test test-pwd; use-db test test-pwd;set-safe name 1 mateus; set-safe name 2 maria;set-safe name 3 mateus; set-safe name 4 maria;get-safe name");
 
-        helpers::nundb_exec(&uri,"metrics-state").stdout(predicate::str::contains(
+        helpers::nundb_exec(&uri, "metrics-state").stdout(predicate::str::contains(
             "op_log_file_size: 125, op_log_count: 5",
         )); //3 transations
 

@@ -9,7 +9,6 @@ use std::io::Error;
 use std::io::Read;
 use std::io::SeekFrom;
 use std::io::Write;
-use std::os::unix::prelude::FileExt;
 use std::path::Path;
 use std::str;
 use std::sync::atomic::Ordering;
@@ -24,12 +23,10 @@ use crate::configuration::NUN_DECLUTTER_INTERVAL;
 use crate::configuration::NUN_MAX_OP_LOG_SIZE;
 use crate::storage::disk::{
     create_db_from_file_name, file_name_from_db_name, get_key_value_files_name_from_file_name,
-    meta_file_name_from_db_name, NodeDrive,
+    NodeDrive,
 };
 
-const BASE_FILE_NAME: &'static str = "-nun.data";
 const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
-const META_FILE_NAME: &'static str = "-nun.madadata";
 
 const KEYS_FILE: &'static str = "keys-nun.keys";
 
@@ -41,11 +38,6 @@ const OP_DB_ID_SIZE: usize = 8;
 const OP_TIME_SIZE: usize = 8;
 const OP_OP_SIZE: usize = 1;
 const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
-
-// Record sizes
-const ADDR_SIZE: usize = 8;
-
-const VERSION_DELETED: i32 = -1;
 
 impl Databases {
     pub fn add_db_to_snapshot_by_name(
@@ -239,18 +231,6 @@ fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
         .open(keys_file_name)
         .unwrap();
     bincode::serialize_into(&mut keys_file, &keys.clone()).unwrap();
-}
-
-fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
-    let mut initial_db = HashMap::new();
-    let db_file_name = file_name_from_db_name(&name);
-    log::debug!("Will read the database {} from disk", db_file_name);
-    if Path::new(&db_file_name).exists() {
-        // May I should move this out of here
-        let mut file = File::open(db_file_name).unwrap();
-        initial_db = bincode::deserialize_from(&mut file).unwrap();
-    }
-    return initial_db;
 }
 
 fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::DirEntry>) {
@@ -644,13 +624,6 @@ fn mark_op_log_as_valid(dbs: &Arc<Databases>) -> Result<usize, Error> {
     file_writer.write(&[1])
 }
 
-fn remove_old_db_file(db_name: &String) {
-    let file_name = file_name_from_db_name(&db_name);
-    if Path::new(&file_name).exists() {
-        fs::remove_file(file_name.clone()).unwrap();
-    }
-}
-
 fn get_file_size(file_name: &String) -> u64 {
     match fs::metadata(&file_name) {
         Ok(metadata) => metadata.len(),
@@ -661,6 +634,7 @@ fn get_file_size(file_name: &String) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::disk::meta_file_name_from_db_name;
     use crate::{
         configuration::NUN_LOG_LEVEL,
         storage::disk::{
@@ -679,8 +653,6 @@ mod tests {
             .format_timestamp_nanos()
             .init();
     }
-
-    const OLD_FILE_NAME: &'static str = BASE_FILE_NAME;
 
     fn remove_database_file(db_name: &String) {
         remove_invalidate_oplog_file();
