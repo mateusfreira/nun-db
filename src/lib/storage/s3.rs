@@ -144,7 +144,7 @@ impl S3Storage {
         let bucket = NUN_S3_BUCKET.as_str();
         let key_id = NUN_S3_KEY_ID.as_str();
         let secret_key = NUN_S3_SECRET_KEY.as_str();
-        print!(
+        log::debug!(
             "Reading from s3, buket: {}, key_id: {}, secret_key: {}, server: {}\n",
             bucket,
             key_id,
@@ -184,7 +184,7 @@ impl S3Storage {
         let bucket = NUN_S3_BUCKET.as_str();
         let key_id = NUN_S3_KEY_ID.as_str();
         let secret_key = NUN_S3_SECRET_KEY.as_str();
-        print!("Reading from s3, key: {}, values: {}, buket: {}, key_id: {}, secret_key: {}, server: {}\n", keys_key_file, values_key_file, bucket, key_id, secret_key, url);
+        log::debug!("Reading from s3, key: {}, values: {}, buket: {}, key_id: {}, secret_key: {}, server: {}\n", keys_key_file, values_key_file, bucket, key_id, secret_key, url);
 
         let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
         let mut value_data: HashMap<String, Value> = HashMap::new();
@@ -321,13 +321,20 @@ impl S3Storage {
                 .collect::<Vec<String>>()
         });
         log::debug!("Objects: {:?}", objects);
+        let prefix_to_clean = format!("{}/", &NUN_S3_PREFIX.to_string());
         let db_names = objects
             .iter()
             .filter(|x| x.contains("nun.values")) // Filter only the values files
-            .map(|x| x.split("/").collect::<Vec<&str>>()[1].to_string())
+            .map(|x| x.to_string().replacen(&prefix_to_clean, "", 1))
+            .map(|x| {
+                let mut paths = x.split("/").collect::<Vec<&str>>();
+                paths.truncate(paths.len() - 1);
+                paths.join("/")
+            })
             .collect::<Vec<String>>();
         log::debug!("DbsNames: {:?}", db_names);
         db_names.iter().for_each(|db_name| {
+            // Should not bass the base
             let db = S3Storage::read_data_from_cloud(&db_name).unwrap();
             dbs.add_database(db);
         });
@@ -364,13 +371,13 @@ mod tests {
         S3Storage::storage_data_on_cloud(&db, true, &String::from("test"));
         let db = S3Storage::read_data_from_cloud(&String::from("test")).unwrap();
         assert!(db.count_keys() == 5);
-        println!("{:?}", db.get_value("some".to_string()).unwrap());
+        log::debug!("{:?}", db.get_value("some".to_string()).unwrap());
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
     }
 
     #[test]
     fn should_read_all_dbs_from_s3() {
-       // init_logger();
+        init_logger();
         let db = create_test_db();
         let db1 = create_test_db();
 

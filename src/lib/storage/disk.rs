@@ -446,7 +446,6 @@ fn load_db_metadata_from_disk_or_empty(name: String, dbs: &Arc<Databases>) -> Da
     }
 }
 
-
 /// # Examples
 ///
 /// ```

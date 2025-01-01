@@ -22,7 +22,10 @@ use crate::bo::*;
 use crate::configuration::NUN_DBS_DIR;
 use crate::configuration::NUN_DECLUTTER_INTERVAL;
 use crate::configuration::NUN_MAX_OP_LOG_SIZE;
-use crate::storage::disk::{create_db_from_file_name, file_name_from_db_name, get_key_value_files_name_from_file_name, meta_file_name_from_db_name, NodeDrive};
+use crate::storage::disk::{
+    create_db_from_file_name, file_name_from_db_name, get_key_value_files_name_from_file_name,
+    meta_file_name_from_db_name, NodeDrive,
+};
 
 const BASE_FILE_NAME: &'static str = "-nun.data";
 const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
@@ -250,7 +253,6 @@ fn load_db_from_disck_or_empty(name: String) -> HashMap<String, String> {
     return initial_db;
 }
 
-
 fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::DirEntry>) {
     if let Ok(entry) = entry {
         let full_name = entry.file_name().into_string().unwrap();
@@ -266,7 +268,6 @@ fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::D
         }
     }
 }
-
 
 pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
     log::debug!("Will load dbs from disck");
@@ -284,7 +285,6 @@ pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
     }
 }
 
-
 fn get_invalidate_file_name() -> String {
     format!(
         "{dir}/{sufix}",
@@ -297,7 +297,6 @@ fn get_keys_map_file_name() -> String {
     format!("{dir}/{sufix}", dir = get_dir_name(), sufix = KEYS_FILE)
 }
 
-
 fn remove_backup_key_file(db_name: &String) {
     let file_name = format!("{}.keys.old", file_name_from_db_name(&db_name));
     if Path::new(&file_name).exists() {
@@ -308,7 +307,6 @@ fn remove_backup_key_file(db_name: &String) {
 fn storage_data_disk(db: &Database, db_name: &String, reclame_space: bool) -> u32 {
     NodeDrive::storage_data_disk(db, reclame_space, db_name)
 }
-
 
 fn remove_old_db_files() {
     let op_log_files = get_op_log_entries_by_creation_date();
@@ -653,7 +651,6 @@ fn remove_old_db_file(db_name: &String) {
     }
 }
 
-
 fn get_file_size(file_name: &String) -> u64 {
     match fs::metadata(&file_name) {
         Ok(metadata) => metadata.len(),
@@ -664,7 +661,13 @@ fn get_file_size(file_name: &String) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{configuration::NUN_LOG_LEVEL, storage::disk::{create_db_from_file_name, db_name_from_file_name, get_key_value_files_name_from_file_name}};
+    use crate::{
+        configuration::NUN_LOG_LEVEL,
+        storage::disk::{
+            create_db_from_file_name, db_name_from_file_name,
+            get_key_value_files_name_from_file_name,
+        },
+    };
     use env_logger::{Builder, Env, Target};
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use std::env;

@@ -15,10 +15,10 @@ lazy_static! {
     pub static ref NUN_MAX_OP_LOG_SIZE: u64 = optional_env_var("NUN_MAX_OP_LOG_SIZE", "1073741824").to_string().parse::<u64>().unwrap();
     pub static ref NUN_DECLUTTER_INTERVAL: i64 = optional_env_var("NUN_DECLUTTER_INTERVAL", "300").to_string().parse::<i64>().unwrap();
 
-    pub static ref NUN_S3_KEY_ID: String = optional_env_var("NUN_S3_KEY_ID", "");
-    pub static ref NUN_S3_SECRET_KEY: String = optional_env_var("NUN_S3_SECRET_KEY", "");
+    pub static ref NUN_S3_KEY_ID: String = optional_env_var("NUN_S3_KEY_ID", "nun-db");
+    pub static ref NUN_S3_SECRET_KEY: String = optional_env_var("NUN_S3_SECRET_KEY", "nun-db-something-more");
     pub static ref NUN_S3_BUCKET: String = optional_env_var("NUN_S3_BUCKET", "nun-db");
-    pub static ref NUN_S3_PREFIX: String = optional_env_var("NUN_S3_PREFIX", "/");
+    pub static ref NUN_S3_PREFIX: String = optional_env_var("NUN_S3_PREFIX", "nun-db-base");
     pub static ref NUN_S3_API_URL: String = optional_env_var("NUN_S3_API_URL", "http://127.0.0.1:9000");
 
 }
