@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn should_read_all_dbs_from_s3() {
-        init_logger();
+        //init_logger();
         let db = create_test_db();
         let db1 = create_test_db();
 
