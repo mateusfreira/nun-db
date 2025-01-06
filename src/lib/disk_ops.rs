@@ -52,10 +52,17 @@ impl Databases {
             Err(_) => return Err("Could not write to the snapshot".to_string()),
         }
     }
-}
 
-pub fn load_all_dbs(dbs: &Arc<Databases>) {
-    NodeDrive::load_all_dbs_from_disk(dbs);
+    /**
+     * Load all databases from disk
+     */
+    pub fn load_all_dbs(dbs: &Arc<Databases>) {
+        NodeDrive::load_all_dbs_from_disk(dbs);
+    }
+
+    pub fn storage_data(db: &Database, db_name: &String, reclame_space: bool) -> u32 {
+        NodeDrive::storage_data_disk(db, reclame_space, db_name)
+    }
 }
 
 pub struct Oplog {}
@@ -255,9 +262,6 @@ fn remove_backup_key_file(db_name: &String) {
     }
 }
 
-fn storage_data_disk(db: &Database, db_name: &String, reclame_space: bool) -> u32 {
-    NodeDrive::storage_data_disk(db, reclame_space, db_name)
-}
 
 fn remove_old_db_files() {
     let op_log_files = get_op_log_entries_by_creation_date();
@@ -309,7 +313,7 @@ pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
             let dbs_map = dbs.map.read().unwrap();
             let db_opt = dbs_map.get(&database_name);
             if let Some(db) = db_opt {
-                storage_data_disk(db, &database_name, reclaim_space);
+                Databases::storage_data(db, &database_name, reclaim_space);
                 remove_backup_key_file(&database_name);
             } else {
                 log::warn!("Database not found {}", database_name)
@@ -831,7 +835,7 @@ mod tests {
         assert_eq!(key_value_new.version, 3);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk(&db, &db_name, false);
+        Databases::storage_data(&db, &db_name, false);
 
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
         assert_eq!(loaded_db.metadata.id, db.metadata.id);
@@ -852,7 +856,7 @@ mod tests {
         loaded_db.set_value(&Change::new(key.clone(), final_value.clone(), 3));
 
         // To test in place update
-        storage_data_disk(&loaded_db, &db_name, false);
+        Databases::storage_data(&loaded_db, &db_name, false);
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
 
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
@@ -867,7 +871,7 @@ mod tests {
         loaded_db.set_value(&Change::new(key.clone(), final_value.clone(), 4));
 
         // To test in place update
-        storage_data_disk(&loaded_db, &db_name, false);
+        Databases::storage_data(&loaded_db, &db_name, false);
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
 
         let key_value = loaded_db.get_value(key.to_string()).unwrap();
@@ -906,7 +910,7 @@ mod tests {
         assert_eq!(key_value_new.version, 3);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk(&db, &db_name, false);
+        Databases::storage_data(&db, &db_name, false);
 
         let dbs = create_test_dbs();
         NodeDrive::load_all_dbs_from_disk(&dbs);
@@ -945,7 +949,7 @@ mod tests {
         assert_eq!(db.count_keys(), 2);
 
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
-        storage_data_disk(&db, &db_name, false);
+        Databases::storage_data(&db, &db_name, false);
 
         let dbs = create_test_dbs();
         NodeDrive::load_all_dbs_from_disk(&dbs);
@@ -954,7 +958,7 @@ mod tests {
 
         db_loaded.remove_value(key.to_string());
         //assert_eq!(db_loaded.count_keys(), 1);
-        storage_data_disk(&db_loaded, &db_name, false);
+        Databases::storage_data(&db_loaded, &db_name, false);
 
         let dbs = create_test_dbs();
         NodeDrive::load_all_dbs_from_disk(&dbs);
@@ -962,7 +966,7 @@ mod tests {
         let db_loaded_final = map.get(&db_name).unwrap();
 
         assert_eq!(db_loaded_final.count_keys(), 1);
-        storage_data_disk(&db, &db_name, false);
+        Databases::storage_data(&db, &db_name, false);
 
         remove_database_file(&db_name);
         Oplog::clean_op_log_metadata_files();
@@ -976,10 +980,10 @@ mod tests {
         let full_name = file_name_from_db_name(&db_name);
         let (keys_file_name, _values_file_name) =
             get_key_value_files_name_from_file_name(full_name);
-        storage_data_disk(&db, &db_name, false);
+        Databases::storage_data(&db, &db_name, false);
         let key_file_size_before = get_file_size(&keys_file_name);
         //remove_database_file(&db_name);
-        storage_data_disk(&db, &db_name, false);
+        Databases::storage_data(&db, &db_name, false);
         let key_file_after = get_file_size(&keys_file_name);
         assert_eq!(key_file_size_before, key_file_after);
 
@@ -995,7 +999,7 @@ mod tests {
         let full_name = file_name_from_db_name(&db_name);
         let (keys_file_name, _values_file_name) =
             get_key_value_files_name_from_file_name(full_name);
-        storage_data_disk(&db, &db_name, false);
+        Databases::storage_data(&db, &db_name, false);
         let key_file_size_before = get_file_size(&keys_file_name);
         let key_1 = String::from("key_1");
         let value = db.get_value(key_1.clone()).unwrap();
@@ -1005,7 +1009,7 @@ mod tests {
         let value = db.get_value(key_1.clone()).unwrap();
         assert_eq!(value.state, ValueStatus::Updated);
 
-        storage_data_disk(&db, &db_name, false);
+        Databases::storage_data(&db, &db_name, false);
         let key_file_after = get_file_size(&keys_file_name);
         assert_eq!(key_file_size_before, key_file_after);
 
@@ -1025,7 +1029,7 @@ mod tests {
         ));
         let _ = db.remove_value(String::from("Keyhshshshsh1"));
         clean_all_db_files(&db_name);
-        let _ = storage_data_disk(&db, &db_name, false);
+        let _ = Databases::storage_data(&db, &db_name, false);
 
         let db_file_name = file_name_from_db_name(&db_name);
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
@@ -1034,7 +1038,7 @@ mod tests {
         assert_eq!(value, None);
 
         let _ = loaded_db.remove_value(String::from("Keyhshshshsh1"));
-        let _ = storage_data_disk(&loaded_db, &db_name, false);
+        let _ = Databases::storage_data(&loaded_db, &db_name, false);
         remove_database_file(&db_name);
         Oplog::clean_op_log_metadata_files();
         remove_keys_file();
@@ -1046,7 +1050,7 @@ mod tests {
         let (dbs, db_name, db) = create_db_with_10k_keys();
         clean_all_db_files(&db_name);
         let start = Instant::now();
-        let changed_keys = storage_data_disk(&db, &db_name, false);
+        let changed_keys = Databases::storage_data(&db, &db_name, false);
         log::info!("TIme {:?}", start.elapsed());
         assert!(start.elapsed().as_millis() < 100);
         assert_eq!(changed_keys, 10000);
@@ -1075,7 +1079,7 @@ mod tests {
         assert_eq!(value_100.value, String::from("key_100"));
         assert_eq!(value_1000.value, String::from("key_1000"));
         let start_secount_storage = Instant::now();
-        let changed_keys = storage_data_disk(&loaded_db, &db_name, false);
+        let changed_keys = Databases::storage_data(&loaded_db, &db_name, false);
         assert_eq!(changed_keys, 1);
 
         let time_in_ms = start_secount_storage.elapsed().as_millis();
@@ -1150,7 +1154,7 @@ mod tests {
         let (_keys_file_name, values_file_name) =
             get_key_value_files_name_from_file_name(full_name);
         let start = Instant::now();
-        let changed_keys = storage_data_disk(&db, &db_name, false);
+        let changed_keys = Databases::storage_data(&db, &db_name, false);
         log::info!("TIme {:?}", start.elapsed());
         assert!(start.elapsed().as_millis() < 100);
         assert_eq!(changed_keys, 10000);
@@ -1181,15 +1185,15 @@ mod tests {
 
         let file_size_before = get_file_size(&values_file_name);
 
-        let changed_keys = storage_data_disk(&loaded_db, &db_name, false);
+        let changed_keys = Databases::storage_data(&loaded_db, &db_name, false);
         assert_eq!(changed_keys, 1);
         let file_size_after = get_file_size(&values_file_name);
         assert!(file_size_before < file_size_after);
 
-        let changed_keys = storage_data_disk(&loaded_db, &db_name, false);
+        let changed_keys = Databases::storage_data(&loaded_db, &db_name, false);
         assert_eq!(changed_keys, 0);
 
-        let changed_keys = storage_data_disk(&loaded_db, &db_name, true);
+        let changed_keys = Databases::storage_data(&loaded_db, &db_name, true);
         assert_eq!(changed_keys, 10000);
         let file_size_last = get_file_size(&values_file_name);
 

@@ -1,3 +1,4 @@
+use bo::Databases;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
 use futures::join;
@@ -95,7 +96,7 @@ fn start_db(
         is_oplog_valid,
     );
 
-    disk_ops::load_all_dbs(&dbs);
+    Databases::load_all_dbs(&dbs);
     let mut signals = Signals::new(&[SIGINT]).unwrap();
     let dbs_to_signal = dbs.clone();
     thread::spawn(move || {
