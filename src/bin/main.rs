@@ -95,7 +95,7 @@ fn start_db(
         is_oplog_valid,
     );
 
-    disk_ops::load_all_dbs_from_disk(&dbs);
+    disk_ops::load_all_dbs(&dbs);
     let mut signals = Signals::new(&[SIGINT]).unwrap();
     let dbs_to_signal = dbs.clone();
     thread::spawn(move || {

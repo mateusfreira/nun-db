@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::fs::{create_dir_all, read_dir};
 use std::io::prelude::*;
 use std::io::BufWriter;
 use std::io::SeekFrom;
@@ -15,6 +16,7 @@ use crate::bo::DatabaseMataData;
 use crate::bo::Databases;
 use crate::bo::{Database, Value, ValueStatus};
 
+const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
 const BASE_FILE_NAME: &'static str = "-nun.data";
 const META_FILE_NAME: &'static str = "-nun.madadata";
 
@@ -36,6 +38,37 @@ fn get_key_disk_size(key_size: usize) -> u64 {
 
 pub struct NodeDrive {}
 impl NodeDrive {
+    fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::DirEntry>) {
+        if let Ok(entry) = entry {
+            let full_name = entry.file_name().into_string().unwrap();
+            if full_name.ends_with(DB_KEYS_FILE_NAME) {
+                let (db, _) = create_db_from_file_name(&full_name, &dbs);
+                dbs.add_database(db);
+            } else {
+                log::warn!(
+                    "Files {} does not ends with {} will ignore",
+                    full_name,
+                    DB_KEYS_FILE_NAME
+                );
+            }
+        }
+    }
+
+    pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
+        log::debug!("Will load dbs from disck");
+        match create_dir_all(get_dir_name()) {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Error creating the data dirs {}", e);
+                panic!("Error creating the data dirs");
+            }
+        };
+        if let Ok(entries) = read_dir(get_dir_name()) {
+            for entry in entries {
+                NodeDrive::load_one_db_from_disk(dbs, entry);
+            }
+        }
+    }
     pub fn storage_data_disk(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
         let keys_to_update = get_keys_to_save_to_disck(db, reclame_space);
         let mut keys_file = get_key_file_append_mode(&db_name, reclame_space);

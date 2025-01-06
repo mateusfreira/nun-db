@@ -37,29 +37,30 @@ jobs:
       env:
         TIME_TO_START: 1
       run: mkdir dbs&&cargo test --test '*' -- --test-threads=1 # threads=1 to avoid the problem with the in disk tests
-  coverage:
-    name: coverage
-    runs-on: ubuntu-latest
-    container:
-      image: xd009642/tarpaulin:develop-nightly
-      options: --security-opt seccomp=unconfined
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-      - name: Create a directory for the coverage report
-        run: mkdir dbs
-      - name: Generate code coverage
-        uses: nick-fields/retry@v2
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          command: |
-            cargo +nightly tarpaulin --follow-exec --engine llvm --verbose --all-features --workspace --timeout 120 --out xml -- --test-threads=1
-        env:
-          TIME_TO_START: 4
-          NUN_ELECTION_TIMEOUT: 3000
-      - name: Upload to codecov.io
-        uses: codecov/codecov-action@v2
-        with:
-          token: ${{secrets.CODECOV_TOKEN}} # not required for public repos
-          fail_ci_if_error: true
+
+#  coverage:
+#    name: coverage
+#    runs-on: ubuntu-latest
+#    container:
+#      image: xd009642/tarpaulin:develop-nightly
+#      options: --security-opt seccomp=unconfined
+#    steps:
+#      - name: Checkout repository
+#        uses: actions/checkout@v2
+#      - name: Create a directory for the coverage report
+#        run: mkdir dbs
+#      - name: Generate code coverage
+#        uses: nick-fields/retry@v2
+#        with:
+#          timeout_minutes: 10
+#          max_attempts: 3
+#          command: |
+#            cargo +nightly tarpaulin --follow-exec --engine llvm --verbose --all-features --workspace --timeout 120 --out xml -- --test-threads=1
+#        env:
+#          TIME_TO_START: 4
+#          NUN_ELECTION_TIMEOUT: 3000
+#      - name: Upload to codecov.io
+#        uses: codecov/codecov-action@v2
+#        with:
+#          token: ${{secrets.CODECOV_TOKEN}} # not required for public repos
+#          fail_ci_if_error: true

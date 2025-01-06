@@ -22,11 +22,10 @@ use crate::configuration::NUN_DBS_DIR;
 use crate::configuration::NUN_DECLUTTER_INTERVAL;
 use crate::configuration::NUN_MAX_OP_LOG_SIZE;
 use crate::storage::disk::{
-    create_db_from_file_name, file_name_from_db_name, get_key_value_files_name_from_file_name,
+   file_name_from_db_name, get_key_value_files_name_from_file_name,
     NodeDrive,
 };
 
-const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
 
 const KEYS_FILE: &'static str = "keys-nun.keys";
 
@@ -53,6 +52,10 @@ impl Databases {
             Err(_) => return Err("Could not write to the snapshot".to_string()),
         }
     }
+}
+
+pub fn load_all_dbs(dbs: &Arc<Databases>) {
+    NodeDrive::load_all_dbs_from_disk(dbs);
 }
 
 pub struct Oplog {}
@@ -231,38 +234,6 @@ fn write_keys_map_to_disk(keys: HashMap<String, u64>) {
         .open(keys_file_name)
         .unwrap();
     bincode::serialize_into(&mut keys_file, &keys.clone()).unwrap();
-}
-
-fn load_one_db_from_disk(dbs: &Arc<Databases>, entry: std::io::Result<std::fs::DirEntry>) {
-    if let Ok(entry) = entry {
-        let full_name = entry.file_name().into_string().unwrap();
-        if full_name.ends_with(DB_KEYS_FILE_NAME) {
-            let (db, _) = create_db_from_file_name(&full_name, &dbs);
-            dbs.add_database(db);
-        } else {
-            log::warn!(
-                "Files {} does not ends with {} will ignore",
-                full_name,
-                DB_KEYS_FILE_NAME
-            );
-        }
-    }
-}
-
-pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
-    log::debug!("Will load dbs from disck");
-    match create_dir_all(get_dir_name()) {
-        Ok(_) => {}
-        Err(e) => {
-            log::error!("Error creating the data dirs {}", e);
-            panic!("Error creating the data dirs");
-        }
-    };
-    if let Ok(entries) = read_dir(get_dir_name()) {
-        for entry in entries {
-            load_one_db_from_disk(dbs, entry);
-        }
-    }
 }
 
 fn get_invalidate_file_name() -> String {
@@ -938,7 +909,7 @@ mod tests {
         storage_data_disk(&db, &db_name, false);
 
         let dbs = create_test_dbs();
-        load_all_dbs_from_disk(&dbs);
+        NodeDrive::load_all_dbs_from_disk(&dbs);
         let map = dbs.map.read().unwrap();
         let db_loaded = map.get(&db_name).unwrap();
         assert_eq!(db_loaded.get_value(key).unwrap(), value_updated);
@@ -977,7 +948,7 @@ mod tests {
         storage_data_disk(&db, &db_name, false);
 
         let dbs = create_test_dbs();
-        load_all_dbs_from_disk(&dbs);
+        NodeDrive::load_all_dbs_from_disk(&dbs);
         let map = dbs.map.read().unwrap();
         let db_loaded = map.get(&db_name).unwrap();
 
@@ -986,7 +957,7 @@ mod tests {
         storage_data_disk(&db_loaded, &db_name, false);
 
         let dbs = create_test_dbs();
-        load_all_dbs_from_disk(&dbs);
+        NodeDrive::load_all_dbs_from_disk(&dbs);
         let map = dbs.map.read().unwrap();
         let db_loaded_final = map.get(&db_name).unwrap();
 
@@ -1328,7 +1299,7 @@ mod tests {
         assert_eq!(queue_size, 0);
 
         let dbs_after_save = create_test_dbs();
-        load_all_dbs_from_disk(&dbs_after_save);
+        NodeDrive::load_all_dbs_from_disk(&dbs_after_save);
         let dbs_map = dbs_after_save
             .map
             .read()
@@ -1361,7 +1332,7 @@ mod tests {
         let queue_size = { dbs.to_snapshot.read().unwrap().len() };
         assert_eq!(queue_size, 0);
         let dbs_after_save = create_test_dbs();
-        load_all_dbs_from_disk(&dbs_after_save);
+        NodeDrive::load_all_dbs_from_disk(&dbs_after_save);
         let dbs_map = dbs_after_save
             .map
             .read()
@@ -1421,7 +1392,7 @@ mod tests {
         snapshot_all_pendding_dbs(&dbs);
 
         let dbs_after_save = create_test_dbs();
-        load_all_dbs_from_disk(&dbs_after_save);
+        NodeDrive::load_all_dbs_from_disk(&dbs_after_save);
         let dbs_map = dbs_after_save
             .map
             .read()
