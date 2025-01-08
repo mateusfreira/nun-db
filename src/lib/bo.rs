@@ -116,6 +116,23 @@ impl ClusterMember {
 }
 
 #[derive(Clone, PartialEq, Copy)]
+pub enum StorageStrategy {
+    Disk = 0,
+    S3 = 1,
+}
+
+impl From<String> for StorageStrategy {
+    fn from(val: String) -> Self {
+        use self::StorageStrategy::*;
+        match val.as_str() {
+            "disk" => Disk,
+            "s3" => S3,
+            _ => Disk,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Copy)]
 pub enum ClusterRole {
     StartingUp = 0,
     Primary = 1,

@@ -19,13 +19,12 @@ use crate::bo::*;
 
 #[cfg(not(test))]
 use crate::configuration::NUN_DBS_DIR;
-use crate::configuration::NUN_DECLUTTER_INTERVAL;
 use crate::configuration::NUN_MAX_OP_LOG_SIZE;
+use crate::configuration::{NUN_DECLUTTER_INTERVAL, NUN_STORAGE_STRATEGY};
 use crate::storage::disk::{
-   file_name_from_db_name, get_key_value_files_name_from_file_name,
-    NodeDrive,
+    file_name_from_db_name, get_key_value_files_name_from_file_name, NodeDrive,
 };
-
+use crate::storage::s3::S3Storage;
 
 const KEYS_FILE: &'static str = "keys-nun.keys";
 
@@ -57,11 +56,17 @@ impl Databases {
      * Load all databases from disk
      */
     pub fn load_all_dbs(dbs: &Arc<Databases>) {
-        NodeDrive::load_all_dbs_from_disk(dbs);
+        match *NUN_STORAGE_STRATEGY {
+            StorageStrategy::Disk => NodeDrive::load_all_dbs_from_disk(dbs),
+            StorageStrategy::S3 => S3Storage::load_all_dbs_from_cloud(dbs),
+        }
     }
 
     pub fn storage_data(db: &Database, db_name: &String, reclame_space: bool) -> u32 {
-        NodeDrive::storage_data_disk(db, reclame_space, db_name)
+        match *NUN_STORAGE_STRATEGY {
+            StorageStrategy::Disk => NodeDrive::storage_data_disk(db, reclame_space, db_name),
+            StorageStrategy::S3 => S3Storage::storage_data_on_cloud(db, reclame_space, db_name),
+        }
     }
 }
 
@@ -261,7 +266,6 @@ fn remove_backup_key_file(db_name: &String) {
         fs::remove_file(file_name).unwrap();
     }
 }
-
 
 fn remove_old_db_files() {
     let op_log_files = get_op_log_entries_by_creation_date();

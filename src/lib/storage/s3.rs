@@ -34,7 +34,7 @@ fn get_keys_to_push(db: &Database, reclame_space: bool) -> Vec<(String, Value)> 
     {
         let data = db.map.read().expect("Error getting the db.map.read");
         data.iter()
-            .filter(|&(_k, v)| v.state != ValueStatus::Ok || reclame_space)
+            .filter(|&(_k, v)| v.state != ValueStatus::Ok || reclame_space || true)
             .for_each(|(k, v)| keys_to_update.push((k.clone(), v.clone())))
     };
     // Release the locker
@@ -44,6 +44,7 @@ fn get_keys_to_push(db: &Database, reclame_space: bool) -> Vec<(String, Value)> 
 pub struct S3Storage {}
 impl S3Storage {
     pub fn storage_data_on_cloud(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
+        let mut changed_keys = 0;
         let rt = Runtime::new().unwrap();
         let keys_to_update = get_keys_to_push(db, reclame_space);
 
@@ -61,62 +62,49 @@ impl S3Storage {
 
             let mut value_addr = u64::from(0 as u64); //current_value_file_size;
             let mut next_key_addr = current_key_file_size;
-            let mut changed_keys = 0;
 
             for (key, value) in keys_to_update {
-                match value.state {
-                    ValueStatus::New => {
-                        if !reclame_space {
-                            panic!("Values Ok should never get here")
-                        } else {
-                            changed_keys = changed_keys + 1;
+                changed_keys = changed_keys + 1;
 
-                            values_file.put_slice(&value.value.len().to_le_bytes());
-                            //8bytes
-                            let value_as_bytes = value.value.as_bytes();
-                            //Nth bytes
-                            values_file.put_slice(&value_as_bytes);
-                            //4 bytes
-                            values_file.put_slice(&value.state.to_le_bytes());
-                            let record_size =
-                                (U64_SIZE + value_as_bytes.len() + VERSION_SIZE) as u64;
-                            log::debug!(
-                                "Write key: {}, addr: {} value_addr: {}, record_size: {}",
-                                key,
-                                next_key_addr,
-                                value_addr,
-                                record_size
-                            );
-                            // Append key file
-                            // Write key
+                values_file.put_slice(&value.value.len().to_le_bytes());
+                //8bytes
+                let value_as_bytes = value.value.as_bytes();
+                //Nth bytes
+                values_file.put_slice(&value_as_bytes);
+                //4 bytes
+                values_file.put_slice(&value.state.to_le_bytes());
+                let record_size = (U64_SIZE + value_as_bytes.len() + VERSION_SIZE) as u64;
+                log::debug!(
+                    "Write key: {}, addr: {} value_addr: {}, record_size: {}",
+                    key,
+                    next_key_addr,
+                    value_addr,
+                    record_size
+                );
+                // Append key file
+                // Write key
 
-                            let len = key.len();
+                let len = key.len();
 
-                            //8bytes
-                            keys_file.put_slice(&len.to_le_bytes());
-                            //Nth bytes
-                            keys_file.put_slice(&key.as_bytes());
-                            //4 bytes
-                            keys_file.put_slice(&value.version.to_le_bytes());
-                            //8 bytes
-                            keys_file.put_slice(&value_addr.to_le_bytes());
-                            let key_size = get_key_disk_size(key.len());
-                            db.set_value_as_ok(
-                                &key,
-                                &value,
-                                value_addr,
-                                next_key_addr,
-                                Databases::next_op_log_id(),
-                            );
-                            value_addr = value_addr + record_size;
-                            log::debug!("Next Value addr: {}", value_addr);
-                            next_key_addr = next_key_addr + key_size;
-                        }
-                    }
-                    ValueStatus::Ok => {}
-                    ValueStatus::Updated => {}
-                    ValueStatus::Deleted => {}
-                }
+                //8bytes
+                keys_file.put_slice(&len.to_le_bytes());
+                //Nth bytes
+                keys_file.put_slice(&key.as_bytes());
+                //4 bytes
+                keys_file.put_slice(&value.version.to_le_bytes());
+                //8 bytes
+                keys_file.put_slice(&value_addr.to_le_bytes());
+                let key_size = get_key_disk_size(key.len());
+                db.set_value_as_ok(
+                    &key,
+                    &value,
+                    value_addr,
+                    next_key_addr,
+                    Databases::next_op_log_id(),
+                );
+                value_addr = value_addr + record_size;
+                log::debug!("Next Value addr: {}", value_addr);
+                next_key_addr = next_key_addr + key_size;
             }
 
             //keys_file.flush().unwrap();
@@ -133,8 +121,7 @@ impl S3Storage {
         //values_file.flush().unwrap();
         //write_metadata_file(db_name, db);
         //log::debug!("snapshoted {} keys", changed_keys);
-        //changed_keys
-        0
+        changed_keys
     }
 
     async fn store_buffer_to_s3(mut buff: BytesMut, db_name: &String) -> Option<bool> {
