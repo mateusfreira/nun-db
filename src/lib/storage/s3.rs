@@ -34,7 +34,7 @@ fn get_keys_to_push(db: &Database, reclame_space: bool) -> Vec<(String, Value)> 
     {
         let data = db.map.read().expect("Error getting the db.map.read");
         data.iter()
-            .filter(|&(_k, v)| v.state != ValueStatus::Ok || reclame_space || true)
+            .filter(|&(_k, v)| v.state != ValueStatus::Ok || reclame_space)
             .for_each(|(k, v)| keys_to_update.push((k.clone(), v.clone())))
     };
     // Release the locker
@@ -262,6 +262,7 @@ impl S3Storage {
                         };
 
                         //Read value value
+                        log::debug!("Adding key: {}, value: {}", key, value);
                         value_data.insert(key.to_string(), value_object);
                     }
                     Some(Database::create_db_from_value_hash(
