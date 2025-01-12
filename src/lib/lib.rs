@@ -12,3 +12,4 @@ pub mod parse_request;
 pub mod process_request;
 pub mod replication_ops;
 pub mod security;
+pub mod storage;

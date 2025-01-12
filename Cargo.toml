@@ -14,7 +14,10 @@ name = "nun-db"
 path = "src/bin/main.rs"
 
 [dependencies]
-tokio = "1.19.2"
+aws-config = { version = "1.1.7", features = ["behavior-version-latest"] }
+aws-sdk-s3 = { version = "1.63.0", features = ["behavior-version-latest"] }
+tokio = { version = "1.19.2", features = ["full"] }
+bytes = "1"
 futures = "0.3.1"
 ws = "*"
 env_logger = "*"

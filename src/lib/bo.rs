@@ -116,6 +116,23 @@ impl ClusterMember {
 }
 
 #[derive(Clone, PartialEq, Copy)]
+pub enum StorageStrategy {
+    Disk = 0,
+    S3 = 1,
+}
+
+impl From<String> for StorageStrategy {
+    fn from(val: String) -> Self {
+        use self::StorageStrategy::*;
+        match val.as_str() {
+            "disk" => Disk,
+            "s3" => S3,
+            _ => Disk,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Copy)]
 pub enum ClusterRole {
     StartingUp = 0,
     Primary = 1,
@@ -1518,7 +1535,7 @@ mod tests {
 
     #[test]
     fn should_return_op_log_size() {
-        clean_op_log_metadata_files();
+        Oplog::clean_op_log_metadata_files();
         let dbs = get_empty_dbs();
         assert_eq!(
             dbs.get_oplog_state(),
@@ -1528,7 +1545,7 @@ mod tests {
 
     #[test]
     fn should_count_the_number_of_replications() {
-        clean_op_log_metadata_files();
+        Oplog::clean_op_log_metadata_files();
         let dbs = get_empty_dbs();
         let id = Databases::next_op_log_id();
         let server_1_name = String::from("server_1");

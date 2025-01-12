@@ -135,3 +135,61 @@ println ! ("Type: {:?} Data: {:?}", event_type, data);
 - [x] Implement ws mock for unit test ...
 - [x] Fix print to logger messages
     [src/lib/replication_ops.rs:128 ]
+
+
+
+## Disk re-factory
+### Reducing the Nun-db disk interface
+
+So it turns out that S3 storage is becaming common for database storage.
+First step to implement nun-db s3 storage is to simplify the disk interface
+Analising the real interface I notice there is only 3 methods that will need change and really belong to the implementation, snapshot_all_pendding_dbs, load_keys_map_from_disk, load_all_dbs_from_disk all others can stay the same.
+
+To organize I will create sub structure inside disk, since I don't think at this point we want to change oplog becuase of performance,  we need oplog to be fast in NunDb so we can process a lot of data, but we don't need the snapshot to be fast, great separation to implement s3.
+* First step lets introduce this new Class To concentrate all Oplog opps
+* Next analise how the other ones can be implemented in s3, probably implementing one step down the interface 
+    * Lets start with the snapshot_all_pendding_dbs
+        * This method is subdivided in 2 other method calls snapshot_keys and storage_data_disk, both must be re-implemented
+        * Both methods are over used and are probably the build block I need to change to migrate to s3
+        * Actually only the storage_data_disk is over used... that is to save the DB from memory to disk and we must adapt it to save to s3, bt first move it to
+
+#### Will have to change
+- [ ][src/lib/disk_ops.rs:639] -> Usd in db ops for snapshot re-think
+pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
+- [x][src/lib/disk_ops.rs:95]  -> Used external to read the keys
+
+pub fn load_keys_map_from_disk() -> HashMap<String, u64> {// will not be needed
+- [ ][src/lib/disk_ops.rs:257] -> Used in the database staruo to read the databases 
+pub fn load_all_dbs_from_disk(dbs: &Arc<Databases>) {
+
+- [ ] write_keys_map_to_disk Will bot be needed
+[src/lib/disk_ops.rs:231]
+* ADR: We won't be storing oplog, nor global key map into s3 for performance reasons. To be able to process +300k/s we need ops to be light, if the keys map depends on the s3 call it will take at least 50ms and will block next ops. Therefore we will keep it locally and it can be deleted on every pods restarts. Each node will have its own keys ids and it don't be a single id for the full cluster, we accept that as better than slow opps.
+
+
+#### Oplog related (Won't change)
+- [x][src/lib/disk_ops.rs:282] -> Use in test in replication ops consider other alternatives
+pub fn get_op_log_file_name() -> String {// may not change at all
+- [x][src/lib/disk_ops.rs:685] -> Used in many places
+pub fn get_log_file_append_mode() -> BufWriter<File> {
+- [x][src/lib/disk_ops.rs:723] -> Used in startup and  many tests
+pub fn clean_op_log_metadata_files() {
+- [x][src/lib/disk_ops.rs:763] -> Used in replication
+pub fn try_write_op_log(
+- [x][src/lib/disk_ops.rs:786] -> Used in replication
+pub fn write_op_log(
+- [x][src/lib/disk_ops.rs:808] -> Used in replication
+pub fn last_op_time() -> u64 {
+
+#### Won't change
+- [ ][src/lib/disk_ops.rs:619] -> Used in startup to schedule when to run the clening 
+pub fn declutter_scheduler(timer: timer::Timer, dbs: Arc<Databases>) {
+
+- [ ][src/lib/db_ops.rs:287] -> Used in security
+pub fn get_function_by_pattern(
+
+
+
+[k ]
+[ ]
+[l ]

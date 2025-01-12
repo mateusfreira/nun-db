@@ -1,3 +1,4 @@
+use bo::Databases;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use futures::executor::block_on;
 use futures::join;
@@ -81,7 +82,7 @@ fn start_db(
         log::debug!("All fine with op-log metadafiles");
     } else {
         log::warn!("Nun-db has restarted with op-log in a invalid state, oplog and keys metadafile will be deleted!");
-        disk_ops::clean_op_log_metadata_files();
+        disk_ops::Oplog::clean_op_log_metadata_files();
     }
 
     let dbs = nundb::db_ops::create_init_dbs(
@@ -95,7 +96,7 @@ fn start_db(
         is_oplog_valid,
     );
 
-    disk_ops::load_all_dbs_from_disk(&dbs);
+    Databases::load_all_dbs(&dbs);
     let mut signals = Signals::new(&[SIGINT]).unwrap();
     let dbs_to_signal = dbs.clone();
     thread::spawn(move || {
