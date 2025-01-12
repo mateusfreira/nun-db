@@ -21,6 +21,7 @@ RUN touch src/lib/lib.rs
 RUN cargo build --release
 
 FROM bitnami/minideb:bookworm
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 RUN apt-get update
 RUN apt-get -y install libssl-dev pkg-config
