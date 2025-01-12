@@ -235,10 +235,11 @@ impl S3Storage {
                         let value_addr = u64::from_le_bytes(value_addr_buffer);
 
                         log::debug!("Value addr {}", value_addr);
+                        log::debug!("Value size {}", values_cursor.get_ref().len());
                         let before_cursor_position = values_cursor.position();
                         values_cursor.seek(std::io::SeekFrom::Start(value_addr)).await.unwrap();
 
-                        let mut length_buffer = [0; U64_SIZE];
+                        //let mut length_buffer = [0; U64_SIZE];
                         values_cursor.read(&mut length_buffer).await.unwrap();
                         let value_length: usize = usize::from_le_bytes(length_buffer);
                         log::debug!("Value length {}", value_length);
