@@ -1,4 +1,4 @@
-FROM rust:1.78.0-slim as builder
+FROM rust:1.81.0-slim as builder
 RUN apt-get update
 RUN apt-get -y install libssl-dev pkg-config
 RUN cargo new --bin nun-db
