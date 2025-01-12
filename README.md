@@ -508,12 +508,95 @@ $connections
 
 
 ## Configurations
-###  NUN_ELECTION_TIMEOUT
+
+1. **NUN_USER**
+   - **Default Value:** `nun`
+   - **Description:** Username for NunDB, which can be overridden by command line.
+   - **Environment Variable:** `NUN_USER`
+* This is the cluster admin user to be used in NunDB in real situation you shall not use the default value. It can be overridden by command line argument `--user`.
+
+2. **NUN_PWD**
+   - **Default Value:** `nun-pwd`
+   - **Description:** Password for NunDB, which can be overridden by command line.
+   - **Environment Variable:** `NUN_PWD`
+* This is the cluster admin password to be used in NunDB in real situation you shall not use the default value. It can be overridden by command line argument `-p`.
+
+3. **NUN_DBS_DIR**
+   - **Default Value:** `dbs`
+   - **Description:** Directory where NunDB databases are stored.
+   - **Environment Variable:** `NUN_DBS_DIR`
+
+4. **NUN_WS_ADDR**
+   - **Default Value:** `0.0.0.0:3012`
+   - **Description:** Address for NunDB WebSocket service.
+   - **Environment Variable:** `NUN_WS_ADDR`
+
+5. **NUN_HTTP_ADDR**
+   - **Default Value:** `0.0.0.0:3013`
+   - **Description:** Address for NunDB HTTP service.
+   - **Environment Variable:** `NUN_HTTP_ADDR`
+
+6. **NUN_TCP_ADDR**
+   - **Default Value:** `0.0.0.0:3014`
+   - **Description:** Address for NunDB TCP service.
+   - **Environment Variable:** `NUN_TCP_ADDR`
+
+7. **NUN_REPLICATE_ADDR**
+   - **Default Value:** `""`
+   - **Description:** Address for NunDB replication service.
+   - **Environment Variable:** `NUN_REPLICATE_ADDR`
+
+8. **NUN_LOG_LEVEL**
+   - **Default Value:** `Info`
+   - **Description:** Logging level for NunDB (Options: Off, Error, Warn, Info, Debug, Trace).
+   - **Environment Variable:** `NUN_LOG_LEVEL`
+
+9. **NUN_ELECTION_TIMEOUT**
+   - **Default Value:** `1000` (milliseconds)
+   - **Description:** Timeout for leader election in NunDB clusters.
+   - **Environment Variable:** `NUN_ELECTION_TIMEOUT`
 * Configurations are available to define the timeout period for elections to wait until they are acknowledged from all nodes. It is important to note that you should rarely change this variable since doing so could make elections slower. The value of this variable should be at least twice the latency value to ensure that the election process runs smoothly.
 
-### NUN_MAX_OPLOG_SIZE
-* Defines the max op log size in bytes, default value is 1G. NunDb keeps up to 10 uplog files each one containing at max 10% of the max size in bytes of the Oplog max size. When there are more than 10 oplog files the oldest one will be removed in the next time the declutter disk runs. Declutter run on a scheduler evert every 300s (5 minutes), that can be changed by the environment var NUN_DECLUTTER_INTERVAL that defines the interval secound. That means when cleaning up space 10% of the operations are cleaned at a time.
+10. **NUN_MAX_OP_LOG_SIZE**
+    - **Default Value:** `1073741824` (1GB)
+    - **Description:** Maximum operations log size before rotation.
+    - **Environment Variable:** `NUN_MAX_OP_LOG_SIZE`
+* Defines the max op log size in bytes, default value is 1G. NunDb keeps up to 10 uplog files each one containing at max 10% of the max size in bytes of the Oplog max size. When there are more than 10 oplog files the oldest one will be removed in the next time the declutter disk runs. Declutter run on a scheduler evert every 300s (5 minutes), that can be changed by the environment var NUN_DECLUTTER_INTERVAL that defines the interval second. That means when cleaning up space 10% of the operations are cleaned at a time.
 
-
-### NUN_DECLUTTER_INTERVAL
+11. **NUN_DECLUTTER_INTERVAL**
+    - **Default Value:** `300` (seconds)
+    - **Description:** Interval for decluttering, at decluttering time NunDB will snapshot pending databases to disk (or s3) and remove old not needed times.
+    - **Environment Variable:** `NUN_DECLUTTER_INTERVAL`
 * Defines the interval in seconds that the declutter process will run, default value is 300s (5 minutes).
+
+12. **NUN_STORAGE_STRATEGY**
+    - **Default Value:** `disk`
+    - **Description:** Storage strategy for NunDB (Options: disk, s3).
+    - **Environment Variable:** `NUN_STORAGE_STRATEGY`
+
+* Defines how NunDB will store the data disk or s3, in case `s3` it will require may others configurations like `NUN_S3_API_URL`, `NUN_S3_BUCKET`, `NUN_S3_PREFIX`, `NUN_S3_KEY_ID`, `NUN_S3_SECRET_KEY` and it still requires configurations to a path to store data. E.g NunDB still stores oplog locally on the each node, when using s3 this file does not need to be durable if the process restarts.
+
+13. **NUN_S3_KEY_ID**
+    - **Default Value:** `nun-db`
+    - **Description:** AWS S3 Key ID for S3 storage.
+    - **Environment Variable:** `NUN_S3_KEY_ID`
+
+14. **NUN_S3_SECRET_KEY**
+    - **Default Value:** `nun-db-something-more`
+    - **Description:** AWS S3 Secret Key for S3 storage.
+    - **Environment Variable:** `NUN_S3_SECRET_KEY`
+
+15. **NUN_S3_BUCKET**
+    - **Default Value:** `nun-db`
+    - **Description:** S3 bucket name for NunDB storage.
+    - **Environment Variable:** `NUN_S3_BUCKET`
+
+16. **NUN_S3_PREFIX**
+    - **Default Value:** `nun-db-base`
+    - **Description:** Prefix for NunDB data in the S3 bucket.
+    - **Environment Variable:** `NUN_S3_PREFIX`
+
+17. **NUN_S3_API_URL**
+    - **Default Value:** `http://127.0.0.1:9000`
+    - **Description:** API URL for accessing S3-compatible services.
+    - **Environment Variable:** `NUN_S3_API_URL`
