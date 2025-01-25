@@ -86,14 +86,8 @@ impl S3Storage {
 
                 let len = key.len();
 
-                //8bytes
-                keys_file.put_slice(&len.to_le_bytes());
-                //Nth bytes
-                keys_file.put_slice(&key.as_bytes());
-                //4 bytes
-                keys_file.put_slice(&value.version.to_le_bytes());
-                //8 bytes
-                keys_file.put_slice(&value_addr.to_le_bytes());
+                write_key_with_file_reference(&mut keys_file, len, &key, &value, value_addr);
+                //write_key_no_file_reference(&mut keys_file, len, &key, &value, value_addr);
                 let key_size = get_key_disk_size(key.len());
                 db.set_value_as_ok(
                     &key,
@@ -330,6 +324,30 @@ impl S3Storage {
     }
 }
 
+fn write_key_with_file_reference(keys_file: &mut BytesMut, len: usize, key: &String, value: &Value, value_addr: u64) {
+    //8bytes
+    keys_file.put_slice(&len.to_le_bytes());
+    //Nth bytes
+    keys_file.put_slice(&key.as_bytes());
+    //4 bytes
+    keys_file.put_slice(&value.version.to_le_bytes());
+    //4 bytes
+    keys_file.put_slice(&value.file_reference.to_le_bytes());
+    //8 bytes
+    keys_file.put_slice(&value_addr.to_le_bytes());
+}
+
+fn write_key_no_file_reference(keys_file: &mut BytesMut, len: usize, key: &String, value: &Value, value_addr: u64) {
+    //8bytes
+    keys_file.put_slice(&len.to_le_bytes());
+    //Nth bytes
+    keys_file.put_slice(&key.as_bytes());
+    //4 bytes
+    keys_file.put_slice(&value.version.to_le_bytes());
+    //8 bytes
+    keys_file.put_slice(&value_addr.to_le_bytes());
+}
+
 #[cfg(test)]
 mod tests {
     use core::time;
@@ -394,6 +412,35 @@ mod tests {
         assert!(db.count_keys() == 5);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
         assert!(db1.get_value("this_is_totally_new".to_string()).unwrap() == String::from("jose"));
+    }
+
+
+    #[test]
+    fn should_store_only_the_changed_keys() {
+        //init_logger();
+        let db = create_test_db();
+        let db1 = create_test_db();
+
+        let change = Change::new(
+            String::from("this_is_totally_new"),
+            String::from("jose"),
+            -1,
+        );
+        db1.set_value(&change);
+        S3Storage::storage_data_on_cloud(&db, true, &String::from("test"));
+        S3Storage::storage_data_on_cloud(&db1, true, &String::from("test-new-test"));
+        let db = S3Storage::read_data_from_cloud(&String::from("test")).unwrap();
+
+        assert!(db.count_keys() == 5);
+        assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
+        let new_change = Chage::new(
+            String::from("new_key"),
+            String::from("new value")
+            );
+        db.set_value(&new_change);
+        let db_after_change = S3Storage::read_data_from_cloud(&String::from("test")).unwrap();
+        let new_key_value = db_after_change.get_value("new_key");
+        assert!(db.get_value("some".to_string()).unwrap() == String::from("new value"));
     }
 
     fn create_test_db() -> Database {
