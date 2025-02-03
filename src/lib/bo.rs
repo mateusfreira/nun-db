@@ -352,6 +352,7 @@ impl Change {
 pub struct Value {
     pub value: String,
     pub version: i32,
+    pub file_reference: i32,
     pub opp_id: u64,
     pub state: ValueStatus,
     pub value_disk_addr: u64,
@@ -363,6 +364,7 @@ impl From<String> for Value {
         Value {
             value,
             version: 1,
+            file_reference: -1,
             opp_id: Databases::next_op_log_id(),
             state: ValueStatus::New,
             value_disk_addr: 0,
