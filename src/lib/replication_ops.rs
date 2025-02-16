@@ -114,6 +114,7 @@ impl ReplicationMessage {
             replications: Mutex::new(self.replications.lock().unwrap().clone()),
         }
     }
+
     pub fn new(opp_id: u64, message: String) -> ReplicationMessage {
         ReplicationMessage {
             opp_id,

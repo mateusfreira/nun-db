@@ -87,7 +87,6 @@ impl S3Storage {
                 let len = key.len();
 
                 write_key_with_file_reference(&mut keys_file, len, &key, &value, value_addr);
-                //write_key_no_file_reference(&mut keys_file, len, &key, &value, value_addr);
                 let key_size = get_key_disk_size(key.len());
                 db.set_value_as_ok(
                     &key,
@@ -251,6 +250,7 @@ impl S3Storage {
                             version,
                             value: value.to_string(),
                             state: ValueStatus::Ok,
+                            file_reference: -1,
                             value_disk_addr: value_addr,
                             key_disk_addr: keys_cursor.position(),// todo Is this needed?
                             opp_id: Databases::next_op_log_id(),
@@ -324,7 +324,13 @@ impl S3Storage {
     }
 }
 
-fn write_key_with_file_reference(keys_file: &mut BytesMut, len: usize, key: &String, value: &Value, value_addr: u64) {
+fn write_key_with_file_reference(
+    keys_file: &mut BytesMut,
+    len: usize,
+    key: &String,
+    value: &Value,
+    value_addr: u64,
+) {
     //8bytes
     keys_file.put_slice(&len.to_le_bytes());
     //Nth bytes
@@ -337,7 +343,13 @@ fn write_key_with_file_reference(keys_file: &mut BytesMut, len: usize, key: &Str
     keys_file.put_slice(&value_addr.to_le_bytes());
 }
 
-fn write_key_no_file_reference(keys_file: &mut BytesMut, len: usize, key: &String, value: &Value, value_addr: u64) {
+fn write_key_no_file_reference(
+    keys_file: &mut BytesMut,
+    len: usize,
+    key: &String,
+    value: &Value,
+    value_addr: u64,
+) {
     //8bytes
     keys_file.put_slice(&len.to_le_bytes());
     //Nth bytes
@@ -354,7 +366,7 @@ mod tests {
     use std::{collections::HashMap, sync::atomic::Ordering, thread};
 
     use super::*;
-    //use env_logger::{Builder, Env, Target};
+    use env_logger::{Builder, Env, Target};
     use futures::channel::mpsc::{channel, Receiver, Sender};
 
     use crate::{
@@ -362,7 +374,6 @@ mod tests {
         disk_ops::Oplog,
     };
 
-    /*
     fn init_logger() {
         let env = Env::default().filter_or("NUN_LOG_LEVEL", "debug");
         Builder::from_env(env)
@@ -371,7 +382,6 @@ mod tests {
             .format_timestamp_nanos()
             .init();
     }
-    */
 
     #[test]
     fn should_store_data_in_s3() {
@@ -414,10 +424,9 @@ mod tests {
         assert!(db1.get_value("this_is_totally_new".to_string()).unwrap() == String::from("jose"));
     }
 
-
     #[test]
     fn should_store_only_the_changed_keys() {
-        //init_logger();
+        init_logger();
         let db = create_test_db();
         let db1 = create_test_db();
 
@@ -433,13 +442,10 @@ mod tests {
 
         assert!(db.count_keys() == 5);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
-        let new_change = Chage::new(
-            String::from("new_key"),
-            String::from("new value")
-            );
+        let new_change = Change::new(String::from("new_key"), String::from("new value"), -1);
         db.set_value(&new_change);
         let db_after_change = S3Storage::read_data_from_cloud(&String::from("test")).unwrap();
-        let new_key_value = db_after_change.get_value("new_key");
+        let new_key_value = db_after_change.get_value("new_key".to_string());
         assert!(db.get_value("some".to_string()).unwrap() == String::from("new value"));
     }
 

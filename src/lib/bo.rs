@@ -679,6 +679,7 @@ impl Database {
                 value: value.value.to_string(),
                 version: value.version,
                 state: value.state,
+                file_reference: value.file_reference,
                 value_disk_addr: value.value_disk_addr,
                 key_disk_addr: value.key_disk_addr,
                 opp_id: value.opp_id,
@@ -709,6 +710,7 @@ impl Database {
                     value_disk_addr, // will change on the store
                     key_disk_addr,   // will change on the store
                     opp_id,
+                    file_reference: -1,
                 },
             );
         } // release the db
@@ -1496,6 +1498,7 @@ mod tests {
                     version: 22,
                     opp_id: change1.opp_id,
                     state: ValueStatus::New,
+                    file_reference: -1,
                     value_disk_addr: 0,
                     key_disk_addr: 0
                 },
