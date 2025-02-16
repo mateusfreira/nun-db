@@ -1,5 +1,6 @@
 use core::str;
 use std::sync::Arc;
+use std::thread;
 
 use aws_config::Region;
 use aws_sdk_s3::config::Credentials;
@@ -281,6 +282,7 @@ impl S3Storage {
     }
 
     pub fn load_all_dbs_from_cloud(dbs: &Arc<Databases>) {
+        let start = std::time::Instant::now();
         let bucket = NUN_S3_BUCKET.as_str();
         let key_id = NUN_S3_KEY_ID.as_str();
         let secret_key = NUN_S3_SECRET_KEY.as_str();
@@ -322,11 +324,19 @@ impl S3Storage {
             })
             .collect::<Vec<String>>();
         log::debug!("DbsNames: {:?}", db_names);
-        db_names.iter().for_each(|db_name| {
-            // Should not bass the base
-            let db = S3Storage::read_data_from_cloud(&db_name).unwrap();
-            dbs.add_database(db);
-        });
+        let dbs_threads: Vec<thread::JoinHandle<()>>= db_names.iter().map(move |db_name| {
+            let dbs = dbs.clone();
+            let db_name = db_name.clone();
+            let db_thread = thread::spawn(move || {
+                let start_db_load = std::time::Instant::now();
+                let db = S3Storage::read_data_from_cloud(&db_name).unwrap();
+                dbs.add_database(db);
+                log::info!("Loaded db: {} in {:?}", db_name, start_db_load.elapsed());
+            });
+            db_thread
+        }).collect();
+        dbs_threads.into_iter().for_each(|x| x.join().unwrap());
+        log::info!("Loaded all dbs from cloud in {:?}", start.elapsed());
     }
 }
 
