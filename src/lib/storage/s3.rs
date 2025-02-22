@@ -1,4 +1,6 @@
 use core::str;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
@@ -13,6 +15,7 @@ use tokio::runtime::Runtime;
 use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
 use crate::configuration::{
     NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_PREFIX, NUN_S3_SECRET_KEY,
+    NUN_S3_MAX_INFLIGHT_REQUESTS,
 };
 
 const VERSION_SIZE: usize = 4;
@@ -324,19 +327,48 @@ impl S3Storage {
             })
             .collect::<Vec<String>>();
         log::debug!("DbsNames: {:?}", db_names);
+        let running_threads = Arc::new(AtomicUsize::new(0));
         let dbs_threads: Vec<thread::JoinHandle<()>>= db_names.iter().map(move |db_name| {
+            let running_threads = running_threads.clone();
             let dbs = dbs.clone();
             let db_name = db_name.clone();
             let db_thread = thread::spawn(move || {
+                wait_and_lock(&running_threads);
                 let start_db_load = std::time::Instant::now();
+                log::info!("Thread running : {}", running_threads.load(Ordering::Acquire));
                 let db = S3Storage::read_data_from_cloud(&db_name).unwrap();
-                dbs.add_database(db);
                 log::info!("Loaded db: {} in {:?}", db_name, start_db_load.elapsed());
+                dbs.add_database(db);
+                release_lock(&running_threads);
             });
             db_thread
         }).collect();
         dbs_threads.into_iter().for_each(|x| x.join().unwrap());
         log::info!("Loaded all dbs from cloud in {:?}", start.elapsed());
+    }
+}
+
+fn release_lock(running_threads: &Arc<AtomicUsize>) {
+    running_threads.fetch_sub(1, Ordering::SeqCst);
+}
+fn wait_and_lock(running_threads: &Arc<AtomicUsize>) {
+    loop {
+        let prev_val = running_threads.load(Ordering::Acquire);
+        if prev_val > *NUN_S3_MAX_INFLIGHT_REQUESTS {
+            log::debug!("Too many threads running, waiting for a slot to open");
+            thread::sleep(std::time::Duration::from_millis(10));
+            continue
+        } else {
+            log::debug!("Thread running await: {}", prev_val);
+        }
+        match running_threads.compare_exchange(prev_val, prev_val + 1, Ordering::Acquire, Ordering::Acquire) {
+            Ok(_) => break,
+            Err(_) => {
+                log::debug!("Thread failed to update the counter : {}", prev_val);
+                thread::sleep(std::time::Duration::from_millis(10));
+                continue
+            }
+        }
     }
 }
 
