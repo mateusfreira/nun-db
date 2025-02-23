@@ -425,6 +425,7 @@ mod tests {
         let db = S3Storage::read_data_from_cloud(&String::from("test")).unwrap();
 
         assert!(db.count_keys() == 5);
+        println!("Value before assert in CI: {:?}", db.get_value("some".to_string()).unwrap());
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
 
         let dbs = prep_env();
