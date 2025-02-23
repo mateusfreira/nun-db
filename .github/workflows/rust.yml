@@ -32,7 +32,7 @@ jobs:
         TIME_TO_START: 1
         NUN_S3_KEY_ID: nun-db
         NUN_S3_SECRET_KEY: nun-db-something-more
-        NUN_LOG_LEVEL: debug
+        NUN_LOG_LEVEL: info
       run: cargo test --lib
     - name: Run integration tests
       env:
