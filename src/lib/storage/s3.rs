@@ -1,4 +1,6 @@
 use core::str;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
@@ -13,6 +15,7 @@ use tokio::runtime::Runtime;
 use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
 use crate::configuration::{
     NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_PREFIX, NUN_S3_SECRET_KEY,
+    NUN_S3_MAX_INFLIGHT_REQUESTS,
 };
 
 const VERSION_SIZE: usize = 4;
@@ -324,19 +327,48 @@ impl S3Storage {
             })
             .collect::<Vec<String>>();
         log::debug!("DbsNames: {:?}", db_names);
+        let running_threads = Arc::new(AtomicUsize::new(0));
         let dbs_threads: Vec<thread::JoinHandle<()>>= db_names.iter().map(move |db_name| {
+            let running_threads = running_threads.clone();
             let dbs = dbs.clone();
             let db_name = db_name.clone();
             let db_thread = thread::spawn(move || {
+                await_thread_availability(&running_threads);
                 let start_db_load = std::time::Instant::now();
+                log::info!("Thread running : {}", running_threads.load(Ordering::Acquire));
                 let db = S3Storage::read_data_from_cloud(&db_name).unwrap();
-                dbs.add_database(db);
                 log::info!("Loaded db: {} in {:?}", db_name, start_db_load.elapsed());
+                dbs.add_database(db);
+                release_lock(&running_threads);
             });
             db_thread
         }).collect();
         dbs_threads.into_iter().for_each(|x| x.join().unwrap());
         log::info!("Loaded all dbs from cloud in {:?}", start.elapsed());
+    }
+}
+
+fn release_lock(running_threads: &Arc<AtomicUsize>) {
+    running_threads.fetch_sub(1, Ordering::SeqCst);
+}
+fn await_thread_availability(running_threads: &Arc<AtomicUsize>) {
+    loop {
+        let prev_val = running_threads.load(Ordering::Acquire);
+        if prev_val > *NUN_S3_MAX_INFLIGHT_REQUESTS {
+            log::debug!("Too many threads running, waiting for a slot to open");
+            thread::sleep(std::time::Duration::from_millis(10));
+            continue
+        } else {
+            log::debug!("Thread running await: {}", prev_val);
+        }
+        match running_threads.compare_exchange(prev_val, prev_val + 1, Ordering::Acquire, Ordering::Acquire) {
+            Ok(_) => break,
+            Err(_) => {
+                log::debug!("Thread failed to update the counter : {}", prev_val);
+                thread::sleep(std::time::Duration::from_millis(10));
+                continue
+            }
+        }
     }
 }
 
@@ -369,8 +401,8 @@ mod tests {
     fn should_store_data_in_s3() {
         //init_logger();
         let db = create_test_db();
-        S3Storage::storage_data_on_cloud(&db, true, &String::from("test"));
-        let db = S3Storage::read_data_from_cloud(&String::from("test")).unwrap();
+        S3Storage::storage_data_on_cloud(&db, true, &String::from("should_store_data_in_s3_test"));
+        let db = S3Storage::read_data_from_cloud(&String::from("should_store_data_in_s3_test")).unwrap();
         assert!(db.count_keys() == 5);
         log::debug!("{:?}", db.get_value("some".to_string()).unwrap());
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
@@ -388,18 +420,19 @@ mod tests {
             -1,
         );
         db1.set_value(&change);
-        S3Storage::storage_data_on_cloud(&db, true, &String::from("test"));
-        S3Storage::storage_data_on_cloud(&db1, true, &String::from("test-new-test"));
-        let db = S3Storage::read_data_from_cloud(&String::from("test")).unwrap();
+        S3Storage::storage_data_on_cloud(&db, true, &String::from("test-should_read_all_dbs_from_s3"));
+        S3Storage::storage_data_on_cloud(&db1, true, &String::from("test-new-test-should_read_all_dbs_from_s3"));
+        let db = S3Storage::read_data_from_cloud(&String::from("test-should_read_all_dbs_from_s3")).unwrap();
 
         assert!(db.count_keys() == 5);
+        println!("Value before assert in CI: {:?}", db.get_value("some".to_string()).unwrap());
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
 
         let dbs = prep_env();
         S3Storage::load_all_dbs_from_cloud(&dbs);
         let dbs_hash = dbs.acquire_dbs_read_lock();
-        let db = dbs_hash.get("test").unwrap();
-        let db1 = dbs_hash.get("test-new-test").unwrap();
+        let db = dbs_hash.get("test-should_read_all_dbs_from_s3").unwrap();
+        let db1 = dbs_hash.get("test-new-test-should_read_all_dbs_from_s3").unwrap();
 
         assert!(db.count_keys() == 5);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
