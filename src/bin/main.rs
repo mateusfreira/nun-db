@@ -28,7 +28,7 @@ fn init_logger() {
 fn main() -> Result<(), String> {
     init_logger();
     log::info!("nundb starting!");
-    let matches: ArgMatches<'_> = nundb::commad_line::commands::prepare_args();
+    let matches: ArgMatches<'_> = nundb::command_line::commands::prepare_args();
     if let Some(start_match) = matches.subcommand_matches("start") {
         let tcp_address = start_match
             .value_of("tcp-address")
@@ -51,7 +51,7 @@ fn main() -> Result<(), String> {
                 .unwrap_or(tcp_address),
         );
     } else {
-        return nundb::commad_line::commands::exec_command(&matches);
+        return nundb::command_line::commands::exec_command(&matches);
     }
 }
 
