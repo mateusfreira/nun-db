@@ -1,6 +1,6 @@
 pub mod bo;
 pub mod client;
-pub mod commad_line;
+pub mod command_line;
 pub mod configuration;
 pub mod consensus_ops;
 pub mod db_ops;
