@@ -1,7 +1,7 @@
 use atomic_float::*;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -123,11 +123,21 @@ pub enum StorageStrategy {
 
 impl From<String> for StorageStrategy {
     fn from(val: String) -> Self {
+        log::debug!("Val in StorageStrategy {}", val);
         use self::StorageStrategy::*;
         match val.as_str() {
             "disk" => Disk,
             "s3" => S3,
             _ => Disk,
+        }
+    }
+}
+
+impl Display for StorageStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            StorageStrategy::Disk => write!(f, "Disk"),
+            StorageStrategy::S3 => write!(f, "S3"),
         }
     }
 }
