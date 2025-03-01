@@ -862,7 +862,7 @@ fn add_secondary_to_secoundary(
  *
  * The command send to the replication_start_receiver are like
  *
- * commads e.g:
+ * commands e.g:
  * secoundary some_sever:1412
  * primary some_sever:1412
  * <kind> <name port>
