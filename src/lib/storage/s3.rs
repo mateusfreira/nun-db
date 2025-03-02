@@ -18,6 +18,8 @@ use crate::configuration::{
     NUN_S3_MAX_INFLIGHT_REQUESTS,
 };
 
+use super::common::get_keys_to_update;
+
 const VERSION_SIZE: usize = 4;
 const ADDR_SIZE: usize = 8;
 const U64_SIZE: usize = 8;
@@ -33,24 +35,13 @@ fn get_key_disk_size(key_size: usize) -> u64 {
     (U64_SIZE + key_size + ADDR_SIZE + VERSION_SIZE) as u64
 }
 
-fn get_keys_to_push(db: &Database, reclame_space: bool) -> Vec<(String, Value)> {
-    let mut keys_to_update = vec![];
-    {
-        let data = db.map.read().expect("Error getting the db.map.read");
-        data.iter()
-            .filter(|&(_k, v)| v.state != ValueStatus::Ok || reclame_space)
-            .for_each(|(k, v)| keys_to_update.push((k.clone(), v.clone())))
-    };
-    // Release the locker
-    keys_to_update
-}
 
 pub struct S3Storage {}
 impl S3Storage {
     pub fn storage_data_on_cloud(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
         let mut changed_keys = 0;
         let rt = Runtime::new().unwrap();
-        let keys_to_update = get_keys_to_push(db, reclame_space);
+        let keys_to_update = get_keys_to_update(db, reclame_space);
 
         let key_buffer = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
         //@todo should this really be te buffer size of the values????

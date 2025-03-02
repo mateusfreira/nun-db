@@ -47,4 +47,6 @@ criterion = { version = "0.4", features = ["html_reports"] }
 name = "nundb_disk_benchmark"
 harness = false
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
 

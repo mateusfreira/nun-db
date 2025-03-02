@@ -181,15 +181,18 @@ pub fn write_op_log(
 - [x][src/lib/disk_ops.rs:808] -> Used in replication
 pub fn last_op_time() -> u64 {
 
-#### Won't change
-- [ ][src/lib/disk_ops.rs:619] -> Used in startup to schedule when to run the clening 
-pub fn declutter_scheduler(timer: timer::Timer, dbs: Arc<Databases>) {
+## Today
+- [ ] Multi key files
+```text
+Key -> Hash
+        Value addr -> int64 
+        Value file -> number
 
-- [ ][src/lib/db_ops.rs:287] -> Used in security
-pub fn get_function_by_pattern(
+Jose  -> 12389 % 10 = 9
+            db_name_9.nun.keys
 
-
-
-[k ]
-[ ]
-[l ]
+Values:
+        Append Only
+```
+- [ ] S3 NunDb blog post
+- [ ] Single file for Key and Value partitioned
