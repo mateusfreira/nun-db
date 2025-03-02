@@ -196,3 +196,11 @@ Values:
 ```
 - [ ] S3 NunDb blog post
 - [ ] Single file for Key and Value partitioned
+
+
+
+[src/lib/storage/s3.rs:46 ] -> Change it to a single file for each partition
+[V ]
+[k ]
+[ ]
+[ ]
