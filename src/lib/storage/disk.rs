@@ -16,6 +16,8 @@ use crate::bo::DatabaseMataData;
 use crate::bo::Databases;
 use crate::bo::{Database, Value, ValueStatus};
 
+use super::common::get_keys_to_update;
+
 const DB_KEYS_FILE_NAME: &'static str = "-nun.data.keys";
 const BASE_FILE_NAME: &'static str = "-nun.data";
 const META_FILE_NAME: &'static str = "-nun.madadata";
@@ -70,7 +72,7 @@ impl NodeDrive {
         }
     }
     pub fn storage_data_disk(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
-        let keys_to_update = get_keys_to_save_to_disck(db, reclame_space);
+        let keys_to_update = get_keys_to_update(db, reclame_space);
         let mut keys_file = get_key_file_append_mode(&db_name, reclame_space);
         let (mut values_file, current_value_file_size) =
             get_values_file_append_mode(&db_name, reclame_space);
@@ -179,18 +181,6 @@ impl NodeDrive {
         log::debug!("snapshoted {} keys", changed_keys);
         changed_keys
     }
-}
-
-fn get_keys_to_save_to_disck(db: &Database, reclame_space: bool) -> Vec<(String, Value)> {
-    let mut keys_to_update = vec![];
-    {
-        let data = db.map.read().expect("Error getting the db.map.read");
-        data.iter()
-            .filter(|&(_k, v)| v.state != ValueStatus::Ok || reclame_space)
-            .for_each(|(k, v)| keys_to_update.push((k.clone(), v.clone())))
-    };
-    // Release the locker
-    keys_to_update
 }
 
 /// Writes a value to a giving file
