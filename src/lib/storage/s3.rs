@@ -11,7 +11,7 @@ use aws_config::Region;
 use aws_sdk_s3::config::Credentials;
 use bytes::{BufMut, BytesMut};
 use futures::io::Cursor;
-use futures::{AsyncReadExt, AsyncSeekExt};
+use futures::{AsyncReadExt};
 use std::collections::HashMap;
 use tokio::runtime::Runtime;
 
@@ -25,7 +25,6 @@ use crate::storage::common::get_keys_by_filter;
 use super::common::get_keys_to_update;
 
 const VERSION_SIZE: usize = 4;
-const ADDR_SIZE: usize = 8;
 const U64_SIZE: usize = 8;
 // const U32_SIZE: usize = 4;
 
@@ -35,9 +34,6 @@ const OP_TIME_SIZE: usize = 8;
 const OP_OP_SIZE: usize = 1;
 const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
 
-fn get_key_disk_size(key_size: usize) -> u64 {
-    (U64_SIZE + key_size + ADDR_SIZE + VERSION_SIZE) as u64
-}
 
 pub struct S3Storage {}
 impl S3Storage {
@@ -77,6 +73,7 @@ impl S3Storage {
                 });
                 let mut file_buffer: BytesMut = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
                 for (key, value) in keys_in_patition {
+                    log::debug!("Key: {} Value: {}", key, value.value);
                     changed_keys = changed_keys + 1;
                     let len = key.len();
                     //8bytes
@@ -90,7 +87,8 @@ impl S3Storage {
                     //Nth bytes
                     file_buffer.put_slice(&value_as_bytes);
                     //4 bytes
-                    file_buffer.put_slice(&value.state.to_le_bytes());
+                    //file_buffer.put_slice(&value.state.to_le_bytes());
+                    file_buffer.put_slice(&ValueStatus::Ok.to_le_bytes());
 
                     db.set_value_as_ok(
                         &key,
@@ -122,7 +120,7 @@ impl S3Storage {
         let key_id = NUN_S3_KEY_ID.as_str();
         let secret_key = NUN_S3_SECRET_KEY.as_str();
         log::debug!(
-            "Reading from s3, buket: {}, key_id: {}, secret_key: {}, server: {}\n",
+            "Reading from s3, bucket: {}, key_id: {}, secret_key: {}, server: {}\n",
             bucket,
             key_id,
             secret_key,
@@ -207,7 +205,6 @@ impl S3Storage {
                         let keys_file = r.body.collect().await.unwrap().into_bytes();
                         let mut file_cursor = Cursor::new(keys_file);
                         let mut key_length_buffer = [0; U64_SIZE];
-                        let mut i = 0;
                         while let Ok(read) = file_cursor.read(&mut key_length_buffer).await  {
                             if read == 0  {
                                 break;
@@ -238,10 +235,6 @@ impl S3Storage {
                             };
                             value_data.insert(key.to_string(), value_instance); 
                             log::debug!(" Value {} added to key {} in the database {}", value, key, &db_name);
-                            i = i + 1;
-                            if i > 2 {
-                                panic!("Die");
-                            }
                         }
                     }
                     Err(e) => {
@@ -395,21 +388,30 @@ mod tests {
     }
 
     #[test]
-    fn should_store_alot_data_in_s3() {
+    fn should_store_a_lot_data_in_s3() {
         //init_logger();
         let db = create_test_db();
         let db_name_id = Databases::next_op_log_id();
         let final_db_name = String::from(format!("should_store_data_in_s3_test_{}", db_name_id));
-        [0..100].iter().for_each(|n| {
+        for n in 0..30_000 {
             let s_value = String::from(format!("{:?}", n));
             db.set_value(&Change::new(s_value.clone(), s_value, 0));
-        });
-        S3Storage::storage_data_on_cloud(&db, true, &final_db_name);
-        let db = S3Storage::read_data_from_cloud(&final_db_name).unwrap();
-        assert!(db.count_keys() == 5);
-        log::debug!("{:?}", db.get_value("some".to_string()).unwrap());
+        }
+        S3Storage::storage_data_on_cloud(&db, false, &final_db_name);
+
+        let db_after = S3Storage::read_data_from_cloud(&final_db_name).unwrap();
+
+        assert!(db_after.count_keys() == 30_005);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
-        panic!("1000 keys are generating 5 files, 100 generating 7 files");
+        db_after.set_value(&Change::new(String::from("some"), String::from("value_new"), 1));
+        let changed_keys = S3Storage::storage_data_on_cloud(&db_after, false, &final_db_name);
+
+        assert!(changed_keys == 3068, "Changed keys: {}", changed_keys); // Tho only one key
+                                                                         // changed we still have
+                                                                         // to update +10% of the
+                                                                         // data
+        let db_after_update = S3Storage::read_data_from_cloud(&final_db_name).unwrap();
+        assert!(db_after_update.get_value("some".to_string()).unwrap() == String::from("value_new"));
     }
 
     #[test]
@@ -438,10 +440,6 @@ mod tests {
             .unwrap();
 
         assert!(db.count_keys() == 5);
-        println!(
-            "Value before assert in CI: {:?}",
-            db.get_value("some".to_string()).unwrap()
-        );
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
 
         let dbs = prep_env();
