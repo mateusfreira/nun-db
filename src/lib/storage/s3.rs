@@ -282,9 +282,9 @@ impl S3Storage {
         });
         log::debug!("Objects: {:?}", objects);
         let prefix_to_clean = format!("{}/", &NUN_S3_PREFIX.to_string());
-        let db_names = objects
+        let mut db_names = objects
             .iter()
-            .filter(|x| x.contains("nun.values")) // Filter only the values files
+            .filter(|x| x.contains(".nun")) // Filter only the values files
             .map(|x| x.to_string().replacen(&prefix_to_clean, "", 1))
             .map(|x| {
                 let mut paths = x.split("/").collect::<Vec<&str>>();
@@ -292,6 +292,7 @@ impl S3Storage {
                 paths.join("/")
             })
             .collect::<Vec<String>>();
+        db_names.dedup();
         log::debug!("DbsNames: {:?}", db_names);
         let running_threads = Arc::new(AtomicUsize::new(0));
         let dbs_threads: Vec<thread::JoinHandle<()>> = db_names
@@ -418,6 +419,9 @@ mod tests {
     #[test]
     fn should_read_all_dbs_from_s3() {
         init_logger();
+        let data_base_prefix = Databases::next_op_log_id();
+        let db1_name = String::from(format!("test-should_read_all_dbs_from_s3_{}", data_base_prefix));
+        let db_name = String::from(format!("test-read_all_dbs_from_s3_{}", data_base_prefix));
         let db = create_test_db();
         let db1 = create_test_db();
 
@@ -430,28 +434,28 @@ mod tests {
         S3Storage::storage_data_on_cloud(
             &db,
             true,
-            &String::from("test-should_read_all_dbs_from_s3"),
+            &db_name,
         );
         S3Storage::storage_data_on_cloud(
             &db1,
             true,
-            &String::from("test-new-test-should_read_all_dbs_from_s3"),
+            &db1_name,
         );
-        let db = S3Storage::read_data_from_cloud(&String::from("test-should_read_all_dbs_from_s3"))
+        let db = S3Storage::read_data_from_cloud(&db1_name)
             .unwrap();
-
-        assert!(db.count_keys() == 5);
+        log::debug!("{:?}, count, keys {:?}", db.count_keys(), db.list_keys(&String::from("*"), true));
+        assert!(db.count_keys() == 6);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
 
         let dbs = prep_env();
         S3Storage::load_all_dbs_from_cloud(&dbs);
         let dbs_hash = dbs.acquire_dbs_read_lock();
-        let db = dbs_hash.get("test-should_read_all_dbs_from_s3").unwrap();
+        let db = dbs_hash.get(&db1_name).unwrap();
         let db1 = dbs_hash
-            .get("test-new-test-should_read_all_dbs_from_s3")
+            .get(&db1_name)
             .unwrap();
 
-        assert!(db.count_keys() == 5);
+        assert!(db.count_keys() == 6);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
         assert!(db1.get_value("this_is_totally_new".to_string()).unwrap() == String::from("jose"));
     }
