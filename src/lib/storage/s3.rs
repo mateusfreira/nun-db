@@ -364,6 +364,9 @@ mod tests {
     };
 
     fn init_logger() {
+        if log::log_enabled!(log::Level::Info) {
+            return;
+        }
         let env = Env::default().filter_or("NUN_LOG_LEVEL", "debug");
         Builder::from_env(env)
             .format_level(false)
