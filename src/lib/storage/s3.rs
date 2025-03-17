@@ -11,7 +11,7 @@ use aws_config::Region;
 use aws_sdk_s3::config::Credentials;
 use bytes::{BufMut, BytesMut};
 use futures::io::Cursor;
-use futures::{AsyncReadExt};
+use futures::AsyncReadExt;
 use std::collections::HashMap;
 use tokio::runtime::Runtime;
 
