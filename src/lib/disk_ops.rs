@@ -56,7 +56,10 @@ impl Databases {
      * Load all databases from disk
      */
     pub fn load_all_dbs(dbs: &Arc<Databases>) {
-        log::info!("Will load all databases from using the strategy {}", *NUN_STORAGE_STRATEGY);
+        log::info!(
+            "Will load all databases from using the strategy {}",
+            *NUN_STORAGE_STRATEGY
+        );
         match *NUN_STORAGE_STRATEGY {
             StorageStrategy::Disk => NodeDrive::load_all_dbs_from_disk(dbs),
             StorageStrategy::S3 => S3Storage::load_all_dbs_from_cloud(dbs),
