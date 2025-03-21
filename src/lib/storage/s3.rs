@@ -34,7 +34,6 @@ const OP_TIME_SIZE: usize = 8;
 const OP_OP_SIZE: usize = 1;
 const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
 
-
 pub struct S3Storage {}
 impl S3Storage {
     pub fn hash(key: String) -> u64 {
@@ -151,7 +150,7 @@ impl S3Storage {
         }
     }
 
-    fn read_data_from_cloud(db_name: &String) -> Option<Database> {
+    fn read_data_from_cloud(db_name: &String) -> Result<Database, String> {
         let mut value_data: HashMap<String, Value> = HashMap::new();
         let bucket = NUN_S3_BUCKET.as_str();
         let key_id = NUN_S3_KEY_ID.as_str();
@@ -183,7 +182,7 @@ impl S3Storage {
                 .map(|s| s.split(".").next().unwrap().to_string())
                 .collect::<Vec<String>>()
         });
-        partition_list.into_iter().for_each(|partition| {
+        let partitio_readin_results = partition_list.into_iter().map(|partition| {
             let partition_file = format!(
                 "{}/{}/{}.nun",
                 NUN_S3_PREFIX.to_string(),
@@ -191,7 +190,7 @@ impl S3Storage {
                 partition
             );
 
-            rt.block_on(async {
+            let read_result: Result<(), &str> = rt.block_on(async {
                 match client
                     .get_object()
                     .bucket(bucket)
@@ -200,27 +199,25 @@ impl S3Storage {
                     .await
                 {
                     Ok(r) => {
-                        let partition = partition.split(".").next().unwrap().parse::<u64>().unwrap();
+                        let partition =
+                            partition.split(".").next().unwrap().parse::<u64>().unwrap();
                         log::debug!("Reading the file {}", &partition_file);
-                        let keys_file = r.body.collect().await.unwrap().into_bytes();
-                        let mut file_cursor = Cursor::new(keys_file);
+                        let nun_file = r.body.collect().await.unwrap().into_bytes();
+
+                        let mut file_cursor = Cursor::new(nun_file);
                         let mut key_length_buffer = [0; U64_SIZE];
-                        while let Ok(read) = file_cursor.read(&mut key_length_buffer).await  {
-                            if read == 0  {
+                        while let Ok(read) = file_cursor.read(&mut key_length_buffer).await {
+                            if read == 0 {
                                 break;
                             }
-                            let key_length: usize = usize::from_le_bytes(key_length_buffer);
-                            let mut key_buffer = vec![0; key_length];
-                            file_cursor.read(&mut key_buffer).await.unwrap();
-                            let key = str::from_utf8(&key_buffer).unwrap();
-
+                            // Reading key
+                            let key = read_str_value(key_length_buffer, &mut file_cursor).await;
+                            // Reading value
                             let mut value_length_buffer = [0; U64_SIZE];
-
                             file_cursor.read(&mut value_length_buffer).await.unwrap();
-                            let value_length = usize::from_le_bytes(value_length_buffer);
-                            let mut value_buffer = vec![0; value_length];
-                            file_cursor.read(&mut value_buffer).await.unwrap();
-                            let value = str::from_utf8(&value_buffer).unwrap();
+
+                            let value = read_str_value(value_length_buffer, &mut file_cursor).await;
+
                             let mut status_length_buffer = [0; VERSION_SIZE];
                             file_cursor.read(&mut status_length_buffer).await.unwrap();
                             let status = i32::from_le_bytes(status_length_buffer);
@@ -231,23 +228,35 @@ impl S3Storage {
                                 opp_id: Databases::next_op_log_id(),
                                 state: ValueStatus::from(status),
                                 value_disk_addr: partition,
-                                key_disk_addr: partition,
+                                key_disk_addr: 0,
                             };
-                            value_data.insert(key.to_string(), value_instance); 
-                            log::debug!(" Value {} added to key {} in the database {}", value, key, &db_name);
+                            value_data.insert(key.to_string(), value_instance);
+                            log::debug!(
+                                " Value {} added to key {} in the database {}",
+                                value,
+                                key,
+                                &db_name
+                            );
                         }
                     }
                     Err(e) => {
-                        log::error!("{}", e);
+                        log::error!("{} trying to load the databse", e);
+                        return Err("Error reading value from s3");
                     }
-                }
+                };
+                Ok(())
             });
+            read_result
         });
-        Some(Database::create_db_from_value_hash(
+        let any_partition_failed = partitio_readin_results.fold(Ok(()), error_if_error);
+        match any_partition_failed {
+            Ok(()) => Ok(Database::create_db_from_value_hash(
                 db_name.to_string(),
                 value_data,
                 DatabaseMataData::new(1, ConsensuStrategy::Arbiter),
-        ))
+            )),
+            Err(e) => Err(String::from(format!("Fail to load files from s3: {}", e))),
+        }
     }
 
     pub fn load_all_dbs_from_cloud(dbs: &Arc<Databases>) {
@@ -321,6 +330,16 @@ impl S3Storage {
     }
 }
 
+async fn read_str_value(value_length_buffer: [u8; 8], file_cursor: &mut Cursor<bytes::Bytes>) -> String {
+    let value_length = usize::from_le_bytes(value_length_buffer);
+
+    let mut value_buffer = vec![0; value_length];
+    file_cursor.read(&mut value_buffer).await.unwrap();
+    let value = str::from_utf8(&value_buffer).unwrap();
+    String::from(value)
+}
+
+
 fn release_lock(running_threads: &Arc<AtomicUsize>) {
     running_threads.fetch_sub(1, Ordering::SeqCst);
 }
@@ -350,6 +369,14 @@ fn await_thread_availability(running_threads: &Arc<AtomicUsize>) {
     }
 }
 
+fn error_if_error<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> {
+    if let Err(_) = a {
+        return a;
+    } else {
+        b
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use core::time;
@@ -374,6 +401,15 @@ mod tests {
             .target(Target::Stdout)
             .format_timestamp_nanos()
             .init();
+    }
+
+    #[test]
+    fn should_return_error_if_error() {
+        let a = error_if_error::<(), String>(Ok(()), Ok(()));
+        assert_eq!(a, Ok(()));
+
+        let a = error_if_error(Ok(()), Err(String::from("Something whent wrong")));
+        assert_eq!(a, Err(String::from("Something whent wrong")));
     }
 
     #[test]
@@ -405,7 +441,11 @@ mod tests {
 
         assert!(db_after.count_keys() == 30_005);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
-        db_after.set_value(&Change::new(String::from("some"), String::from("value_new"), 1));
+        db_after.set_value(&Change::new(
+            String::from("some"),
+            String::from("value_new"),
+            1,
+        ));
         let changed_keys = S3Storage::storage_data_on_cloud(&db_after, false, &final_db_name);
 
         assert!(changed_keys == 3068, "Changed keys: {}", changed_keys); // Tho only one key
@@ -413,14 +453,19 @@ mod tests {
                                                                          // to update +10% of the
                                                                          // data
         let db_after_update = S3Storage::read_data_from_cloud(&final_db_name).unwrap();
-        assert!(db_after_update.get_value("some".to_string()).unwrap() == String::from("value_new"));
+        assert!(
+            db_after_update.get_value("some".to_string()).unwrap() == String::from("value_new")
+        );
     }
 
     #[test]
     fn should_read_all_dbs_from_s3() {
         init_logger();
         let data_base_prefix = Databases::next_op_log_id();
-        let db1_name = String::from(format!("test-should_read_all_dbs_from_s3_{}", data_base_prefix));
+        let db1_name = String::from(format!(
+            "test-should_read_all_dbs_from_s3_{}",
+            data_base_prefix
+        ));
         let db_name = String::from(format!("test-read_all_dbs_from_s3_{}", data_base_prefix));
         let db = create_test_db();
         let db1 = create_test_db();
@@ -431,19 +476,14 @@ mod tests {
             -1,
         );
         db1.set_value(&change);
-        S3Storage::storage_data_on_cloud(
-            &db,
-            true,
-            &db_name,
+        S3Storage::storage_data_on_cloud(&db, true, &db_name);
+        S3Storage::storage_data_on_cloud(&db1, true, &db1_name);
+        let db = S3Storage::read_data_from_cloud(&db1_name).unwrap();
+        log::debug!(
+            "{:?}, count, keys {:?}",
+            db.count_keys(),
+            db.list_keys(&String::from("*"), true)
         );
-        S3Storage::storage_data_on_cloud(
-            &db1,
-            true,
-            &db1_name,
-        );
-        let db = S3Storage::read_data_from_cloud(&db1_name)
-            .unwrap();
-        log::debug!("{:?}, count, keys {:?}", db.count_keys(), db.list_keys(&String::from("*"), true));
         assert!(db.count_keys() == 6);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
 
@@ -451,9 +491,7 @@ mod tests {
         S3Storage::load_all_dbs_from_cloud(&dbs);
         let dbs_hash = dbs.acquire_dbs_read_lock();
         let db = dbs_hash.get(&db1_name).unwrap();
-        let db1 = dbs_hash
-            .get(&db1_name)
-            .unwrap();
+        let db1 = dbs_hash.get(&db1_name).unwrap();
 
         assert!(db.count_keys() == 6);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
