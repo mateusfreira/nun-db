@@ -9,6 +9,7 @@ use std::thread;
 
 use aws_config::Region;
 use aws_sdk_s3::config::Credentials;
+use aws_sdk_s3::Client;
 use bytes::{BufMut, BytesMut};
 use futures::io::Cursor;
 use futures::AsyncReadExt;
@@ -102,39 +103,27 @@ impl S3Storage {
                     db_name,
                     partition
                 );
-                rt.block_on(S3Storage::store_buffer_to_s3(
+                let store_result = rt.block_on(S3Storage::store_buffer_to_s3(
                     file_buffer,
                     &format!("{}/{}.nun", db_name, partition),
                 ));
+                store_result.unwrap();// Make sure to fail if it fails
             });
         log::debug!("snapshoted {} keys", changed_keys);
         changed_keys
     }
 
-    async fn store_buffer_to_s3(mut buff: BytesMut, db_name: &String) -> Option<bool> {
+    async fn store_buffer_to_s3(mut buff: BytesMut, db_name: &String) -> Result<bool, String> {
         let key = format!("{}/{}", NUN_S3_PREFIX.to_string(), db_name);
 
-        let url = NUN_S3_API_URL.as_str();
         let bucket = NUN_S3_BUCKET.as_str();
-        let key_id = NUN_S3_KEY_ID.as_str();
-        let secret_key = NUN_S3_SECRET_KEY.as_str();
+
         log::debug!(
-            "Reading from s3, bucket: {}, key_id: {}, secret_key: {}, server: {}\n",
+            "Reading from s3, bucket: {}\n",
             bucket,
-            key_id,
-            secret_key,
-            NUN_S3_API_URL.as_str()
         );
 
-        let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
-        let s3_config = aws_sdk_s3::config::Builder::new()
-            .endpoint_url(url)
-            .credentials_provider(cred)
-            .region(Region::new("us-east"))
-            .force_path_style(true)
-            .build();
-
-        let client = aws_sdk_s3::Client::from_conf(s3_config);
+        let client = build_s3_client();
         let body = aws_sdk_s3::primitives::ByteStream::from(buff.split().freeze());
 
         match client
@@ -145,43 +134,18 @@ impl S3Storage {
             .send()
             .await
         {
-            Ok(_) => Some(true),
-            Err(_) => None,
+            Ok(_) => Ok(true),
+            Err(msg) => Err(String::from(msg.to_string())),
         }
     }
 
     fn read_data_from_cloud(db_name: &String) -> Result<Database, String> {
+        let rt = Runtime::new().unwrap();
         let mut value_data: HashMap<String, Value> = HashMap::new();
         let bucket = NUN_S3_BUCKET.as_str();
-        let key_id = NUN_S3_KEY_ID.as_str();
-        let secret_key = NUN_S3_SECRET_KEY.as_str();
-
-        let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
-        let s3_config = aws_sdk_s3::config::Builder::new()
-            .endpoint_url(NUN_S3_API_URL.as_str())
-            .credentials_provider(cred)
-            .region(Region::new("us-east"))
-            .force_path_style(true)
-            .build();
-        let client = aws_sdk_s3::Client::from_conf(s3_config);
-        let rt = Runtime::new().unwrap();
+        let client = build_s3_client();
         // Read the list of partitions?
-        let partition_list = rt.block_on(async {
-            client
-                .list_objects_v2()
-                .set_prefix(Some(format!("{}/{}", NUN_S3_PREFIX.to_string(), db_name)))
-                .bucket(bucket)
-                .send()
-                .await
-                .unwrap()
-                .contents()
-                .into_iter()
-                .flat_map(|x| x.key())
-                .map(ToString::to_string)
-                .map(|s| s.split("/").last().unwrap().to_string())
-                .map(|s| s.split(".").next().unwrap().to_string())
-                .collect::<Vec<String>>()
-        });
+        let partition_list = get_patirion_list_form_s3(&rt, &client, &db_name, &bucket);
         let partitio_readin_results = partition_list.into_iter().map(|partition| {
             let partition_file = format!(
                 "{}/{}/{}.nun",
@@ -248,33 +212,23 @@ impl S3Storage {
             });
             read_result
         });
-        let any_partition_failed = partitio_readin_results.fold(Ok(()), error_if_error);
-        match any_partition_failed {
-            Ok(()) => Ok(Database::create_db_from_value_hash(
+        let has_any_partition_failed = partitio_readin_results.fold(Ok(()), error_if_error);
+        if let Err(msg) = has_any_partition_failed {
+            Err(String::from(format!("Fail to load files from s3: {}", msg)))
+        } else {
+            Ok(Database::create_db_from_value_hash(
                 db_name.to_string(),
                 value_data,
                 DatabaseMataData::new(1, ConsensuStrategy::Arbiter),
-            )),
-            Err(e) => Err(String::from(format!("Fail to load files from s3: {}", e))),
+            ))
         }
     }
 
     pub fn load_all_dbs_from_cloud(dbs: &Arc<Databases>) {
+        let rt = Runtime::new().unwrap();
         let start = std::time::Instant::now();
         let bucket = NUN_S3_BUCKET.as_str();
-        let key_id = NUN_S3_KEY_ID.as_str();
-        let secret_key = NUN_S3_SECRET_KEY.as_str();
-
-        let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
-        let s3_config = aws_sdk_s3::config::Builder::new()
-            .endpoint_url(NUN_S3_API_URL.as_str())
-            .credentials_provider(cred)
-            .region(Region::new("us-east"))
-            .force_path_style(true)
-            .build();
-
-        let client = aws_sdk_s3::Client::from_conf(s3_config);
-        let rt = Runtime::new().unwrap();
+        let client = build_s3_client();
         let objects = rt.block_on(async {
             client
                 .list_objects_v2()
@@ -330,7 +284,44 @@ impl S3Storage {
     }
 }
 
-async fn read_str_value(value_length_buffer: [u8; 8], file_cursor: &mut Cursor<bytes::Bytes>) -> String {
+fn build_s3_client() -> Client {
+    let key_id = NUN_S3_KEY_ID.as_str();
+    let secret_key = NUN_S3_SECRET_KEY.as_str();
+    let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
+    let s3_config = aws_sdk_s3::config::Builder::new()
+        .endpoint_url(NUN_S3_API_URL.as_str())
+        .credentials_provider(cred)
+        .region(Region::new("us-east"))
+        .force_path_style(true)
+        .build();
+    let client = aws_sdk_s3::Client::from_conf(s3_config);
+    client
+}
+
+fn get_patirion_list_form_s3(rt: &Runtime, client: &Client, db_name: &String, bucket: &str) -> Vec<String> {
+    let partition_list = rt.block_on(async {
+        client
+            .list_objects_v2()
+            .set_prefix(Some(format!("{}/{}", NUN_S3_PREFIX.to_string(), db_name)))
+            .bucket(bucket)
+            .send()
+            .await
+            .unwrap()
+            .contents()
+            .into_iter()
+            .flat_map(|x| x.key())
+            .map(ToString::to_string)
+            .map(|s| s.split("/").last().unwrap().to_string())
+            .map(|s| s.split(".").next().unwrap().to_string())
+            .collect::<Vec<String>>()
+    });
+    partition_list
+}
+
+async fn read_str_value(
+    value_length_buffer: [u8; 8],
+    file_cursor: &mut Cursor<bytes::Bytes>,
+) -> String {
     let value_length = usize::from_le_bytes(value_length_buffer);
 
     let mut value_buffer = vec![0; value_length];
@@ -338,7 +329,6 @@ async fn read_str_value(value_length_buffer: [u8; 8], file_cursor: &mut Cursor<b
     let value = str::from_utf8(&value_buffer).unwrap();
     String::from(value)
 }
-
 
 fn release_lock(running_threads: &Arc<AtomicUsize>) {
     running_threads.fetch_sub(1, Ordering::SeqCst);
