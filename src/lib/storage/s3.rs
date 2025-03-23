@@ -18,8 +18,13 @@ use tokio::runtime::Runtime;
 
 use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
 use crate::configuration::{
-    NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_MAX_INFLIGHT_REQUESTS, NUN_S3_PREFIX,
+    NUN_S3_API_URL, 
+    NUN_S3_BUCKET, 
+    NUN_S3_KEY_ID, 
+    NUN_S3_MAX_INFLIGHT_REQUESTS, 
+    NUN_S3_PREFIX,
     NUN_S3_SECRET_KEY,
+    NUN_S3_NUMBER_OF_PARTITIONS
 };
 use crate::storage::common::get_keys_by_filter;
 
@@ -69,7 +74,7 @@ impl S3Storage {
                 // There will be a small lock in the DB object for each partition here.
                 // I think this is better than a long lock
                 let keys_in_patition = get_keys_by_filter(&db, &|key, _v| {
-                    S3Storage::hash(key.to_string()) % 10 == partition
+                    S3Storage::hash(key.to_string()) % *NUN_S3_NUMBER_OF_PARTITIONS == partition
                 });
                 let mut file_buffer: BytesMut = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
                 for (key, value) in keys_in_patition {

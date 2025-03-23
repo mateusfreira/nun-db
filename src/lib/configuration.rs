@@ -24,7 +24,7 @@ lazy_static! {
     pub static ref NUN_S3_PREFIX: String = optional_env_var("NUN_S3_PREFIX", "nun-db-base");
     pub static ref NUN_S3_API_URL: String = optional_env_var("NUN_S3_API_URL", "http://127.0.0.1:9000");
     pub static ref NUN_S3_MAX_INFLIGHT_REQUESTS: usize = optional_env_var("NUN_S3_MAX_INFLIGHT_REQUESTS", "10").to_string().parse::<usize>().unwrap();
-
+    pub static ref NUN_S3_NUMBER_OF_PARTITIONS: u64 = optional_env_var("NUN_S3_NUMBER_OF_PARTITIONS", "10").to_string().parse::<u64>().unwrap();
 }
 
 pub fn optional_env_var(name: &str, default: &str) -> String {
