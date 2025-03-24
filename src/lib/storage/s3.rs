@@ -58,14 +58,12 @@ impl S3Storage {
         let mut partitions_to_update = keys_to_update
             .into_iter()
             .map(|(k, _v)| {
-                let hash = S3Storage::hash(k);
-                hash % 10
+                get_patirion_from_key(&k)
             })
             .collect::<Vec<_>>();
         partitions_to_update.sort();
         partitions_to_update.dedup();
         // Find other keys in the same parition
-        //log::debug!("Partitions {}", partitions_to_update.clone().into_iter().map(|p| p.to_string()).collect::<Vec<_>>().join(","));
         partitions_to_update
             .clone()
             .into_iter()
@@ -74,7 +72,7 @@ impl S3Storage {
                 // There will be a small lock in the DB object for each partition here.
                 // I think this is better than a long lock
                 let keys_in_patition = get_keys_by_filter(&db, &|key, _v| {
-                    S3Storage::hash(key.to_string()) % *NUN_S3_NUMBER_OF_PARTITIONS == partition
+                    get_patirion_from_key(key) == partition
                 });
                 let mut file_buffer: BytesMut = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
                 for (key, value) in keys_in_patition {
@@ -94,6 +92,9 @@ impl S3Storage {
                     //4 bytes
                     //file_buffer.put_slice(&value.state.to_le_bytes());
                     file_buffer.put_slice(&ValueStatus::Ok.to_le_bytes());
+
+                    //4 bytes
+                    file_buffer.put_slice(&value.version.to_le_bytes());
 
                     db.set_value_as_ok(
                         &key,
@@ -190,10 +191,14 @@ impl S3Storage {
                             let mut status_length_buffer = [0; VERSION_SIZE];
                             file_cursor.read(&mut status_length_buffer).await.unwrap();
                             let status = i32::from_le_bytes(status_length_buffer);
+                            let mut version_length_buffer = [0; VERSION_SIZE];
+                            file_cursor.read(&mut version_length_buffer).await.unwrap();
+                            let version = i32::from_le_bytes(version_length_buffer);
+
 
                             let value_instance = Value {
                                 value: value.to_string(),
-                                version: 1,
+                                version: version,
                                 opp_id: Databases::next_op_log_id(),
                                 state: ValueStatus::from(status),
                                 value_disk_addr: partition,
@@ -338,6 +343,7 @@ async fn read_str_value(
 fn release_lock(running_threads: &Arc<AtomicUsize>) {
     running_threads.fetch_sub(1, Ordering::SeqCst);
 }
+
 fn await_thread_availability(running_threads: &Arc<AtomicUsize>) {
     loop {
         let prev_val = running_threads.load(Ordering::Acquire);
@@ -370,6 +376,10 @@ fn error_if_error<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> {
     } else {
         b
     }
+}
+
+fn get_patirion_from_key(key: &String) ->  u64 {
+    S3Storage::hash(key.to_string()) % *NUN_S3_NUMBER_OF_PARTITIONS
 }
 
 #[cfg(test)]
@@ -418,11 +428,13 @@ mod tests {
         assert!(db.count_keys() == 5);
         log::debug!("{:?}", db.get_value("some".to_string()).unwrap());
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
+        assert!(db.get_value("some".to_string()).unwrap().version == 1);
+
     }
 
     #[test]
     fn should_store_a_lot_data_in_s3() {
-        //init_logger();
+        init_logger();
         let db = create_test_db();
         let db_name_id = Databases::next_op_log_id();
         let final_db_name = String::from(format!("should_store_data_in_s3_test_{}", db_name_id));
@@ -439,7 +451,7 @@ mod tests {
         db_after.set_value(&Change::new(
             String::from("some"),
             String::from("value_new"),
-            1,
+            2,
         ));
         let changed_keys = S3Storage::storage_data_on_cloud(&db_after, false, &final_db_name);
 
@@ -448,8 +460,14 @@ mod tests {
                                                                          // to update +10% of the
                                                                          // data
         let db_after_update = S3Storage::read_data_from_cloud(&final_db_name).unwrap();
+        let value_obj = db_after_update.get_value("some".to_string()).unwrap();
         assert!(
-            db_after_update.get_value("some".to_string()).unwrap() == String::from("value_new")
+             value_obj.value == String::from("value_new")
+        );
+
+        log::debug!("Version {:?}", value_obj.version); 
+        assert!(
+             value_obj.version == 3
         );
     }
 
