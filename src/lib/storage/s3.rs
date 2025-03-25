@@ -50,7 +50,6 @@ impl S3Storage {
     }
     pub fn storage_data_on_cloud(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
         // Get this out of here
-
         let mut changed_keys = 0;
         let rt = Runtime::new().unwrap();
         let keys_to_update = get_keys_to_update(db, reclame_space);
@@ -65,7 +64,6 @@ impl S3Storage {
         partitions_to_update.dedup();
         // Find other keys in the same parition
         partitions_to_update
-            .clone()
             .into_iter()
             .for_each(|partition| {
                 // Slow uses less memory at a time but costs more in CPU
@@ -113,7 +111,10 @@ impl S3Storage {
                     file_buffer,
                     &format!("{}/{}.nun", db_name, partition),
                 ));
-                store_result.unwrap();// Make sure to fail if it fails
+                match store_result { 
+                    Ok(ok) => log::debug!("S3Storage::store_buffer_to_s3 {}", ok),
+                    Err(err) => panic!("Error to store database {}", err),
+                }
             });
         log::debug!("snapshoted {} keys", changed_keys);
         changed_keys
@@ -160,7 +161,7 @@ impl S3Storage {
                 partition
             );
 
-            let read_result: Result<(), &str> = rt.block_on(async {
+            let read_result: Result<(), String> = rt.block_on(async {
                 match client
                     .get_object()
                     .bucket(bucket)
@@ -198,7 +199,7 @@ impl S3Storage {
 
                             let value_instance = Value {
                                 value: value.to_string(),
-                                version: version,
+                                version,
                                 opp_id: Databases::next_op_log_id(),
                                 state: ValueStatus::from(status),
                                 value_disk_addr: partition,
@@ -215,7 +216,7 @@ impl S3Storage {
                     }
                     Err(e) => {
                         log::error!("{} trying to load the databse", e);
-                        return Err("Error reading value from s3");
+                        return Err(String::from(format!("Fail to load partition {} from s3.", partition)))
                     }
                 };
                 Ok(())
@@ -234,7 +235,7 @@ impl S3Storage {
         }
     }
 
-    pub fn load_all_dbs_from_cloud(dbs: &Arc<Databases>) {
+    pub fn load_all_dbs_from_cloud<'a>(dbs: &'a Arc<Databases>) {
         let rt = Runtime::new().unwrap();
         let start = std::time::Instant::now();
         let bucket = NUN_S3_BUCKET.as_str();
@@ -277,18 +278,16 @@ impl S3Storage {
                 let db_thread = thread::spawn(move || {
                     await_thread_availability(&running_threads);
                     let start_db_load = std::time::Instant::now();
-                    log::info!(
-                        "Thread running : {}",
-                        running_threads.load(Ordering::Acquire)
-                    );
-                    let db = S3Storage::read_data_from_cloud(&db_name).unwrap();
+                    let db = match S3Storage::read_data_from_cloud(&db_name) {
+                        Ok(db) => db,
+                        Err(e) => panic!("Fail to load db from s3 {}, error: {}", db_name, e)
+                    };
                     log::info!("Loaded db: {} in {:?}", db_name, start_db_load.elapsed());
                     dbs.add_database(db);
                     release_lock(&running_threads);
                 });
                 db_thread
-            })
-            .collect();
+            }).collect();
         dbs_threads.into_iter().for_each(|x| x.join().unwrap());
         log::info!("Loaded all dbs from cloud in {:?}", start.elapsed());
     }
