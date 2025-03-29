@@ -19,7 +19,8 @@ use tokio::runtime::Runtime;
 use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
 use crate::configuration::{
     NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_MAX_INFLIGHT_REQUESTS,
-    NUN_S3_NUMBER_OF_PARTITIONS, NUN_S3_PREFIX, NUN_S3_SECRET_KEY,
+    NUN_S3_NUMBER_OF_PARTITIONS, NUN_S3_PREFIX, NUN_S3_SECRET_KEY, 
+    NUN_S3_RETRY
 };
 use crate::storage::common::get_keys_by_filter;
 
@@ -57,54 +58,68 @@ impl S3Storage {
         partitions_to_update.dedup();
         // Find other keys in the same parition
         partitions_to_update.into_iter().for_each(|partition| {
-            // Slow uses less memory at a time but costs more in CPU
-            // There will be a small lock in the DB object for each partition here.
-            // I think this is better than a long lock
-            let keys_in_patition =
-                get_keys_by_filter(&db, &|key, _v| get_patirion_from_key(key) == partition);
-            let mut file_buffer: BytesMut = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
-            for (key, value) in keys_in_patition {
-                log::debug!("Key: {} Value: {}", key, value.value);
-                changed_keys = changed_keys + 1;
-                let len = key.len();
-                //8bytes
-                file_buffer.put_slice(&len.to_le_bytes());
-                //Nth bytes
-                file_buffer.put_slice(&key.as_bytes());
-                // Writing the value
-                file_buffer.put_slice(&value.value.len().to_le_bytes());
-                //8bytes
-                let value_as_bytes = value.value.as_bytes();
-                //Nth bytes
-                file_buffer.put_slice(&value_as_bytes);
-                //4 bytes
-                //file_buffer.put_slice(&value.state.to_le_bytes());
-                file_buffer.put_slice(&ValueStatus::Ok.to_le_bytes());
+            let _result = Result::or_else(retry(
+                || {
+                    // Slow uses less memory at a time but costs more in CPU
+                    // There will be a small lock in the DB object for each partition here.
+                    // I think this is better than a long lock
+                    let keys_in_patition =
+                        get_keys_by_filter(&db, &|key, _v| get_patirion_from_key(key) == partition);
+                    let mut file_buffer: BytesMut = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
+                    for (key, value) in keys_in_patition {
+                        log::debug!("Key: {} Value: {}", key, value.value);
+                        changed_keys = changed_keys + 1;
+                        let len = key.len();
+                        //8bytes
+                        file_buffer.put_slice(&len.to_le_bytes());
+                        //Nth bytes
+                        file_buffer.put_slice(&key.as_bytes());
+                        // Writing the value
+                        file_buffer.put_slice(&value.value.len().to_le_bytes());
+                        //8bytes
+                        let value_as_bytes = value.value.as_bytes();
+                        //Nth bytes
+                        file_buffer.put_slice(&value_as_bytes);
+                        //4 bytes
+                        //file_buffer.put_slice(&value.state.to_le_bytes());
+                        file_buffer.put_slice(&ValueStatus::Ok.to_le_bytes());
 
-                //4 bytes
-                file_buffer.put_slice(&value.version.to_le_bytes());
+                        //4 bytes
+                        file_buffer.put_slice(&value.version.to_le_bytes());
 
-                db.set_value_as_ok(
-                    &key,
-                    &value,
-                    partition, // Use partition id here to know where to store
-                    partition, // Use partition id here to know where to store
-                    Databases::next_op_log_id(),
-                );
-            }
-            log::debug!(
-                "Will store the database {} partition {}",
-                db_name,
-                partition
-            );
-            let store_result = rt.block_on(S3Storage::store_buffer_to_s3(
-                file_buffer,
-                &format!("{}/{}.nun", db_name, partition),
-            ));
-            match store_result {
-                Ok(ok) => log::debug!("S3Storage::store_buffer_to_s3 {}", ok),
-                Err(err) => panic!("Error to store database {}", err),
-            }
+                        db.set_value_as_ok(
+                            &key,
+                            &value,
+                            partition, // Use partition id here to know where to store
+                            partition, // Use partition id here to know where to store
+                            Databases::next_op_log_id(),
+                        );
+                    }
+                    log::debug!(
+                        "Will store the database {} partition {}",
+                        db_name,
+                        partition
+                    );
+                    let store_result = rt.block_on(S3Storage::store_buffer_to_s3(
+                        file_buffer,
+                        &format!("{}/{}.nun", db_name, partition),
+                    ));
+                    match store_result {
+                        Ok(_) => {
+                            log::debug!("S3Storage::store_buffer_to_s3 ok");
+                            Ok::<(), String>(())
+                        }
+                        Err(err) => {
+                            log::error!("S3Storage::store_buffer_to_s3 failed: {}", err);
+                            Err::<(), String>(err)
+                        }
+                    }
+                },
+                *NUN_S3_RETRY,
+            ), |e: String| -> Result<(), String>{
+                log::error!("Fail to store partition {} in s3: {}", partition, e);
+                panic!("Fail to store partition {} in s3: {}", partition, e);
+            });
         });
         log::debug!("snapshoted {} keys", changed_keys);
         changed_keys
@@ -147,70 +162,77 @@ impl S3Storage {
                 db_name,
                 partition
             );
+            retry(
+                || {
+                    let read_result: Result<(), String> = rt.block_on(async {
+                        match client
+                            .get_object()
+                            .bucket(bucket)
+                            .key(&partition_file)
+                            .send()
+                            .await
+                        {
+                            Ok(r) => {
+                                let partition =
+                                    partition.split(".").next().unwrap().parse::<u64>().unwrap();
+                                log::debug!("Reading the file {}", &partition_file);
+                                let nun_file = r.body.collect().await.unwrap().into_bytes();
 
-            let read_result: Result<(), String> = rt.block_on(async {
-                match client
-                    .get_object()
-                    .bucket(bucket)
-                    .key(&partition_file)
-                    .send()
-                    .await
-                {
-                    Ok(r) => {
-                        let partition =
-                            partition.split(".").next().unwrap().parse::<u64>().unwrap();
-                        log::debug!("Reading the file {}", &partition_file);
-                        let nun_file = r.body.collect().await.unwrap().into_bytes();
+                                let mut file_cursor = Cursor::new(nun_file);
+                                let mut key_length_buffer = [0; U64_SIZE];
+                                while let Ok(read) = file_cursor.read(&mut key_length_buffer).await
+                                {
+                                    if read == 0 {
+                                        break;
+                                    }
+                                    // Reading key
+                                    let key =
+                                        read_str_value(key_length_buffer, &mut file_cursor).await;
+                                    // Reading value
+                                    let mut value_length_buffer = [0; U64_SIZE];
+                                    file_cursor.read(&mut value_length_buffer).await.unwrap();
 
-                        let mut file_cursor = Cursor::new(nun_file);
-                        let mut key_length_buffer = [0; U64_SIZE];
-                        while let Ok(read) = file_cursor.read(&mut key_length_buffer).await {
-                            if read == 0 {
-                                break;
+                                    let value =
+                                        read_str_value(value_length_buffer, &mut file_cursor).await;
+
+                                    let mut status_length_buffer = [0; VERSION_SIZE];
+                                    file_cursor.read(&mut status_length_buffer).await.unwrap();
+                                    let status = i32::from_le_bytes(status_length_buffer);
+                                    let mut version_length_buffer = [0; VERSION_SIZE];
+                                    file_cursor.read(&mut version_length_buffer).await.unwrap();
+                                    let version = i32::from_le_bytes(version_length_buffer);
+
+                                    let value_instance = Value {
+                                        value: value.to_string(),
+                                        version,
+                                        opp_id: Databases::next_op_log_id(),
+                                        state: ValueStatus::from(status),
+                                        value_disk_addr: partition,
+                                        key_disk_addr: 0,
+                                    };
+                                    value_data.insert(key.to_string(), value_instance);
+                                    log::debug!(
+                                        " Value {} added to key {} in the database {}",
+                                        value,
+                                        key,
+                                        &db_name
+                                    );
+                                }
                             }
-                            // Reading key
-                            let key = read_str_value(key_length_buffer, &mut file_cursor).await;
-                            // Reading value
-                            let mut value_length_buffer = [0; U64_SIZE];
-                            file_cursor.read(&mut value_length_buffer).await.unwrap();
-
-                            let value = read_str_value(value_length_buffer, &mut file_cursor).await;
-
-                            let mut status_length_buffer = [0; VERSION_SIZE];
-                            file_cursor.read(&mut status_length_buffer).await.unwrap();
-                            let status = i32::from_le_bytes(status_length_buffer);
-                            let mut version_length_buffer = [0; VERSION_SIZE];
-                            file_cursor.read(&mut version_length_buffer).await.unwrap();
-                            let version = i32::from_le_bytes(version_length_buffer);
-
-                            let value_instance = Value {
-                                value: value.to_string(),
-                                version,
-                                opp_id: Databases::next_op_log_id(),
-                                state: ValueStatus::from(status),
-                                value_disk_addr: partition,
-                                key_disk_addr: 0,
-                            };
-                            value_data.insert(key.to_string(), value_instance);
-                            log::debug!(
-                                " Value {} added to key {} in the database {}",
-                                value,
-                                key,
-                                &db_name
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("{} trying to load the databse", e);
-                        return Err(String::from(format!(
-                            "Fail to load partition {} from s3.",
-                            partition
-                        )));
-                    }
-                };
-                Ok(())
-            });
-            read_result
+                            Err(e) => {
+                                log::error!("{} trying to load the databse", e);
+                                return Err(String::from(format!(
+                                    "Fail to load partition {} from s3.",
+                                    partition
+                                )));
+                            }
+                        };
+                        Ok(())
+                    });
+                    read_result
+                },
+                *NUN_S3_RETRY,
+            )
         });
         let has_any_partition_failed = partitio_readin_results.fold(Ok(()), error_if_error);
         if let Err(msg) = has_any_partition_failed {
@@ -376,14 +398,18 @@ fn get_patirion_from_key(key: &String) -> u64 {
     S3Storage::hash(key.to_string()) % *NUN_S3_NUMBER_OF_PARTITIONS
 }
 
-fn retry_if_error<T, E>(opp: &dyn Fn() -> Result<T, E>, count: i32) -> Result<T, E> {
+fn retry<F, T, E>(mut opp: F, count: i32) -> Result<T, E>
+where
+    F: FnMut() -> Result<T, E>,
+{
     let result = opp();
     if let Ok(_) = result {
         result
     } else {
         if count > 0 {
-            retry_if_error(opp, count -1)
-        } else  {
+            log::debug!("Will retry {}", count);
+            retry(opp, count - 1)
+        } else {
             result
         }
     }
@@ -426,32 +452,32 @@ mod tests {
 
     #[test]
     fn should_return_ok_if_ok() {
-        let result: Result<(), String> = retry_if_error(&|| Ok(()), 3);
+        let result: Result<(), String> = retry(&|| Ok(()), 3);
         assert_eq!(result, Ok(()));
     }
 
     #[test]
     fn should_return_error_if_it_never_returns_ok() {
-        let result: Result<(), &str> = retry_if_error(&|| Err("Bad"), 3);
+        let result: Result<(), &str> = retry(&|| Err("Bad"), 3);
         assert_eq!(result, Err("Bad"));
     }
 
     #[test]
     fn should_return_return_ok_if_it_returns_ok_in_the_secount_try() {
         let count = AtomicUsize::new(0);
-        let result: Result<(), &str> = retry_if_error(
-            &|| {
-                let n_try = count.fetch_add(1, Ordering::Relaxed);
-                println!("Will try {}", n_try);
-                if n_try > 2 {
-                    Err("Bad")
-                } else {
-                    Ok(())
-                }
-            },
-            10,
-        );
+        let function = || {
+            let n_try = count.fetch_add(1, Ordering::Relaxed);
+            if n_try < 7 {
+                Err("Bad")
+            } else {
+                Ok(())
+            }
+        };
+        let result: Result<(), &str> = retry(&function, 3);
         assert_eq!(result, Err("Bad"));
+
+        let result: Result<(), &str> = retry(&function, 10);
+        assert_eq!(result, Ok(()));
     }
 
     #[test]
