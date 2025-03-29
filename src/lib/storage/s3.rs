@@ -18,13 +18,8 @@ use tokio::runtime::Runtime;
 
 use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
 use crate::configuration::{
-    NUN_S3_API_URL, 
-    NUN_S3_BUCKET, 
-    NUN_S3_KEY_ID, 
-    NUN_S3_MAX_INFLIGHT_REQUESTS, 
-    NUN_S3_PREFIX,
-    NUN_S3_SECRET_KEY,
-    NUN_S3_NUMBER_OF_PARTITIONS
+    NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_MAX_INFLIGHT_REQUESTS,
+    NUN_S3_NUMBER_OF_PARTITIONS, NUN_S3_PREFIX, NUN_S3_SECRET_KEY,
 };
 use crate::storage::common::get_keys_by_filter;
 
@@ -56,66 +51,61 @@ impl S3Storage {
         // Define what patitions needs update
         let mut partitions_to_update = keys_to_update
             .into_iter()
-            .map(|(k, _v)| {
-                get_patirion_from_key(&k)
-            })
+            .map(|(k, _v)| get_patirion_from_key(&k))
             .collect::<Vec<_>>();
         partitions_to_update.sort();
         partitions_to_update.dedup();
         // Find other keys in the same parition
-        partitions_to_update
-            .into_iter()
-            .for_each(|partition| {
-                // Slow uses less memory at a time but costs more in CPU
-                // There will be a small lock in the DB object for each partition here.
-                // I think this is better than a long lock
-                let keys_in_patition = get_keys_by_filter(&db, &|key, _v| {
-                    get_patirion_from_key(key) == partition
-                });
-                let mut file_buffer: BytesMut = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
-                for (key, value) in keys_in_patition {
-                    log::debug!("Key: {} Value: {}", key, value.value);
-                    changed_keys = changed_keys + 1;
-                    let len = key.len();
-                    //8bytes
-                    file_buffer.put_slice(&len.to_le_bytes());
-                    //Nth bytes
-                    file_buffer.put_slice(&key.as_bytes());
-                    // Writing the value
-                    file_buffer.put_slice(&value.value.len().to_le_bytes());
-                    //8bytes
-                    let value_as_bytes = value.value.as_bytes();
-                    //Nth bytes
-                    file_buffer.put_slice(&value_as_bytes);
-                    //4 bytes
-                    //file_buffer.put_slice(&value.state.to_le_bytes());
-                    file_buffer.put_slice(&ValueStatus::Ok.to_le_bytes());
+        partitions_to_update.into_iter().for_each(|partition| {
+            // Slow uses less memory at a time but costs more in CPU
+            // There will be a small lock in the DB object for each partition here.
+            // I think this is better than a long lock
+            let keys_in_patition =
+                get_keys_by_filter(&db, &|key, _v| get_patirion_from_key(key) == partition);
+            let mut file_buffer: BytesMut = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
+            for (key, value) in keys_in_patition {
+                log::debug!("Key: {} Value: {}", key, value.value);
+                changed_keys = changed_keys + 1;
+                let len = key.len();
+                //8bytes
+                file_buffer.put_slice(&len.to_le_bytes());
+                //Nth bytes
+                file_buffer.put_slice(&key.as_bytes());
+                // Writing the value
+                file_buffer.put_slice(&value.value.len().to_le_bytes());
+                //8bytes
+                let value_as_bytes = value.value.as_bytes();
+                //Nth bytes
+                file_buffer.put_slice(&value_as_bytes);
+                //4 bytes
+                //file_buffer.put_slice(&value.state.to_le_bytes());
+                file_buffer.put_slice(&ValueStatus::Ok.to_le_bytes());
 
-                    //4 bytes
-                    file_buffer.put_slice(&value.version.to_le_bytes());
+                //4 bytes
+                file_buffer.put_slice(&value.version.to_le_bytes());
 
-                    db.set_value_as_ok(
-                        &key,
-                        &value,
-                        partition, // Use partition id here to know where to store
-                        partition, // Use partition id here to know where to store
-                        Databases::next_op_log_id(),
-                    );
-                }
-                log::debug!(
-                    "Will store the database {} partition {}",
-                    db_name,
-                    partition
+                db.set_value_as_ok(
+                    &key,
+                    &value,
+                    partition, // Use partition id here to know where to store
+                    partition, // Use partition id here to know where to store
+                    Databases::next_op_log_id(),
                 );
-                let store_result = rt.block_on(S3Storage::store_buffer_to_s3(
-                    file_buffer,
-                    &format!("{}/{}.nun", db_name, partition),
-                ));
-                match store_result { 
-                    Ok(ok) => log::debug!("S3Storage::store_buffer_to_s3 {}", ok),
-                    Err(err) => panic!("Error to store database {}", err),
-                }
-            });
+            }
+            log::debug!(
+                "Will store the database {} partition {}",
+                db_name,
+                partition
+            );
+            let store_result = rt.block_on(S3Storage::store_buffer_to_s3(
+                file_buffer,
+                &format!("{}/{}.nun", db_name, partition),
+            ));
+            match store_result {
+                Ok(ok) => log::debug!("S3Storage::store_buffer_to_s3 {}", ok),
+                Err(err) => panic!("Error to store database {}", err),
+            }
+        });
         log::debug!("snapshoted {} keys", changed_keys);
         changed_keys
     }
@@ -125,10 +115,7 @@ impl S3Storage {
 
         let bucket = NUN_S3_BUCKET.as_str();
 
-        log::debug!(
-            "Reading from s3, bucket: {}\n",
-            bucket,
-        );
+        log::debug!("Reading from s3, bucket: {}\n", bucket,);
 
         let client = build_s3_client();
         let body = aws_sdk_s3::primitives::ByteStream::from(buff.split().freeze());
@@ -196,7 +183,6 @@ impl S3Storage {
                             file_cursor.read(&mut version_length_buffer).await.unwrap();
                             let version = i32::from_le_bytes(version_length_buffer);
 
-
                             let value_instance = Value {
                                 value: value.to_string(),
                                 version,
@@ -216,7 +202,10 @@ impl S3Storage {
                     }
                     Err(e) => {
                         log::error!("{} trying to load the databse", e);
-                        return Err(String::from(format!("Fail to load partition {} from s3.", partition)))
+                        return Err(String::from(format!(
+                            "Fail to load partition {} from s3.",
+                            partition
+                        )));
                     }
                 };
                 Ok(())
@@ -280,14 +269,15 @@ impl S3Storage {
                     let start_db_load = std::time::Instant::now();
                     let db = match S3Storage::read_data_from_cloud(&db_name) {
                         Ok(db) => db,
-                        Err(e) => panic!("Fail to load db from s3 {}, error: {}", db_name, e)
+                        Err(e) => panic!("Fail to load db from s3 {}, error: {}", db_name, e),
                     };
                     log::info!("Loaded db: {} in {:?}", db_name, start_db_load.elapsed());
                     dbs.add_database(db);
                     release_lock(&running_threads);
                 });
                 db_thread
-            }).collect();
+            })
+            .collect();
         dbs_threads.into_iter().for_each(|x| x.join().unwrap());
         log::info!("Loaded all dbs from cloud in {:?}", start.elapsed());
     }
@@ -307,7 +297,12 @@ fn build_s3_client() -> Client {
     client
 }
 
-fn get_patirion_list_form_s3(rt: &Runtime, client: &Client, db_name: &String, bucket: &str) -> Vec<String> {
+fn get_patirion_list_form_s3(
+    rt: &Runtime,
+    client: &Client,
+    db_name: &String,
+    bucket: &str,
+) -> Vec<String> {
     let partition_list = rt.block_on(async {
         client
             .list_objects_v2()
@@ -377,8 +372,21 @@ fn error_if_error<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> {
     }
 }
 
-fn get_patirion_from_key(key: &String) ->  u64 {
+fn get_patirion_from_key(key: &String) -> u64 {
     S3Storage::hash(key.to_string()) % *NUN_S3_NUMBER_OF_PARTITIONS
+}
+
+fn retry_if_error<T, E>(opp: &dyn Fn() -> Result<T, E>, count: i32) -> Result<T, E> {
+    let result = opp();
+    if let Ok(_) = result {
+        result
+    } else {
+        if count > 0 {
+            retry_if_error(opp, count -1)
+        } else  {
+            result
+        }
+    }
 }
 
 #[cfg(test)]
@@ -417,6 +425,36 @@ mod tests {
     }
 
     #[test]
+    fn should_return_ok_if_ok() {
+        let result: Result<(), String> = retry_if_error(&|| Ok(()), 3);
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn should_return_error_if_it_never_returns_ok() {
+        let result: Result<(), &str> = retry_if_error(&|| Err("Bad"), 3);
+        assert_eq!(result, Err("Bad"));
+    }
+
+    #[test]
+    fn should_return_return_ok_if_it_returns_ok_in_the_secount_try() {
+        let count = AtomicUsize::new(0);
+        let result: Result<(), &str> = retry_if_error(
+            &|| {
+                let n_try = count.fetch_add(1, Ordering::Relaxed);
+                println!("Will try {}", n_try);
+                if n_try > 2 {
+                    Err("Bad")
+                } else {
+                    Ok(())
+                }
+            },
+            10,
+        );
+        assert_eq!(result, Err("Bad"));
+    }
+
+    #[test]
     fn should_store_data_in_s3() {
         //init_logger();
         let db = create_test_db();
@@ -428,7 +466,6 @@ mod tests {
         log::debug!("{:?}", db.get_value("some".to_string()).unwrap());
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
         assert!(db.get_value("some".to_string()).unwrap().version == 1);
-
     }
 
     #[test]
@@ -460,14 +497,10 @@ mod tests {
                                                                          // data
         let db_after_update = S3Storage::read_data_from_cloud(&final_db_name).unwrap();
         let value_obj = db_after_update.get_value("some".to_string()).unwrap();
-        assert!(
-             value_obj.value == String::from("value_new")
-        );
+        assert!(value_obj.value == String::from("value_new"));
 
-        log::debug!("Version {:?}", value_obj.version); 
-        assert!(
-             value_obj.version == 3
-        );
+        log::debug!("Version {:?}", value_obj.version);
+        assert!(value_obj.version == 3);
     }
 
     #[test]

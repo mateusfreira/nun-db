@@ -198,3 +198,4 @@ Values:
 - [x] Single file for Key and Value partitioned
 [src/lib/storage/s3.rs:46 ] -> Change it to a single file for each partition
 - [ ]  Migrate files from legacy s3 storage
+    [jk ]
