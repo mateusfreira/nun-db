@@ -28,7 +28,6 @@ use super::common::get_keys_to_update;
 
 const VERSION_SIZE: usize = 4;
 const U64_SIZE: usize = 8;
-// const U32_SIZE: usize = 4;
 
 const OP_KEY_SIZE: usize = 8;
 const OP_DB_ID_SIZE: usize = 8;

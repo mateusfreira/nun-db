@@ -59,17 +59,22 @@ impl Request {
     }
     pub fn parse(input: &str) -> Result<Request, String> {
         let mut command = input.splitn(3, " ");
-        if let Some(cmd) = command.next() {
-            match PARSER_HASH_TABLE.get(cmd) {
+        match command.next() {
+            Some("") => {
+                log::debug!("empty command");
+                Err(String::from("empty command"))
+            },
+            Some(cmd)=> match PARSER_HASH_TABLE.get(cmd) {
                 Some(f) => f(&mut command),
                 None => {
                     log::debug!("unknown command: {}", cmd);
                     Err(format!("unknown command: {}", cmd))
                 }
+            },
+            None => {
+                log::debug!("empty command");
+                Err(String::from("empty command"))
             }
-        } else {
-            log::debug!("unknown command");
-            Err(String::from("unknown command"))
         }
     }
 }
@@ -1010,7 +1015,21 @@ mod tests {
                 if msg == "unknown command: a\n" {
                     Ok(())
                 } else {
-                    Err(String::from("message it wrong"))
+                    Err(String::from("message is wrong"))
+                }
+            }
+            _ => Err(String::from("get foo should be parsed to watch command")),
+        }
+    }
+
+    #[test]
+    fn should_return_proper_error_for_empty_command() -> Result<(), String> {
+        match Request::parse("") {
+            Err(msg) => {
+                if msg == "empty command" {
+                    Ok(())
+                } else {
+                    Err(String::from("message is wrong"))
                 }
             }
             _ => Err(String::from("get foo should be parsed to watch command")),
