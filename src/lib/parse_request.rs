@@ -60,21 +60,17 @@ impl Request {
     pub fn parse(input: &str) -> Result<Request, String> {
         let mut command = input.splitn(3, " ");
         match command.next() {
-            Some("") => {
+            Some("") | None => {
                 log::debug!("empty command");
                 Err(String::from("empty command"))
-            },
-            Some(cmd)=> match PARSER_HASH_TABLE.get(cmd) {
+            }
+            Some(cmd) => match PARSER_HASH_TABLE.get(cmd) {
                 Some(f) => f(&mut command),
                 None => {
                     log::debug!("unknown command: {}", cmd);
                     Err(format!("unknown command: {}", cmd))
                 }
             },
-            None => {
-                log::debug!("empty command");
-                Err(String::from("empty command"))
-            }
         }
     }
 }
@@ -1032,7 +1028,7 @@ mod tests {
                     Err(String::from("message is wrong"))
                 }
             }
-            _ => Err(String::from("get foo should be parsed to watch command")),
+            _ => Err(String::from("get foo should be")),
         }
     }
 

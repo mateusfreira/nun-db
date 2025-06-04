@@ -17,11 +17,16 @@ lazy_static! {
     pub static ref NUN_MAX_OP_LOG_SIZE: u64 = optional_env_var("NUN_MAX_OP_LOG_SIZE", "1073741824").to_string().parse::<u64>().unwrap();
     pub static ref NUN_DECLUTTER_INTERVAL: i64 = optional_env_var("NUN_DECLUTTER_INTERVAL", "300").to_string().parse::<i64>().unwrap();
 
-    pub static ref NUN_STORAGE_STRATEGY:StorageStrategy = StorageStrategy::from(optional_env_var("NUN_STORAGE_STRATEGY", "disk")); // disk, s3
+    pub static ref NUN_STORAGE_STRATEGY_BASE: String = optional_env_var("NUN_STORAGE_STRATEGY", "disk");
+    pub static ref NUN_STORAGE_STRATEGY:StorageStrategy = StorageStrategy::from(NUN_STORAGE_STRATEGY_BASE.to_string()); // disk, s3
+    pub static ref NUN_READ_STORAGE_STRATEGY:StorageStrategy = StorageStrategy::from(optional_env_var("NUN_STORAGE_READ_STRATEGY", &NUN_STORAGE_STRATEGY_BASE.to_string())); // disk, s3
+    pub static ref NUN_WRITE_STORAGE_STRATEGY:StorageStrategy = StorageStrategy::from(optional_env_var("NUN_STORAGE_WRITE_STRATEGY", &NUN_STORAGE_STRATEGY_BASE.to_string())); // disk, s3
+                                                                                                                                   //
     pub static ref NUN_S3_KEY_ID: String = optional_env_var("NUN_S3_KEY_ID", "nun-db");
     pub static ref NUN_S3_SECRET_KEY: String = optional_env_var("NUN_S3_SECRET_KEY", "nun-db-something-more");
     pub static ref NUN_S3_BUCKET: String = optional_env_var("NUN_S3_BUCKET", "nun-db");
     pub static ref NUN_S3_PREFIX: String = optional_env_var("NUN_S3_PREFIX", "nun-db-base");
+    pub static ref NUN_S3_READ_PREFIX: String = optional_env_var("NUN_S3_READ_PREFIX", &NUN_S3_PREFIX.to_string());
     pub static ref NUN_S3_API_URL: String = optional_env_var("NUN_S3_API_URL", "http://127.0.0.1:9000");
     pub static ref NUN_S3_MAX_INFLIGHT_REQUESTS: usize = optional_env_var("NUN_S3_MAX_INFLIGHT_REQUESTS", "10").to_string().parse::<usize>().unwrap();
     pub static ref NUN_S3_NUMBER_OF_PARTITIONS: u64 = optional_env_var("NUN_S3_NUMBER_OF_PARTITIONS", "10").to_string().parse::<u64>().unwrap();

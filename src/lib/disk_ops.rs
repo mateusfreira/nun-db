@@ -20,11 +20,15 @@ use crate::bo::*;
 #[cfg(not(test))]
 use crate::configuration::NUN_DBS_DIR;
 use crate::configuration::NUN_MAX_OP_LOG_SIZE;
-use crate::configuration::{NUN_DECLUTTER_INTERVAL, NUN_STORAGE_STRATEGY};
+use crate::configuration::{
+    NUN_DECLUTTER_INTERVAL, NUN_READ_STORAGE_STRATEGY, NUN_STORAGE_STRATEGY,
+    NUN_WRITE_STORAGE_STRATEGY,
+};
 use crate::storage::disk::{
     file_name_from_db_name, get_key_value_files_name_from_file_name, NodeDrive,
 };
 use crate::storage::s3::S3Storage;
+use crate::storage::s3_partition::S3PartitionStorage;
 
 const KEYS_FILE: &'static str = "keys-nun.keys";
 
@@ -57,19 +61,23 @@ impl Databases {
      */
     pub fn load_all_dbs(dbs: &Arc<Databases>) {
         log::info!(
-            "Will load all databases from using the strategy {}",
-            *NUN_STORAGE_STRATEGY
+            "Will load all databases from using the strategy Defalt: {}, Read: {}, Write: {}",
+            *NUN_STORAGE_STRATEGY,
+            *NUN_READ_STORAGE_STRATEGY,
+            *NUN_WRITE_STORAGE_STRATEGY
         );
-        match *NUN_STORAGE_STRATEGY {
+        match *NUN_READ_STORAGE_STRATEGY {
             StorageStrategy::Disk => NodeDrive::load_all_dbs_from_disk(dbs),
             StorageStrategy::S3 => S3Storage::load_all_dbs_from_cloud(dbs),
+            StorageStrategy::S3Patition => S3PartitionStorage::load_all_dbs_from_cloud(dbs),
         }
     }
 
     pub fn storage_data(db: &Database, db_name: &String, reclame_space: bool) -> u32 {
-        match *NUN_STORAGE_STRATEGY {
+        match *NUN_WRITE_STORAGE_STRATEGY {
             StorageStrategy::Disk => NodeDrive::storage_data_disk(db, reclame_space, db_name),
             StorageStrategy::S3 => S3Storage::storage_data_on_cloud(db, reclame_space, db_name),
+            StorageStrategy::S3Patition => S3PartitionStorage::storage_data_on_cloud(db, reclame_space, db_name)
         }
     }
 }

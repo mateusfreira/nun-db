@@ -182,7 +182,7 @@ pub fn write_op_log(
 pub fn last_op_time() -> u64 {
 
 ## Today
-- [ ] Multi key files
+- [x] Multi key files
 ```text
 Key -> Hash
         Value addr -> int64 
@@ -198,4 +198,6 @@ Values:
 - [x] Single file for Key and Value partitioned
 [src/lib/storage/s3.rs:46 ] -> Change it to a single file for each partition
 - [ ]  Migrate files from legacy s3 storage
-    [jk ]
+    - [ ] Will set the env vars from prod.
+    - [ ] Set Different values from read and write
+    - [ ] Read all and store all

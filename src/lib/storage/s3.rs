@@ -1,7 +1,4 @@
 use core::str;
-use std::hash::DefaultHasher;
-use std::hash::Hash;
-use std::hash::Hasher;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -9,25 +6,24 @@ use std::thread;
 
 use aws_config::Region;
 use aws_sdk_s3::config::Credentials;
-use aws_sdk_s3::Client;
 use bytes::{BufMut, BytesMut};
 use futures::io::Cursor;
-use futures::AsyncReadExt;
+use futures::{AsyncReadExt, AsyncSeekExt};
 use std::collections::HashMap;
 use tokio::runtime::Runtime;
 
 use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
 use crate::configuration::{
-    NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_MAX_INFLIGHT_REQUESTS,
-    NUN_S3_NUMBER_OF_PARTITIONS, NUN_S3_PREFIX, NUN_S3_SECRET_KEY, 
-    NUN_S3_RETRY
+    NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_MAX_INFLIGHT_REQUESTS, NUN_S3_PREFIX,
+    NUN_S3_SECRET_KEY,
 };
-use crate::storage::common::get_keys_by_filter;
 
 use super::common::get_keys_to_update;
 
 const VERSION_SIZE: usize = 4;
+const ADDR_SIZE: usize = 8;
 const U64_SIZE: usize = 8;
+// const U32_SIZE: usize = 4;
 
 const OP_KEY_SIZE: usize = 8;
 const OP_DB_ID_SIZE: usize = 8;
@@ -35,103 +31,117 @@ const OP_TIME_SIZE: usize = 8;
 const OP_OP_SIZE: usize = 1;
 const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP_SIZE;
 
+fn get_key_disk_size(key_size: usize) -> u64 {
+    (U64_SIZE + key_size + ADDR_SIZE + VERSION_SIZE) as u64
+}
+
 pub struct S3Storage {}
 impl S3Storage {
-    pub fn hash(key: String) -> u64 {
-        // Todo get this out of here
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        hasher.finish()
-    }
     pub fn storage_data_on_cloud(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
-        // Get this out of here
         let mut changed_keys = 0;
         let rt = Runtime::new().unwrap();
         let keys_to_update = get_keys_to_update(db, reclame_space);
-        // Define what patitions needs update
-        let mut partitions_to_update = keys_to_update
-            .into_iter()
-            .map(|(k, _v)| get_patirion_from_key(&k))
-            .collect::<Vec<_>>();
-        partitions_to_update.sort();
-        partitions_to_update.dedup();
-        // Find other keys in the same parition
-        partitions_to_update.into_iter().for_each(|partition| {
-            let _result = Result::or_else(retry(
-                || {
-                    // Slow uses less memory at a time but costs more in CPU
-                    // There will be a small lock in the DB object for each partition here.
-                    // I think this is better than a long lock
-                    let keys_in_patition =
-                        get_keys_by_filter(&db, &|key, _v| get_patirion_from_key(key) == partition);
-                    let mut file_buffer: BytesMut = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
-                    for (key, value) in keys_in_patition {
-                        log::debug!("Key: {} Value: {}", key, value.value);
-                        changed_keys = changed_keys + 1;
-                        let len = key.len();
-                        //8bytes
-                        file_buffer.put_slice(&len.to_le_bytes());
-                        //Nth bytes
-                        file_buffer.put_slice(&key.as_bytes());
-                        // Writing the value
-                        file_buffer.put_slice(&value.value.len().to_le_bytes());
-                        //8bytes
-                        let value_as_bytes = value.value.as_bytes();
-                        //Nth bytes
-                        file_buffer.put_slice(&value_as_bytes);
-                        //4 bytes
-                        //file_buffer.put_slice(&value.state.to_le_bytes());
-                        file_buffer.put_slice(&ValueStatus::Ok.to_le_bytes());
 
-                        //4 bytes
-                        file_buffer.put_slice(&value.version.to_le_bytes());
+        let key_buffer = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
+        //@todo should this really be te buffer size of the values????
+        let value_buffer = BytesMut::with_capacity(OP_RECORD_SIZE * 10);
+        {
+            let mut keys_file = key_buffer;
+            let mut values_file = value_buffer;
+            let current_key_file_size = 0;
 
-                        db.set_value_as_ok(
-                            &key,
-                            &value,
-                            partition, // Use partition id here to know where to store
-                            partition, // Use partition id here to know where to store
-                            Databases::next_op_log_id(),
-                        );
-                    }
-                    log::debug!(
-                        "Will store the database {} partition {}",
-                        db_name,
-                        partition
-                    );
-                    let store_result = rt.block_on(S3Storage::store_buffer_to_s3(
-                        file_buffer,
-                        &format!("{}/{}.nun", db_name, partition),
-                    ));
-                    match store_result {
-                        Ok(_) => {
-                            log::debug!("S3Storage::store_buffer_to_s3 ok");
-                            Ok::<(), String>(())
-                        }
-                        Err(err) => {
-                            log::error!("S3Storage::store_buffer_to_s3 failed: {}", err);
-                            Err::<(), String>(err)
-                        }
-                    }
-                },
-                *NUN_S3_RETRY,
-            ), |e: String| -> Result<(), String>{
-                log::error!("Fail to store partition {} in s3: {}", partition, e);
-                panic!("Fail to store partition {} in s3: {}", partition, e);
-            });
-        });
-        log::debug!("snapshoted {} keys", changed_keys);
+            //let (mut values_file, current_value_file_size) = get_values_file_append_mode(&db_name, reclame_space);
+            // To inplace update
+            log::debug!("current_key_file_size: {}", current_key_file_size);
+
+            let mut value_addr = u64::from(0 as u64); //current_value_file_size;
+            let mut next_key_addr = current_key_file_size;
+
+            for (key, value) in keys_to_update {
+                changed_keys = changed_keys + 1;
+
+                values_file.put_slice(&value.value.len().to_le_bytes());
+                //8bytes
+                let value_as_bytes = value.value.as_bytes();
+                //Nth bytes
+                values_file.put_slice(&value_as_bytes);
+                //4 bytes
+                values_file.put_slice(&value.state.to_le_bytes());
+                let record_size = (U64_SIZE + value_as_bytes.len() + VERSION_SIZE) as u64;
+                log::debug!(
+                    "Write key: {}, addr: {} value_addr: {}, record_size: {}",
+                    key,
+                    next_key_addr,
+                    value_addr,
+                    record_size
+                );
+                // Append key file
+                // Write key
+
+                let len = key.len();
+
+                //8bytes
+                keys_file.put_slice(&len.to_le_bytes());
+                //Nth bytes
+                keys_file.put_slice(&key.as_bytes());
+                //4 bytes
+                keys_file.put_slice(&value.version.to_le_bytes());
+                //8 bytes
+                keys_file.put_slice(&value_addr.to_le_bytes());
+                let key_size = get_key_disk_size(key.len());
+                db.set_value_as_ok(
+                    &key,
+                    &value,
+                    value_addr,
+                    next_key_addr,
+                    Databases::next_op_log_id(),
+                );
+                value_addr = value_addr + record_size;
+                log::debug!("Next Value addr: {}", value_addr);
+                next_key_addr = next_key_addr + key_size;
+            }
+
+            //keys_file.flush().unwrap();
+            rt.block_on(S3Storage::store_buffer_to_s3(
+                keys_file,
+                &format!("{}/nun.keys", db_name),
+            ));
+            rt.block_on(S3Storage::store_buffer_to_s3(
+                values_file,
+                &format!("{}/nun.values", db_name),
+            ));
+        }
+        //keys_file.
+        //values_file.flush().unwrap();
+        //write_metadata_file(db_name, db);
+        //log::debug!("snapshoted {} keys", changed_keys);
         changed_keys
     }
 
-    async fn store_buffer_to_s3(mut buff: BytesMut, db_name: &String) -> Result<bool, String> {
+    async fn store_buffer_to_s3(mut buff: BytesMut, db_name: &String) -> Option<bool> {
         let key = format!("{}/{}", NUN_S3_PREFIX.to_string(), db_name);
 
+        let url = NUN_S3_API_URL.as_str();
         let bucket = NUN_S3_BUCKET.as_str();
+        let key_id = NUN_S3_KEY_ID.as_str();
+        let secret_key = NUN_S3_SECRET_KEY.as_str();
+        log::debug!(
+            "Reading from s3, buket: {}, key_id: {}, secret_key: {}, server: {}\n",
+            bucket,
+            key_id,
+            secret_key,
+            NUN_S3_API_URL.as_str()
+        );
 
-        log::debug!("Reading from s3, bucket: {}\n", bucket,);
+        let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
+        let s3_config = aws_sdk_s3::config::Builder::new()
+            .endpoint_url(url)
+            .credentials_provider(cred)
+            .region(Region::new("us-east"))
+            .force_path_style(true)
+            .build();
 
-        let client = build_s3_client();
+        let client = aws_sdk_s3::Client::from_conf(s3_config);
         let body = aws_sdk_s3::primitives::ByteStream::from(buff.split().freeze());
 
         match client
@@ -142,114 +152,144 @@ impl S3Storage {
             .send()
             .await
         {
-            Ok(_) => Ok(true),
-            Err(msg) => Err(String::from(msg.to_string())),
+            Ok(_) => Some(true),
+            Err(_) => None,
         }
     }
 
-    fn read_data_from_cloud(db_name: &String) -> Result<Database, String> {
-        let rt = Runtime::new().unwrap();
-        let mut value_data: HashMap<String, Value> = HashMap::new();
+    fn read_data_from_cloud(db_name: &String) -> Option<Database> {
+        let keys_key_file = format!("{}/{}/nun.keys", NUN_S3_PREFIX.to_string(), db_name);
+        let values_key_file = format!("{}/{}/nun.values", NUN_S3_PREFIX.to_string(), db_name);
+
+        let url = NUN_S3_API_URL.as_str();
         let bucket = NUN_S3_BUCKET.as_str();
-        let client = build_s3_client();
-        // Read the list of partitions?
-        let partition_list = get_patirion_list_form_s3(&rt, &client, &db_name, &bucket);
-        let partitio_readin_results = partition_list.into_iter().map(|partition| {
-            let partition_file = format!(
-                "{}/{}/{}.nun",
-                NUN_S3_PREFIX.to_string(),
-                db_name,
-                partition
-            );
-            retry(
-                || {
-                    let read_result: Result<(), String> = rt.block_on(async {
-                        match client
-                            .get_object()
-                            .bucket(bucket)
-                            .key(&partition_file)
-                            .send()
-                            .await
-                        {
-                            Ok(r) => {
-                                let partition =
-                                    partition.split(".").next().unwrap().parse::<u64>().unwrap();
-                                log::debug!("Reading the file {}", &partition_file);
-                                let nun_file = r.body.collect().await.unwrap().into_bytes();
+        let key_id = NUN_S3_KEY_ID.as_str();
+        let secret_key = NUN_S3_SECRET_KEY.as_str();
+        log::debug!("Reading from s3, key: {}, values: {}, buket: {}, key_id: {}, secret_key: {}, server: {}\n", keys_key_file, values_key_file, bucket, key_id, secret_key, url);
 
-                                let mut file_cursor = Cursor::new(nun_file);
-                                let mut key_length_buffer = [0; U64_SIZE];
-                                while let Ok(read) = file_cursor.read(&mut key_length_buffer).await
-                                {
-                                    if read == 0 {
-                                        break;
-                                    }
-                                    // Reading key
-                                    let key =
-                                        read_str_value(key_length_buffer, &mut file_cursor).await;
-                                    // Reading value
-                                    let mut value_length_buffer = [0; U64_SIZE];
-                                    file_cursor.read(&mut value_length_buffer).await.unwrap();
+        let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
+        let mut value_data: HashMap<String, Value> = HashMap::new();
+        let s3_config = aws_sdk_s3::config::Builder::new()
+            .endpoint_url(NUN_S3_API_URL.as_str())
+            .credentials_provider(cred)
+            .region(Region::new("us-east"))
+            .force_path_style(true)
+            .build();
 
-                                    let value =
-                                        read_str_value(value_length_buffer, &mut file_cursor).await;
-
-                                    let mut status_length_buffer = [0; VERSION_SIZE];
-                                    file_cursor.read(&mut status_length_buffer).await.unwrap();
-                                    let status = i32::from_le_bytes(status_length_buffer);
-                                    let mut version_length_buffer = [0; VERSION_SIZE];
-                                    file_cursor.read(&mut version_length_buffer).await.unwrap();
-                                    let version = i32::from_le_bytes(version_length_buffer);
-
-                                    let value_instance = Value {
-                                        value: value.to_string(),
-                                        version,
-                                        opp_id: Databases::next_op_log_id(),
-                                        state: ValueStatus::from(status),
-                                        value_disk_addr: partition,
-                                        key_disk_addr: 0,
-                                    };
-                                    value_data.insert(key.to_string(), value_instance);
-                                    log::debug!(
-                                        " Value {} added to key {} in the database {}",
-                                        value,
-                                        key,
-                                        &db_name
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                log::error!("{} trying to load the databse", e);
-                                return Err(String::from(format!(
-                                    "Fail to load partition {} from s3.",
-                                    partition
-                                )));
-                            }
-                        };
-                        Ok(())
-                    });
-                    read_result
-                },
-                *NUN_S3_RETRY,
-            )
+        let client = aws_sdk_s3::Client::from_conf(s3_config);
+        let rt = Runtime::new().unwrap();
+        let mut values_cursor = rt.block_on(async {
+            let r = client
+                .get_object()
+                .bucket(bucket)
+                .key(values_key_file)
+                .send()
+                .await
+                .unwrap();
+            Cursor::new(r.body.collect().await.unwrap().into_bytes())
         });
-        let has_any_partition_failed = partitio_readin_results.fold(Ok(()), error_if_error);
-        if let Err(msg) = has_any_partition_failed {
-            Err(String::from(format!("Fail to load files from s3: {}", msg)))
-        } else {
-            Ok(Database::create_db_from_value_hash(
-                db_name.to_string(),
-                value_data,
-                DatabaseMataData::new(1, ConsensuStrategy::Arbiter),
-            ))
-        }
+        rt.block_on(async {
+            match client
+                .get_object()
+                .bucket(bucket)
+                .key(keys_key_file)
+                .send()
+                .await
+            {
+                Ok(r) => {
+                    log::debug!("Reading the file");
+                    let keys_file = r.body.collect().await.unwrap().into_bytes();
+                    let mut keys_cursor = Cursor::new(keys_file);
+
+                    //bytes.read(buf)
+                    let mut length_buffer = [0; U64_SIZE];
+                    let mut value_addr_buffer = [0; U64_SIZE];
+                    let mut version_buffer = [0; VERSION_SIZE];
+
+                    while let Ok(read) = keys_cursor.read(&mut length_buffer).await {
+                        if read == 0 {
+                            //If could not read anything stop
+                            break;
+                        }
+
+                        //Read key
+                        let key_length: usize = usize::from_le_bytes(length_buffer);
+                        let mut key_buffer = vec![0; key_length];
+
+                        keys_cursor.read(&mut key_buffer).await.unwrap();
+                        let key = str::from_utf8(&key_buffer).unwrap();
+                        log::debug!("{}, key: {}", key_length, key);
+
+                        //Read version
+                        let _ = keys_cursor.read(&mut version_buffer).await.unwrap();
+                        let version = i32::from_le_bytes(version_buffer);
+
+                        //Read value addr
+                        let _ = keys_cursor.read(&mut value_addr_buffer).await.unwrap();
+                        let value_addr = u64::from_le_bytes(value_addr_buffer);
+
+                        log::debug!("Value addr {}", value_addr);
+                        log::debug!("Value size {}", values_cursor.get_ref().len());
+                        let before_cursor_position = values_cursor.position();
+                        values_cursor.seek(std::io::SeekFrom::Start(value_addr)).await.unwrap();
+
+                        //let mut length_buffer = [0; U64_SIZE];
+                        values_cursor.read(&mut length_buffer).await.unwrap();
+                        let value_length: usize = usize::from_le_bytes(length_buffer);
+                        log::debug!("Value length {}", value_length);
+                        let mut value_buffer = vec![0; value_length];
+                        let value_cursor_position = values_cursor.position();
+                        log::debug!("keys_Cursor position {}, before reading", value_cursor_position);
+                        values_cursor.read(&mut value_buffer).await.unwrap();
+                        let value = str::from_utf8(&value_buffer).unwrap();
+                        log::debug!("Value: {} after readig", value);
+
+                        let after_cursor_position = values_cursor.position();
+                        log::debug!("Will add the value : {} to the hash, length: {}, cursor position, {}, before: {}, after: {}", value, value_length, value_cursor_position, before_cursor_position, after_cursor_position);
+
+                        let value_object = Value {
+                            version,
+                            value: value.to_string(),
+                            state: ValueStatus::Ok,
+                            value_disk_addr: value_addr,
+                            key_disk_addr: keys_cursor.position(),// todo Is this needed?
+                            opp_id: Databases::next_op_log_id(),
+                        };
+
+                        //Read value value
+                        log::debug!("Adding key: {}, value: {}", key, value);
+                        value_data.insert(key.to_string(), value_object);
+                    }
+                    Some(Database::create_db_from_value_hash(
+                        db_name.to_string(),
+                        value_data,
+                        DatabaseMataData::new(1, ConsensuStrategy::Arbiter),
+                    ))
+                }
+                Err(e) => {
+                    log::debug!("{}", e);
+                    None
+                }
+            }
+        })
     }
 
-    pub fn load_all_dbs_from_cloud<'a>(dbs: &'a Arc<Databases>) {
-        let rt = Runtime::new().unwrap();
+    pub fn load_all_dbs_from_cloud(dbs: &Arc<Databases>) {
         let start = std::time::Instant::now();
         let bucket = NUN_S3_BUCKET.as_str();
-        let client = build_s3_client();
+        let key_id = NUN_S3_KEY_ID.as_str();
+        let secret_key = NUN_S3_SECRET_KEY.as_str();
+
+        let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
+        let s3_config = aws_sdk_s3::config::Builder::new()
+            .endpoint_url(NUN_S3_API_URL.as_str())
+            .credentials_provider(cred)
+            .region(Region::new("us-east"))
+            .force_path_style(true)
+            .build();
+
+        let client = aws_sdk_s3::Client::from_conf(s3_config);
+        let rt = Runtime::new().unwrap();
         let objects = rt.block_on(async {
             client
                 .list_objects_v2()
@@ -266,9 +306,9 @@ impl S3Storage {
         });
         log::debug!("Objects: {:?}", objects);
         let prefix_to_clean = format!("{}/", &NUN_S3_PREFIX.to_string());
-        let mut db_names = objects
+        let db_names = objects
             .iter()
-            .filter(|x| x.contains(".nun")) // Filter only the values files
+            .filter(|x| x.contains("nun.values")) // Filter only the values files
             .map(|x| x.to_string().replacen(&prefix_to_clean, "", 1))
             .map(|x| {
                 let mut paths = x.split("/").collect::<Vec<&str>>();
@@ -276,7 +316,6 @@ impl S3Storage {
                 paths.join("/")
             })
             .collect::<Vec<String>>();
-        db_names.dedup();
         log::debug!("DbsNames: {:?}", db_names);
         let running_threads = Arc::new(AtomicUsize::new(0));
         let dbs_threads: Vec<thread::JoinHandle<()>> = db_names
@@ -288,10 +327,11 @@ impl S3Storage {
                 let db_thread = thread::spawn(move || {
                     await_thread_availability(&running_threads);
                     let start_db_load = std::time::Instant::now();
-                    let db = match S3Storage::read_data_from_cloud(&db_name) {
-                        Ok(db) => db,
-                        Err(e) => panic!("Fail to load db from s3 {}, error: {}", db_name, e),
-                    };
+                    log::info!(
+                        "Thread running : {}",
+                        running_threads.load(Ordering::Acquire)
+                    );
+                    let db = S3Storage::read_data_from_cloud(&db_name).unwrap();
                     log::info!("Loaded db: {} in {:?}", db_name, start_db_load.elapsed());
                     dbs.add_database(db);
                     release_lock(&running_threads);
@@ -304,61 +344,9 @@ impl S3Storage {
     }
 }
 
-fn build_s3_client() -> Client {
-    let key_id = NUN_S3_KEY_ID.as_str();
-    let secret_key = NUN_S3_SECRET_KEY.as_str();
-    let cred = Credentials::new(key_id, secret_key, None, None, "loaded-from-custom-env");
-    let s3_config = aws_sdk_s3::config::Builder::new()
-        .endpoint_url(NUN_S3_API_URL.as_str())
-        .credentials_provider(cred)
-        .region(Region::new("us-east"))
-        .force_path_style(true)
-        .build();
-    let client = aws_sdk_s3::Client::from_conf(s3_config);
-    client
-}
-
-fn get_patirion_list_form_s3(
-    rt: &Runtime,
-    client: &Client,
-    db_name: &String,
-    bucket: &str,
-) -> Vec<String> {
-    let partition_list = rt.block_on(async {
-        client
-            .list_objects_v2()
-            .set_prefix(Some(format!("{}/{}", NUN_S3_PREFIX.to_string(), db_name)))
-            .bucket(bucket)
-            .send()
-            .await
-            .unwrap()
-            .contents()
-            .into_iter()
-            .flat_map(|x| x.key())
-            .map(ToString::to_string)
-            .map(|s| s.split("/").last().unwrap().to_string())
-            .map(|s| s.split(".").next().unwrap().to_string())
-            .collect::<Vec<String>>()
-    });
-    partition_list
-}
-
-async fn read_str_value(
-    value_length_buffer: [u8; 8],
-    file_cursor: &mut Cursor<bytes::Bytes>,
-) -> String {
-    let value_length = usize::from_le_bytes(value_length_buffer);
-
-    let mut value_buffer = vec![0; value_length];
-    file_cursor.read(&mut value_buffer).await.unwrap();
-    let value = str::from_utf8(&value_buffer).unwrap();
-    String::from(value)
-}
-
 fn release_lock(running_threads: &Arc<AtomicUsize>) {
     running_threads.fetch_sub(1, Ordering::SeqCst);
 }
-
 fn await_thread_availability(running_threads: &Arc<AtomicUsize>) {
     loop {
         let prev_val = running_threads.load(Ordering::Acquire);
@@ -385,42 +373,13 @@ fn await_thread_availability(running_threads: &Arc<AtomicUsize>) {
     }
 }
 
-fn error_if_error<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> {
-    if let Err(_) = a {
-        return a;
-    } else {
-        b
-    }
-}
-
-fn get_patirion_from_key(key: &String) -> u64 {
-    S3Storage::hash(key.to_string()) % *NUN_S3_NUMBER_OF_PARTITIONS
-}
-
-fn retry<F, T, E>(mut opp: F, count: i32) -> Result<T, E>
-where
-    F: FnMut() -> Result<T, E>,
-{
-    let result = opp();
-    if let Ok(_) = result {
-        result
-    } else {
-        if count > 0 {
-            log::debug!("Will retry {}", count);
-            retry(opp, count - 1)
-        } else {
-            result
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use core::time;
     use std::{collections::HashMap, sync::atomic::Ordering, thread};
 
     use super::*;
-    use env_logger::{Builder, Env, Target};
+    //use env_logger::{Builder, Env, Target};
     use futures::channel::mpsc::{channel, Receiver, Sender};
 
     use crate::{
@@ -428,10 +387,8 @@ mod tests {
         disk_ops::Oplog,
     };
 
+    /*
     fn init_logger() {
-        if log::log_enabled!(log::Level::Info) {
-            return;
-        }
         let env = Env::default().filter_or("NUN_LOG_LEVEL", "debug");
         Builder::from_env(env)
             .format_level(false)
@@ -439,104 +396,23 @@ mod tests {
             .format_timestamp_nanos()
             .init();
     }
-
-    #[test]
-    fn should_return_error_if_error() {
-        let a = error_if_error::<(), String>(Ok(()), Ok(()));
-        assert_eq!(a, Ok(()));
-
-        let a = error_if_error(Ok(()), Err(String::from("Something whent wrong")));
-        assert_eq!(a, Err(String::from("Something whent wrong")));
-    }
-
-    #[test]
-    fn should_return_ok_if_ok() {
-        let result: Result<(), String> = retry(&|| Ok(()), 3);
-        assert_eq!(result, Ok(()));
-    }
-
-    #[test]
-    fn should_return_error_if_it_never_returns_ok() {
-        let result: Result<(), &str> = retry(&|| Err("Bad"), 3);
-        assert_eq!(result, Err("Bad"));
-    }
-
-    #[test]
-    fn should_return_return_ok_if_it_returns_ok_in_the_secount_try() {
-        let count = AtomicUsize::new(0);
-        let function = || {
-            let n_try = count.fetch_add(1, Ordering::Relaxed);
-            if n_try < 7 {
-                Err("Bad")
-            } else {
-                Ok(())
-            }
-        };
-        let result: Result<(), &str> = retry(&function, 3);
-        assert_eq!(result, Err("Bad"));
-
-        let result: Result<(), &str> = retry(&function, 10);
-        assert_eq!(result, Ok(()));
-    }
+    */
 
     #[test]
     fn should_store_data_in_s3() {
         //init_logger();
         let db = create_test_db();
-        let db_name_id = Databases::next_op_log_id();
-        let final_db_name = String::from(format!("should_store_data_in_s3_test_{}", db_name_id));
-        S3Storage::storage_data_on_cloud(&db, true, &final_db_name);
-        let db = S3Storage::read_data_from_cloud(&final_db_name).unwrap();
+        S3Storage::storage_data_on_cloud(&db, true, &String::from("should_store_data_in_s3_test"));
+        let db =
+            S3Storage::read_data_from_cloud(&String::from("should_store_data_in_s3_test")).unwrap();
         assert!(db.count_keys() == 5);
         log::debug!("{:?}", db.get_value("some".to_string()).unwrap());
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
-        assert!(db.get_value("some".to_string()).unwrap().version == 1);
-    }
-
-    #[test]
-    fn should_store_a_lot_data_in_s3() {
-        init_logger();
-        let db = create_test_db();
-        let db_name_id = Databases::next_op_log_id();
-        let final_db_name = String::from(format!("should_store_data_in_s3_test_{}", db_name_id));
-        for n in 0..30_000 {
-            let s_value = String::from(format!("{:?}", n));
-            db.set_value(&Change::new(s_value.clone(), s_value, 0));
-        }
-        S3Storage::storage_data_on_cloud(&db, false, &final_db_name);
-
-        let db_after = S3Storage::read_data_from_cloud(&final_db_name).unwrap();
-
-        assert!(db_after.count_keys() == 30_005);
-        assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
-        db_after.set_value(&Change::new(
-            String::from("some"),
-            String::from("value_new"),
-            2,
-        ));
-        let changed_keys = S3Storage::storage_data_on_cloud(&db_after, false, &final_db_name);
-
-        assert!(changed_keys == 3068, "Changed keys: {}", changed_keys); // Tho only one key
-                                                                         // changed we still have
-                                                                         // to update +10% of the
-                                                                         // data
-        let db_after_update = S3Storage::read_data_from_cloud(&final_db_name).unwrap();
-        let value_obj = db_after_update.get_value("some".to_string()).unwrap();
-        assert!(value_obj.value == String::from("value_new"));
-
-        log::debug!("Version {:?}", value_obj.version);
-        assert!(value_obj.version == 3);
     }
 
     #[test]
     fn should_read_all_dbs_from_s3() {
-        init_logger();
-        let data_base_prefix = Databases::next_op_log_id();
-        let db1_name = String::from(format!(
-            "test-should_read_all_dbs_from_s3_{}",
-            data_base_prefix
-        ));
-        let db_name = String::from(format!("test-read_all_dbs_from_s3_{}", data_base_prefix));
+        //init_logger();
         let db = create_test_db();
         let db1 = create_test_db();
 
@@ -546,24 +422,35 @@ mod tests {
             -1,
         );
         db1.set_value(&change);
-        S3Storage::storage_data_on_cloud(&db, true, &db_name);
-        S3Storage::storage_data_on_cloud(&db1, true, &db1_name);
-        let db = S3Storage::read_data_from_cloud(&db1_name).unwrap();
-        log::debug!(
-            "{:?}, count, keys {:?}",
-            db.count_keys(),
-            db.list_keys(&String::from("*"), true)
+        S3Storage::storage_data_on_cloud(
+            &db,
+            true,
+            &String::from("test-should_read_all_dbs_from_s3"),
         );
-        assert!(db.count_keys() == 6);
+        S3Storage::storage_data_on_cloud(
+            &db1,
+            true,
+            &String::from("test-new-test-should_read_all_dbs_from_s3"),
+        );
+        let db = S3Storage::read_data_from_cloud(&String::from("test-should_read_all_dbs_from_s3"))
+            .unwrap();
+
+        assert!(db.count_keys() == 5);
+        println!(
+            "Value before assert in CI: {:?}",
+            db.get_value("some".to_string()).unwrap()
+        );
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
 
         let dbs = prep_env();
         S3Storage::load_all_dbs_from_cloud(&dbs);
         let dbs_hash = dbs.acquire_dbs_read_lock();
-        let db = dbs_hash.get(&db1_name).unwrap();
-        let db1 = dbs_hash.get(&db1_name).unwrap();
+        let db = dbs_hash.get("test-should_read_all_dbs_from_s3").unwrap();
+        let db1 = dbs_hash
+            .get("test-new-test-should_read_all_dbs_from_s3")
+            .unwrap();
 
-        assert!(db.count_keys() == 6);
+        assert!(db.count_keys() == 5);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
         assert!(db1.get_value("this_is_totally_new".to_string()).unwrap() == String::from("jose"));
     }

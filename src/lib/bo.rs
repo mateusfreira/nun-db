@@ -120,6 +120,7 @@ impl ClusterMember {
 pub enum StorageStrategy {
     Disk = 0,
     S3 = 1,
+    S3Patition = 2,
 }
 
 impl From<String> for StorageStrategy {
@@ -129,6 +130,7 @@ impl From<String> for StorageStrategy {
         match val.as_str() {
             "disk" => Disk,
             "s3" => S3,
+            "s3_patition" => S3Patition,
             _ => Disk,
         }
     }
@@ -139,6 +141,7 @@ impl Display for StorageStrategy {
         match *self {
             StorageStrategy::Disk => write!(f, "Disk"),
             StorageStrategy::S3 => write!(f, "S3"),
+            StorageStrategy::S3Patition => write!(f, "S3Patition"),
         }
     }
 }
