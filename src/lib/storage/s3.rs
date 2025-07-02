@@ -15,7 +15,7 @@ use tokio::runtime::Runtime;
 use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
 use crate::configuration::{
     NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_MAX_INFLIGHT_REQUESTS, NUN_S3_PREFIX,
-    NUN_S3_SECRET_KEY,
+    NUN_S3_READ_PREFIX, NUN_S3_SECRET_KEY,
 };
 
 use super::common::get_keys_to_update;
@@ -158,8 +158,8 @@ impl S3Storage {
     }
 
     fn read_data_from_cloud(db_name: &String) -> Option<Database> {
-        let keys_key_file = format!("{}/{}/nun.keys", NUN_S3_PREFIX.to_string(), db_name);
-        let values_key_file = format!("{}/{}/nun.values", NUN_S3_PREFIX.to_string(), db_name);
+        let keys_key_file = format!("{}/{}/nun.keys", NUN_S3_READ_PREFIX.to_string(), db_name);
+        let values_key_file = format!("{}/{}/nun.values", NUN_S3_READ_PREFIX.to_string(), db_name);
 
         let url = NUN_S3_API_URL.as_str();
         let bucket = NUN_S3_BUCKET.as_str();
@@ -293,7 +293,7 @@ impl S3Storage {
         let objects = rt.block_on(async {
             client
                 .list_objects_v2()
-                .set_prefix(Some(NUN_S3_PREFIX.to_string()))
+                .set_prefix(Some(NUN_S3_READ_PREFIX.to_string()))
                 .bucket(bucket)
                 .send()
                 .await
@@ -305,7 +305,7 @@ impl S3Storage {
                 .collect::<Vec<String>>()
         });
         log::debug!("Objects: {:?}", objects);
-        let prefix_to_clean = format!("{}/", &NUN_S3_PREFIX.to_string());
+        let prefix_to_clean = format!("{}/", &NUN_S3_READ_PREFIX.to_string());
         let db_names = objects
             .iter()
             .filter(|x| x.contains("nun.values")) // Filter only the values files

@@ -44,7 +44,11 @@ impl S3PartitionStorage {
         hasher.finish()
     }
     pub fn storage_data_on_cloud(db: &Database, reclame_space: bool, db_name: &String) -> u32 {
-        log::debug!("Storing data on cloud, db_name: {}, write prefix: {}", db_name, NUN_S3_PREFIX.to_string());
+        log::debug!(
+            "Storing data on cloud, db_name: {}, write prefix: {}",
+            db_name,
+            NUN_S3_PREFIX.to_string()
+        );
         // Get this out of here
         let mut changed_keys = 0;
         let rt = Runtime::new().unwrap();
@@ -255,7 +259,10 @@ impl S3PartitionStorage {
     }
 
     pub fn load_all_dbs_from_cloud<'a>(dbs: &'a Arc<Databases>) {
-        log::info!("Loading all dbs from cloud Read Prefix, {}", NUN_S3_READ_PREFIX.to_string());
+        log::info!(
+            "Loading all dbs from cloud Read Prefix, {}",
+            NUN_S3_READ_PREFIX.to_string()
+        );
         let rt = Runtime::new().unwrap();
         let start = std::time::Instant::now();
         let bucket = NUN_S3_BUCKET.as_str();
@@ -276,6 +283,7 @@ impl S3PartitionStorage {
         });
         log::debug!("Objects: {:?}", objects);
         let prefix_to_clean = format!("{}/", &NUN_S3_READ_PREFIX.to_string());
+        log::debug!("Prefix to clean: {}", prefix_to_clean);
         let mut db_names = objects
             .iter()
             .filter(|x| x.contains(".nun")) // Filter only the values files

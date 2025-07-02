@@ -77,7 +77,9 @@ impl Databases {
         match *NUN_WRITE_STORAGE_STRATEGY {
             StorageStrategy::Disk => NodeDrive::storage_data_disk(db, reclame_space, db_name),
             StorageStrategy::S3 => S3Storage::storage_data_on_cloud(db, reclame_space, db_name),
-            StorageStrategy::S3Patition => S3PartitionStorage::storage_data_on_cloud(db, reclame_space, db_name)
+            StorageStrategy::S3Patition => {
+                S3PartitionStorage::storage_data_on_cloud(db, reclame_space, db_name)
+            }
         }
     }
 }
