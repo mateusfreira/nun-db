@@ -370,7 +370,11 @@ pub fn create_db_from_file_name(file_name: &String, dbs: &Arc<Databases>) -> (Da
     let meta = load_db_metadata_from_disk_or_empty(db_name.to_string(), dbs);
     let (keys_file_name, values_file_name) = get_key_value_files_name_from_file_name(full_name);
 
-    log::debug!("Will load the files key: {} and value: {}", keys_file_name, values_file_name);
+    log::debug!(
+        "Will load the files key: {} and value: {}",
+        keys_file_name,
+        values_file_name
+    );
     let mut keys_file = OpenOptions::new().read(true).open(keys_file_name).unwrap();
     let mut values_file = OpenOptions::new()
         .read(true)

@@ -2,6 +2,7 @@ use atomic_float::*;
 use futures::channel::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::fmt::{self, Display};
+use std::hash::DefaultHasher;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -119,6 +120,7 @@ impl ClusterMember {
 pub enum StorageStrategy {
     Disk = 0,
     S3 = 1,
+    S3Patition = 2,
 }
 
 impl From<String> for StorageStrategy {
@@ -128,6 +130,7 @@ impl From<String> for StorageStrategy {
         match val.as_str() {
             "disk" => Disk,
             "s3" => S3,
+            "s3_patition" => S3Patition,
             _ => Disk,
         }
     }
@@ -138,6 +141,7 @@ impl Display for StorageStrategy {
         match *self {
             StorageStrategy::Disk => write!(f, "Disk"),
             StorageStrategy::S3 => write!(f, "S3"),
+            StorageStrategy::S3Patition => write!(f, "S3Patition"),
         }
     }
 }
@@ -474,6 +478,7 @@ pub struct Databases {
     pub user: String,
     pub pwd: String,
     pub is_oplog_valid: Arc<AtomicBool>,
+    pub hasher: std::hash::DefaultHasher,
 }
 
 impl Database {
@@ -961,6 +966,7 @@ impl Databases {
             pwd: pwd.to_string(),
             is_oplog_valid: Arc::new(AtomicBool::new(is_oplog_valid)),
             pending_opps: std::sync::RwLock::new(pending_opps),
+            hasher: DefaultHasher::new(),
         };
 
         let admin_db_name = String::from(ADMIN_DB);

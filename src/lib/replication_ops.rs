@@ -536,11 +536,16 @@ pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
 }
 
 fn get_db_id(db_name: String, dbs: &Arc<Databases>) -> u64 {
-    dbs.acquire_dbs_read_lock()
-        .get(&db_name)
-        .unwrap()
-        .metadata
-        .id as u64
+    match dbs.acquire_dbs_read_lock().get(&db_name) {
+        Some(db) => {
+            log::debug!("Found db {} with id {}", db_name, db.metadata.id);
+            db.metadata.id as u64
+        }
+        None => {
+            log::error!("Database {} not found", db_name);
+            panic!("Database {} not found", db_name);
+        }
+    }
 }
 
 fn generate_key_id(

@@ -14,8 +14,8 @@ use tokio::runtime::Runtime;
 
 use crate::bo::{ConsensuStrategy, Database, DatabaseMataData, Databases, Value, ValueStatus};
 use crate::configuration::{
-    NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_PREFIX, NUN_S3_SECRET_KEY,
-    NUN_S3_MAX_INFLIGHT_REQUESTS,
+    NUN_S3_API_URL, NUN_S3_BUCKET, NUN_S3_KEY_ID, NUN_S3_MAX_INFLIGHT_REQUESTS, NUN_S3_PREFIX,
+    NUN_S3_READ_PREFIX, NUN_S3_SECRET_KEY,
 };
 
 use super::common::get_keys_to_update;
@@ -34,7 +34,6 @@ const OP_RECORD_SIZE: usize = OP_TIME_SIZE + OP_DB_ID_SIZE + OP_KEY_SIZE + OP_OP
 fn get_key_disk_size(key_size: usize) -> u64 {
     (U64_SIZE + key_size + ADDR_SIZE + VERSION_SIZE) as u64
 }
-
 
 pub struct S3Storage {}
 impl S3Storage {
@@ -159,8 +158,8 @@ impl S3Storage {
     }
 
     fn read_data_from_cloud(db_name: &String) -> Option<Database> {
-        let keys_key_file = format!("{}/{}/nun.keys", NUN_S3_PREFIX.to_string(), db_name);
-        let values_key_file = format!("{}/{}/nun.values", NUN_S3_PREFIX.to_string(), db_name);
+        let keys_key_file = format!("{}/{}/nun.keys", NUN_S3_READ_PREFIX.to_string(), db_name);
+        let values_key_file = format!("{}/{}/nun.values", NUN_S3_READ_PREFIX.to_string(), db_name);
 
         let url = NUN_S3_API_URL.as_str();
         let bucket = NUN_S3_BUCKET.as_str();
@@ -294,7 +293,7 @@ impl S3Storage {
         let objects = rt.block_on(async {
             client
                 .list_objects_v2()
-                .set_prefix(Some(NUN_S3_PREFIX.to_string()))
+                .set_prefix(Some(NUN_S3_READ_PREFIX.to_string()))
                 .bucket(bucket)
                 .send()
                 .await
@@ -306,7 +305,7 @@ impl S3Storage {
                 .collect::<Vec<String>>()
         });
         log::debug!("Objects: {:?}", objects);
-        let prefix_to_clean = format!("{}/", &NUN_S3_PREFIX.to_string());
+        let prefix_to_clean = format!("{}/", &NUN_S3_READ_PREFIX.to_string());
         let db_names = objects
             .iter()
             .filter(|x| x.contains("nun.values")) // Filter only the values files
@@ -319,21 +318,27 @@ impl S3Storage {
             .collect::<Vec<String>>();
         log::debug!("DbsNames: {:?}", db_names);
         let running_threads = Arc::new(AtomicUsize::new(0));
-        let dbs_threads: Vec<thread::JoinHandle<()>>= db_names.iter().map(move |db_name| {
-            let running_threads = running_threads.clone();
-            let dbs = dbs.clone();
-            let db_name = db_name.clone();
-            let db_thread = thread::spawn(move || {
-                await_thread_availability(&running_threads);
-                let start_db_load = std::time::Instant::now();
-                log::info!("Thread running : {}", running_threads.load(Ordering::Acquire));
-                let db = S3Storage::read_data_from_cloud(&db_name).unwrap();
-                log::info!("Loaded db: {} in {:?}", db_name, start_db_load.elapsed());
-                dbs.add_database(db);
-                release_lock(&running_threads);
-            });
-            db_thread
-        }).collect();
+        let dbs_threads: Vec<thread::JoinHandle<()>> = db_names
+            .iter()
+            .map(move |db_name| {
+                let running_threads = running_threads.clone();
+                let dbs = dbs.clone();
+                let db_name = db_name.clone();
+                let db_thread = thread::spawn(move || {
+                    await_thread_availability(&running_threads);
+                    let start_db_load = std::time::Instant::now();
+                    log::info!(
+                        "Thread running : {}",
+                        running_threads.load(Ordering::Acquire)
+                    );
+                    let db = S3Storage::read_data_from_cloud(&db_name).unwrap();
+                    log::info!("Loaded db: {} in {:?}", db_name, start_db_load.elapsed());
+                    dbs.add_database(db);
+                    release_lock(&running_threads);
+                });
+                db_thread
+            })
+            .collect();
         dbs_threads.into_iter().for_each(|x| x.join().unwrap());
         log::info!("Loaded all dbs from cloud in {:?}", start.elapsed());
     }
@@ -348,16 +353,21 @@ fn await_thread_availability(running_threads: &Arc<AtomicUsize>) {
         if prev_val > *NUN_S3_MAX_INFLIGHT_REQUESTS {
             log::debug!("Too many threads running, waiting for a slot to open");
             thread::sleep(std::time::Duration::from_millis(10));
-            continue
+            continue;
         } else {
             log::debug!("Thread running await: {}", prev_val);
         }
-        match running_threads.compare_exchange(prev_val, prev_val + 1, Ordering::Acquire, Ordering::Acquire) {
+        match running_threads.compare_exchange(
+            prev_val,
+            prev_val + 1,
+            Ordering::Acquire,
+            Ordering::Acquire,
+        ) {
             Ok(_) => break,
             Err(_) => {
                 log::debug!("Thread failed to update the counter : {}", prev_val);
                 thread::sleep(std::time::Duration::from_millis(10));
-                continue
+                continue;
             }
         }
     }
@@ -393,7 +403,8 @@ mod tests {
         //init_logger();
         let db = create_test_db();
         S3Storage::storage_data_on_cloud(&db, true, &String::from("should_store_data_in_s3_test"));
-        let db = S3Storage::read_data_from_cloud(&String::from("should_store_data_in_s3_test")).unwrap();
+        let db =
+            S3Storage::read_data_from_cloud(&String::from("should_store_data_in_s3_test")).unwrap();
         assert!(db.count_keys() == 5);
         log::debug!("{:?}", db.get_value("some".to_string()).unwrap());
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
@@ -411,19 +422,33 @@ mod tests {
             -1,
         );
         db1.set_value(&change);
-        S3Storage::storage_data_on_cloud(&db, true, &String::from("test-should_read_all_dbs_from_s3"));
-        S3Storage::storage_data_on_cloud(&db1, true, &String::from("test-new-test-should_read_all_dbs_from_s3"));
-        let db = S3Storage::read_data_from_cloud(&String::from("test-should_read_all_dbs_from_s3")).unwrap();
+        S3Storage::storage_data_on_cloud(
+            &db,
+            true,
+            &String::from("test-should_read_all_dbs_from_s3"),
+        );
+        S3Storage::storage_data_on_cloud(
+            &db1,
+            true,
+            &String::from("test-new-test-should_read_all_dbs_from_s3"),
+        );
+        let db = S3Storage::read_data_from_cloud(&String::from("test-should_read_all_dbs_from_s3"))
+            .unwrap();
 
         assert!(db.count_keys() == 5);
-        println!("Value before assert in CI: {:?}", db.get_value("some".to_string()).unwrap());
+        println!(
+            "Value before assert in CI: {:?}",
+            db.get_value("some".to_string()).unwrap()
+        );
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
 
         let dbs = prep_env();
         S3Storage::load_all_dbs_from_cloud(&dbs);
         let dbs_hash = dbs.acquire_dbs_read_lock();
         let db = dbs_hash.get("test-should_read_all_dbs_from_s3").unwrap();
-        let db1 = dbs_hash.get("test-new-test-should_read_all_dbs_from_s3").unwrap();
+        let db1 = dbs_hash
+            .get("test-new-test-should_read_all_dbs_from_s3")
+            .unwrap();
 
         assert!(db.count_keys() == 5);
         assert!(db.get_value("some".to_string()).unwrap() == String::from("value"));
