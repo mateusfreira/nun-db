@@ -296,7 +296,9 @@ fn remove_old_db_files() {
 }
 // calls storage_data_disk each $SNAPSHOT_TIME seconds
 pub fn declutter_scheduler(timer: timer::Timer, dbs: Arc<Databases>) {
-    log::info!("Will start_snap_shot_timer");
+    log::info!("Will start_snap_shot_timer every {} seconds",
+        *NUN_DECLUTTER_INTERVAL
+    );
     let (_tx, rx): (
         std::sync::mpsc::Sender<String>,
         std::sync::mpsc::Receiver<String>,
