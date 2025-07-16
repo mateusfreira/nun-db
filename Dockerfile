@@ -1,5 +1,5 @@
-FROM rust:1.81.0-slim as builder
-RUN apt-get update
+FROM rust:1.88.0-bookworm as builder
+# RUN apt-get update
 RUN apt-get -y install libssl-dev pkg-config
 RUN cargo new --bin nun-db
 WORKDIR ./nun-db
