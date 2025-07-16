@@ -54,7 +54,7 @@ impl Client {
             auth: Arc::new(AtomicBool::new(false)),
             cluster_member: Mutex::new(None),
             selected_db: Arc::new(SelectedDatabase {
-                name: RwLock::new("init".to_string()),
+                name: RwLock::new(None),
                 user_name: RwLock::new(None),
             }),
             sender,
@@ -270,7 +270,7 @@ pub struct ClusterState {
 }
 
 pub struct SelectedDatabase {
-    pub name: RwLock<String>,
+    pub name: RwLock<Option<String>>,
     pub user_name: RwLock<Option<String>>,
 }
 
