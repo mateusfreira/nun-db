@@ -260,9 +260,10 @@ pub fn replicate_change(change: &Change, db: &Database, dbs: &Arc<Databases>) ->
     }
     Response::Ok {}
 }
+
 pub fn replicate_request(
     input: Request,
-    db_name: &String,
+    db_name: &Option<String>,
     response: Response,
     replication_sender: &Sender<String>,
 ) -> Response {
@@ -295,6 +296,7 @@ pub fn replicate_request(
                 reclaim_space,
                 db_names,
             } => {
+                let db_name = db_name.clone().expect("db_name should be set for snapshot replication");
                 log::debug!("Will replicate a snapshot to the database {}", db_name);
                 let db_names = if db_names.is_empty() {
                     vec![db_name.to_string()]
@@ -336,6 +338,7 @@ pub fn replicate_request(
                 key,
                 version,
             } => {
+                let db_name = db_name.clone().expect("db_name should be set for set replication");
                 log::debug!("Will replicate the set of the key {} to {} ", key, value);
                 replicate_web(
                     replication_sender,
@@ -384,6 +387,7 @@ pub fn replicate_request(
             }
 
             Request::Remove { key } => {
+                let db_name = db_name.clone().expect("db_name should be set for remove replication");
                 log::debug!("Will replicate the remove of the key {} ", key);
                 replicate_web(
                     replication_sender,
@@ -428,6 +432,7 @@ pub fn replicate_request(
                 Response::Ok {}
             }
             Request::Increment { key, inc } => {
+                let db_name = db_name.clone().expect("db_name should be set for increment replication");
                 replicate_web(
                     replication_sender,
                     get_replicate_increment_message(db_name.to_string(), key, inc.to_string()),
@@ -435,6 +440,7 @@ pub fn replicate_request(
                 Response::Ok {}
             }
             Request::CreateUser { token, user_name } => {
+                let db_name = db_name.clone().expect("db_name should be set for create user replication");
                 let key = user_name_key_from_user_name(&user_name);
                 let value = token.to_string();
                 log::debug!(
@@ -449,6 +455,7 @@ pub fn replicate_request(
                 Response::Ok {}
             }
             Request::SetPermissions { user, permissions } => {
+                let db_name = db_name.clone().expect("db_name should be set for set permissions replication");
                 let key = permissions_key_from_user_name(&user);
                 let value = Permission::permissions_to_str_value(&permissions);
                 log::debug!(
@@ -1566,7 +1573,7 @@ mod tests {
             msg: "Any error".to_string(),
         };
 
-        let db_name = "some".to_string();
+        let db_name = Some("some".to_string());
         let result = match replicate_request(
             Request::Set {
                 key: "any".to_string(),
@@ -1591,11 +1598,11 @@ mod tests {
             value: "any_value".to_string(),
         };
 
-        let db_name = "some".to_string();
+        let db_name = Some("some".to_string());
         let req_set = Request::ReplicateSet {
             key: "any_key".to_string(),
             value: "any_value".to_string(),
-            db: db_name.to_string(),
+            db: db_name.clone().unwrap().to_string(),
             version: -1,
         };
         let result = match replicate_request(req_set, &db_name, resp_set, &sender) {
@@ -1620,7 +1627,7 @@ mod tests {
             value: "any_value".to_string(),
             version: -1,
         };
-        let db_name = "some".to_string();
+        let db_name = Some("some".to_string());
         let result = match replicate_request(req_set, &db_name, resp_set, &sender) {
             Response::Ok {} => true,
             _ => false,
@@ -1643,7 +1650,7 @@ mod tests {
             value: "any_value".to_string(),
             version: -1,
         };
-        let db_name = "some".to_string();
+        let db_name = Some("some".to_string());
         let _ = match replicate_request(req_set, &db_name, resp_set, &sender) {
             Response::Set {
                 key: _key,
@@ -1662,7 +1669,7 @@ mod tests {
             version: 1,
         };
 
-        let db_name = "some".to_string();
+        let db_name = Some("some".to_string());
         let result = match replicate_request(
             Request::Get {
                 key: "any_key".to_string(),
@@ -1685,7 +1692,7 @@ mod tests {
 
     #[test]
     fn should_replicate_if_the_command_is_a_replicate_election_and_node_is_primary() {
-        let db_name = "some_db_name".to_string();
+        let db_name = Some("some_db_name".to_string());
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         let request = Request::Election {
             id: 1,
@@ -1705,11 +1712,11 @@ mod tests {
 
     #[test]
     fn should_replicate_if_the_command_is_a_replicate_snapshot_and_node_is_primary() {
-        let db_name = "some_db_name".to_string();
+        let db_name = Some("some_db_name".to_string());
         let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         let request = Request::ReplicateSnapshot {
             reclaim_space: false,
-            db_names: vec![db_name.clone()],
+            db_names: vec![db_name.clone().unwrap().clone()],
         };
 
         let resp_get = Response::Ok {};
@@ -1733,7 +1740,7 @@ mod tests {
 
         let resp_get = Response::Ok {};
 
-        let db_name = "some_db_name".to_string();
+        let db_name = Some("some_db_name".to_string());
         let result = match replicate_request(request, &db_name, resp_get, &sender) {
             Response::Ok {} => true,
             _ => false,
@@ -1754,7 +1761,7 @@ mod tests {
 
         let resp_get = Response::Ok {};
 
-        let db_name = "some".to_string();
+        let db_name = Some("some".to_string());
         let result = match replicate_request(request, &db_name, resp_get, &sender) {
             Response::Ok {} => true,
             _ => false,

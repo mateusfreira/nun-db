@@ -39,13 +39,22 @@ impl Client {
 
     pub fn left(&self, dbs: &Arc<Databases>) {
         let dbs_maps = dbs.map.read().expect("Error getting the dbs.map.lock");
-        let db_box = dbs_maps.get(&self.selected_db_name());
-        match db_box {
-            Some(db) => {
-                db.dec_connections();
-                set_connection_counter(db, &dbs);
+        let selected_db_name = self.selected_db_name();
+        match selected_db_name {
+            Some(ref db_name) => {
+                log::debug!("Client left db: {}", db_name);
+                let db_box = dbs_maps.get(db_name);
+                match db_box {
+                    Some(db) => {
+                        db.dec_connections();
+                        set_connection_counter(db, &dbs);
+                    }
+                    _ => (),
+                }
             }
-            _ => (),
+            None => {
+                log::debug!("Client left without selected db");
+            }
         }
     }
 
@@ -66,7 +75,7 @@ impl Client {
         (Client::new_empty(sender), receiver)
     }
 
-    pub fn selected_db_name(&self) -> String {
+    pub fn selected_db_name(&self) -> Option<String> {
         let db_name = {
             let name = self.selected_db.name.read().unwrap();
             name.clone()

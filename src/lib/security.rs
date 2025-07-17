@@ -34,14 +34,23 @@ pub fn apply_if_safe_access(
         }
     } else {
         let db_name = client.selected_db_name();
-        apply_to_database_name_if_has_permission(
-            &dbs,
-            &client,
-            &db_name,
-            opp,
-            Some(key),
-            &permission_required,
-        )
+        match db_name {
+            Some(db_name) => {
+                apply_to_database_name_if_has_permission(
+                    &dbs,
+                    &client,
+                    &db_name,
+                    opp,
+                    Some(key),
+                    &permission_required,
+                )
+            }
+            None => {
+                let msg = String::from(NO_DB_SELECTED_MESSAGE);
+                client.send_message(&msg);
+                Response::Error { msg }
+            }
+        }
     }
 }
 
@@ -134,7 +143,14 @@ pub fn apply_to_database(
     opp: &dyn Fn(&Database) -> Response,
 ) -> Response {
     let db_name = client.selected_db_name();
-    apply_to_database_name(dbs, client, &db_name, opp, &PermissionKind::Read)
+    match db_name {
+        Some(db_name) => apply_to_database_name(&dbs, &client, &db_name, opp, &PermissionKind::Read),
+        None => {
+            let msg = String::from(NO_DB_SELECTED_MESSAGE);
+            client.send_message(&msg);
+            Response::Error { msg }
+        }
+    }
 }
 
 pub fn clean_string_to_log(input: &str, dbs: &Arc<Databases>) -> String {
