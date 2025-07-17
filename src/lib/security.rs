@@ -46,12 +46,16 @@ pub fn apply_if_safe_access(
                 )
             }
             None => {
-                let msg = String::from(NO_DB_SELECTED_MESSAGE);
-                client.send_message(&msg);
-                Response::Error { msg }
+                reject_request_for_no_selected_db(client)
             }
         }
     }
+}
+
+fn reject_request_for_no_selected_db(client: &Client) -> Response {
+    let msg = String::from(NO_DB_SELECTED_MESSAGE);
+    client.send_message(&msg);
+    Response::Error { msg }
 }
 
 fn has_permission(
@@ -129,9 +133,7 @@ pub fn apply_to_database_name_if_has_permission(
             }
         }
         None => {
-            let msg = String::from(NO_DB_SELECTED_MESSAGE);
-            client.send_message(&msg);
-            return Response::Error { msg };
+            reject_request_for_no_selected_db(client)
         }
     };
     return result;
