@@ -160,11 +160,17 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             db_names,
         } => apply_if_auth(&client.auth, &|| {
             if db_names.is_empty() {
-                snapshot_db_by_name(
-                    &client.selected_db.name.read().unwrap(),
-                    &dbs,
-                    reclaim_space,
-                );
+                let db_name = client.selected_db.name.read().unwrap();
+                match db_name.clone() {
+                    Some(db_name) => {
+                        snapshot_db_by_name(&db_name, &dbs, reclaim_space);
+                    }
+                    None => {
+                        return Response::Error {
+                            msg: "No database selected".to_string(),
+                        };
+                    }
+                }
                 return Response::Ok {};
             } else {
                 // Validate all dbs are existent
@@ -243,7 +249,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                             let mut user_name_state = client.selected_db.user_name.write().unwrap();
 
                             if is_valid_user_token(&token, &user_name, db) {
-                                let _ = std::mem::replace(&mut *db_name_state, name.clone());
+                                let _ = std::mem::replace(&mut *db_name_state, Some(name.clone()));
                                 let _ = std::mem::replace(
                                     &mut *user_name_state,
                                     Some(user_name.clone()),
@@ -260,7 +266,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
                         None => {
                             if is_valid_token(&token, db) {
                                 let mut db_name_state = client.selected_db.name.write().unwrap();
-                                let _ = std::mem::replace(&mut *db_name_state, name.clone());
+                                let _ = std::mem::replace(&mut *db_name_state, Some(name.clone()));
                                 db.inc_connections(); //Increment the number of connections
                                 set_connection_counter(db, &dbs);
                                 Response::Ok {}
