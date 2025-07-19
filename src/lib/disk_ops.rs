@@ -319,7 +319,7 @@ fn declutter(dbs: &Arc<Databases>) {
 
 pub fn snapshot_all_pendding_dbs(dbs: &Arc<Databases>) {
     let queue_len = { dbs.to_snapshot.read().unwrap().len() };
-    log::debug!("snapshot_all_pendding_dbs | queue_len == {}", queue_len);
+    log::info!("snapshot_all_pendding_dbs | queue_len == {}", queue_len);
     if queue_len > 0 {
         snapshot_keys(&dbs);
         let mut dbs_to_snapshot = {

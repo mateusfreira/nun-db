@@ -205,6 +205,7 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             }
         }),
         Request::ReplicateSnapshot {
+
             reclaim_space,
             db_names,
         } => apply_if_auth(&client.auth, &|| {

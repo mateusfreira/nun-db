@@ -25,8 +25,8 @@ pub fn start_tcp_client(dbs: Arc<Databases>, tcp_addressed: &str) {
                 });
             }
         }
-        _ => {
-            log::error!("Bind error");
+        Err(e) => {
+            log::error!("TCP Bind error: {}", e);
             panic!("TCP Bind error");
         }
     };
