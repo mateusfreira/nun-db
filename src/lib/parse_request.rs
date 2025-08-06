@@ -58,7 +58,7 @@ impl Request {
         PARSER_HASH_TABLE.keys().map(|x| x.to_string()).collect()
     }
     pub fn parse(input: &str) -> Result<Request, String> {
-        let mut command = input.splitn(3, " ");
+        let mut command = input.trim_end_matches(';').splitn(3, " ");
         match command.next() {
             Some("") | None => {
                 log::debug!("empty command");
@@ -661,7 +661,10 @@ fn parse_create_db_command(command: &mut std::str::SplitN<&str>) -> Result<Reque
         }
     };
     let mut rest = match command.next() {
-        Some(rest) => rest.splitn(2, " "),
+        Some(rest) => {
+            log::debug!("CreateDb rest command {}", rest);
+            rest.splitn(2, " ")
+        },
         None => {
             log::debug!("create-db needs token and strategy");
             return Err(String::from("create-db must be followed by a token"));

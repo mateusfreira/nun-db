@@ -17,6 +17,11 @@ pub fn create_db(
     strategy: ConsensuStrategy,
 ) -> Response {
     if dbs.is_primary() || client.is_primary() {
+        log::debug!(
+            "Request::CreateDb - Creating database {} with strategy {:?}",
+            name,
+            strategy
+        );
         // If this node is the primary or the primary is asking to create it
         let empty_db_box = create_temp_db(name.clone(), strategy, dbs);
         let empty_db = Arc::try_unwrap(empty_db_box);
