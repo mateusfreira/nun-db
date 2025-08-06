@@ -285,7 +285,7 @@ pub fn replicate_request(
                 token,
                 strategy,
             } => {
-                log::debug!("Will replicate command a created database name {}", name);
+                log::debug!("Will replicate command a created database name {}, {}", name, strategy.to_string());
                 replicate_web(
                     replication_sender,
                     format!("create-db {} {} {}", name, token, strategy.to_string()),

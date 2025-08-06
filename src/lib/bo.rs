@@ -245,7 +245,7 @@ impl From<i32> for ConsensuStrategy {
 
 impl From<String> for ConsensuStrategy {
     fn from(val: String) -> Self {
-        log::debug!("Val in ConsensuStrategy {}", val);
+        log::debug!("Val in ConsensuStrategy {}.", val);
         use self::ConsensuStrategy::*;
         match val.as_str() {
             "arbiter" => Arbiter,
