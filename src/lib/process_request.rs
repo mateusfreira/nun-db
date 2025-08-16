@@ -205,14 +205,20 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             }
         }),
         Request::ReplicateSnapshot {
-
             reclaim_space,
             db_names,
         } => apply_if_auth(&client.auth, &|| {
-            db_names.clone().into_iter().for_each(|db_name| {
-                snapshot_db_by_name(&db_name, &dbs, reclaim_space);
-            });
-            Response::Ok {}
+            db_names.clone().into_iter().map(|db_name| {
+                snapshot_db_by_name(&db_name, &dbs, reclaim_space)
+            }).fold(
+                Response::Ok {},
+                |acc, res| {
+                    if let Response::Error { msg } = res {
+                        return Response::Error { msg };
+                    }
+                    acc
+                },
+            )
         }),
 
         Request::UnWatch { key } => apply_to_database(&dbs, &client, &|_db| {
@@ -763,6 +769,7 @@ pub fn process_request(input: &str, dbs: &Arc<Databases>, client: &mut Client) -
     );
     dbs.update_query_time_moving_avg(elapsed.as_millis());
     let replication_result = replicate_request(
+        &dbs,
         request,
         &db_name_state,
         result,
@@ -1417,5 +1424,26 @@ mod tests {
         let to_snapshot = dbs.to_snapshot.read().unwrap();
         assert_eq!(to_snapshot.get(0).unwrap().0, "my-db");
         assert_eq!(to_snapshot.len(), 1);
+    }
+    #[test]
+    fn replicate_snapshot_should_return_an_erro_if_the_db_doesnot_exists() {
+        let (_, dbs, mut client) = create_default_args();
+        client.auth.store(true, Ordering::Relaxed);
+        assert_valid_request(process_request(
+            "create-db my-db my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        assert_valid_request(process_request(
+            "create-db my-db-1 my-token",
+            &dbs,
+            &mut client,
+        ));
+
+        assert_invalid_request(process_request( "replicate-snapshot vue true",
+            &dbs,
+            &mut client,
+        ));
     }
 }
