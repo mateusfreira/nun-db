@@ -208,17 +208,16 @@ fn process_request_obj(request: &Request, dbs: &Arc<Databases>, client: &mut Cli
             reclaim_space,
             db_names,
         } => apply_if_auth(&client.auth, &|| {
-            db_names.clone().into_iter().map(|db_name| {
-                snapshot_db_by_name(&db_name, &dbs, reclaim_space)
-            }).fold(
-                Response::Ok {},
-                |acc, res| {
+            db_names
+                .clone()
+                .into_iter()
+                .map(|db_name| snapshot_db_by_name(&db_name, &dbs, reclaim_space))
+                .fold(Response::Ok {}, |acc, res| {
                     if let Response::Error { msg } = res {
                         return Response::Error { msg };
                     }
                     acc
-                },
-            )
+                })
         }),
 
         Request::UnWatch { key } => apply_to_database(&dbs, &client, &|_db| {
@@ -1441,7 +1440,8 @@ mod tests {
             &mut client,
         ));
 
-        assert_invalid_request(process_request( "replicate-snapshot vue true",
+        assert_invalid_request(process_request(
+            "replicate-snapshot vue true",
             &dbs,
             &mut client,
         ));

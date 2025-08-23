@@ -284,7 +284,9 @@ pub fn replicate_request(
             if let Some(name) = db_name.as_deref() {
                 if !dbs.has_db(name) {
                     log::warn!("replicate_request::db_name {name} not found in databases");
-                    return Response::Error { msg: format!("Database {name} not found") };
+                    return Response::Error {
+                        msg: format!("Database {name} not found"),
+                    };
                 }
             }
 
