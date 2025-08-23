@@ -262,6 +262,7 @@ pub fn replicate_change(change: &Change, db: &Database, dbs: &Arc<Databases>) ->
 }
 
 pub fn replicate_request(
+    dbs: &Arc<Databases>,
     input: Request,
     db_name: &Option<String>,
     response: Response,
@@ -279,198 +280,225 @@ pub fn replicate_request(
             db: _,
             state: _,
         } => response,
-        _ => match input {
-            Request::CreateDb {
-                name,
-                token,
-                strategy,
-            } => {
-                log::debug!("Will replicate command a created database name {}, {}", name, strategy.to_string());
-                replicate_web(
-                    replication_sender,
-                    format!("create-db {} {} {}", name, token, strategy.to_string()),
-                );
-                Response::Ok {}
-            }
-            Request::Snapshot {
-                reclaim_space,
-                db_names,
-            } => {
-                let db_name = db_name.clone().expect("db_name should be set for snapshot replication");
-                log::debug!("Will replicate a snapshot to the database {}", db_name);
-                let db_names = if db_names.is_empty() {
-                    vec![db_name.to_string()]
-                } else {
-                    db_names
-                };
-                replicate_web(
-                    replication_sender,
-                    format!(
-                        "replicate-snapshot {} {}",
-                        db_names.join("|"),
-                        reclaim_space
-                    ),
-                );
-                Response::Ok {}
+        _ => {
+            if let Some(name) = db_name.as_deref() {
+                if !dbs.has_db(name) {
+                    log::warn!("replicate_request::db_name {name} not found in databases");
+                    return Response::Error {
+                        msg: format!("Database {name} not found"),
+                    };
+                }
             }
 
-            Request::ReplicateSnapshot {
-                reclaim_space,
-                db_names,
-            } => {
-                log::debug!(
-                    "Will replicate a snapshot to the database {}",
-                    db_names.join("|")
-                );
-                replicate_web(
-                    replication_sender,
-                    format!(
-                        "replicate-snapshot {} {}",
-                        db_names.join("|"),
-                        reclaim_space
-                    ),
-                );
-                Response::Ok {}
-            }
+            match input {
+                Request::CreateDb {
+                    name,
+                    token,
+                    strategy,
+                } => {
+                    log::debug!(
+                        "Will replicate command a created database name {}, {}",
+                        name,
+                        strategy.to_string()
+                    );
+                    replicate_web(
+                        replication_sender,
+                        format!("create-db {} {} {}", name, token, strategy.to_string()),
+                    );
+                    Response::Ok {}
+                }
+                Request::Snapshot {
+                    reclaim_space,
+                    db_names,
+                } => {
+                    let db_name = db_name
+                        .clone()
+                        .expect("db_name should be set for snapshot replication");
+                    log::debug!("Will replicate a snapshot to the database {}", db_name);
+                    let db_names = if db_names.is_empty() {
+                        vec![db_name.to_string()]
+                    } else {
+                        db_names
+                    };
+                    replicate_web(
+                        replication_sender,
+                        format!(
+                            "replicate-snapshot {} {}",
+                            db_names.join("|"),
+                            reclaim_space
+                        ),
+                    );
+                    Response::Ok {}
+                }
 
-            Request::Set {
-                value,
-                key,
-                version,
-            } => {
-                let db_name = db_name.clone().expect("db_name should be set for set replication");
-                log::debug!("Will replicate the set of the key {} to {} ", key, value);
-                replicate_web(
-                    replication_sender,
-                    get_replicate_message(db_name.to_string(), key, value, version),
-                );
-                Response::Ok {}
-            }
+                Request::ReplicateSnapshot {
+                    reclaim_space,
+                    db_names,
+                } => {
+                    log::debug!(
+                        "Will replicate a snapshot to the database {}",
+                        db_names.join("|")
+                    );
+                    replicate_web(
+                        replication_sender,
+                        format!(
+                            "replicate-snapshot {} {}",
+                            db_names.join("|"),
+                            reclaim_space
+                        ),
+                    );
+                    Response::Ok {}
+                }
 
-            Request::Resolve {
-                opp_id,
-                db_name,
-                key,
-                value,
-                version,
-            } => {
-                log::debug!(
-                    "Will replicate the resolve of the key {} to {} ",
+                Request::Set {
+                    value,
                     key,
-                    value
-                );
-                replicate_web(
-                    replication_sender,
-                    get_resolve_message(
-                        opp_id,
-                        db_name.to_string(),
-                        key.clone(),
-                        value.clone(),
-                        version,
-                    ),
-                );
-                Response::Ok {}
-            }
+                    version,
+                } => {
+                    let db_name = db_name
+                        .clone()
+                        .expect("db_name should be set for set replication");
+                    log::debug!("Will replicate the set of the key {} to {} ", key, value);
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_message(db_name.to_string(), key, value, version),
+                    );
+                    Response::Ok {}
+                }
 
-            Request::ReplicateSet {
-                db,
-                value,
-                key,
-                version,
-            } => {
-                log::debug!("Will replicate the set of the key {} to {} ", key, value);
-                replicate_web(
-                    replication_sender,
-                    get_replicate_message(db.to_string(), key, value, version),
-                );
-                Response::Ok {}
-            }
-
-            Request::Remove { key } => {
-                let db_name = db_name.clone().expect("db_name should be set for remove replication");
-                log::debug!("Will replicate the remove of the key {} ", key);
-                replicate_web(
-                    replication_sender,
-                    get_replicate_remove_message(db_name.to_string(), key),
-                );
-                Response::Ok {}
-            }
-
-            Request::ReplicateRemove { db, key } => {
-                log::debug!("Will replicate the remove of the key {} ", key);
-                replicate_web(
-                    replication_sender,
-                    get_replicate_remove_message(db.to_string(), key),
-                );
-                Response::Ok {}
-            }
-
-            Request::Election { id, node_name } => {
-                replicate_web(
-                    replication_sender,
-                    format!("election candidate {} {}", id, node_name),
-                );
-                Response::Ok {}
-            }
-
-            Request::ElectionActive { node_name } => {
-                replicate_web(replication_sender, format!("election active {}", node_name));
-                Response::Ok {}
-            }
-
-            Request::Leave { name } => {
-                replicate_web(replication_sender, format!("replicate-leave {}", name));
-                Response::Ok {}
-            }
-
-            Request::ReplicateIncrement { db, inc, key } => {
-                log::debug!("Will replicate the inc of the key {} to {} ", key, inc);
-                replicate_web(
-                    replication_sender,
-                    get_replicate_increment_message(db.to_string(), key, inc.to_string()),
-                );
-                Response::Ok {}
-            }
-            Request::Increment { key, inc } => {
-                let db_name = db_name.clone().expect("db_name should be set for increment replication");
-                replicate_web(
-                    replication_sender,
-                    get_replicate_increment_message(db_name.to_string(), key, inc.to_string()),
-                );
-                Response::Ok {}
-            }
-            Request::CreateUser { token, user_name } => {
-                let db_name = db_name.clone().expect("db_name should be set for create user replication");
-                let key = user_name_key_from_user_name(&user_name);
-                let value = token.to_string();
-                log::debug!(
-                    "Will replicate user creating set of the key {} to {} ",
+                Request::Resolve {
+                    opp_id,
+                    db_name,
                     key,
-                    value
-                );
-                replicate_web(
-                    replication_sender,
-                    get_replicate_message(db_name.to_string(), key, value, -1),
-                );
-                Response::Ok {}
-            }
-            Request::SetPermissions { user, permissions } => {
-                let db_name = db_name.clone().expect("db_name should be set for set permissions replication");
-                let key = permissions_key_from_user_name(&user);
-                let value = Permission::permissions_to_str_value(&permissions);
-                log::debug!(
-                    "Will replicate user set-permission set of the key {} to {} ",
+                    value,
+                    version,
+                } => {
+                    log::debug!(
+                        "Will replicate the resolve of the key {} to {} ",
+                        key,
+                        value
+                    );
+                    replicate_web(
+                        replication_sender,
+                        get_resolve_message(
+                            opp_id,
+                            db_name.to_string(),
+                            key.clone(),
+                            value.clone(),
+                            version,
+                        ),
+                    );
+                    Response::Ok {}
+                }
+
+                Request::ReplicateSet {
+                    db,
+                    value,
                     key,
-                    value
-                );
-                replicate_web(
-                    replication_sender,
-                    get_replicate_message(db_name.to_string(), key, value, -1),
-                );
-                Response::Ok {}
+                    version,
+                } => {
+                    log::debug!("Will replicate the set of the key {} to {} ", key, value);
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_message(db.to_string(), key, value, version),
+                    );
+                    Response::Ok {}
+                }
+
+                Request::Remove { key } => {
+                    let db_name = db_name
+                        .clone()
+                        .expect("db_name should be set for remove replication");
+                    log::debug!("Will replicate the remove of the key {} ", key);
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_remove_message(db_name.to_string(), key),
+                    );
+                    Response::Ok {}
+                }
+
+                Request::ReplicateRemove { db, key } => {
+                    log::debug!("Will replicate the remove of the key {} ", key);
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_remove_message(db.to_string(), key),
+                    );
+                    Response::Ok {}
+                }
+
+                Request::Election { id, node_name } => {
+                    replicate_web(
+                        replication_sender,
+                        format!("election candidate {} {}", id, node_name),
+                    );
+                    Response::Ok {}
+                }
+
+                Request::ElectionActive { node_name } => {
+                    replicate_web(replication_sender, format!("election active {}", node_name));
+                    Response::Ok {}
+                }
+
+                Request::Leave { name } => {
+                    replicate_web(replication_sender, format!("replicate-leave {}", name));
+                    Response::Ok {}
+                }
+
+                Request::ReplicateIncrement { db, inc, key } => {
+                    log::debug!("Will replicate the inc of the key {} to {} ", key, inc);
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_increment_message(db.to_string(), key, inc.to_string()),
+                    );
+                    Response::Ok {}
+                }
+                Request::Increment { key, inc } => {
+                    let db_name = db_name
+                        .clone()
+                        .expect("db_name should be set for increment replication");
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_increment_message(db_name.to_string(), key, inc.to_string()),
+                    );
+                    Response::Ok {}
+                }
+                Request::CreateUser { token, user_name } => {
+                    let db_name = db_name
+                        .clone()
+                        .expect("db_name should be set for create user replication");
+                    let key = user_name_key_from_user_name(&user_name);
+                    let value = token.to_string();
+                    log::debug!(
+                        "Will replicate user creating set of the key {} to {} ",
+                        key,
+                        value
+                    );
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_message(db_name.to_string(), key, value, -1),
+                    );
+                    Response::Ok {}
+                }
+                Request::SetPermissions { user, permissions } => {
+                    let db_name = db_name
+                        .clone()
+                        .expect("db_name should be set for set permissions replication");
+                    let key = permissions_key_from_user_name(&user);
+                    let value = Permission::permissions_to_str_value(&permissions);
+                    log::debug!(
+                        "Will replicate user set-permission set of the key {} to {} ",
+                        key,
+                        value
+                    );
+                    replicate_web(
+                        replication_sender,
+                        get_replicate_message(db_name.to_string(), key, value, -1),
+                    );
+                    Response::Ok {}
+                }
+                _ => response,
             }
-            _ => response,
-        },
+        }
     }
 }
 
@@ -542,15 +570,15 @@ pub fn send_message_to_primary(message: String, dbs: &Arc<Databases>) {
     }
 }
 
-fn get_db_id(db_name: String, dbs: &Arc<Databases>) -> u64 {
+fn get_db_id(db_name: String, dbs: &Arc<Databases>) -> Option<u64> {
     match dbs.acquire_dbs_read_lock().get(&db_name) {
         Some(db) => {
             log::debug!("Found db {} with id {}", db_name, db.metadata.id);
-            db.metadata.id as u64
+            Some(db.metadata.id as u64)
         }
         None => {
-            log::error!("Database {} not found", db_name);
-            panic!("Database {} not found", db_name);
+            log::warn!("Database {} not found in replication", db_name);
+            None
         }
     }
 }
@@ -614,7 +642,7 @@ pub async fn start_replication_thread(
                 };
                 let request = Request::parse(&request_str).unwrap();
 
-                let op_log_id: u64 = match request {
+                let op_log_id: Result<u64, String> = match request {
                     Request::CreateDb {
                         name,
                         token: _,
@@ -650,7 +678,11 @@ pub async fn start_replication_thread(
                                     op_log_id_in,
                                 )
                             })
-                            .fold(0, |_, x| x)
+                            .fold(Ok(0), |y, x| match (y, x) {
+                                (Ok(id), Ok(_)) => Ok(id),
+                                (Err(e), _) => Err(e),
+                                (_, Err(e)) => Err(e),
+                            })
                     }
                     Request::ReplicateSet {
                         db,
@@ -694,20 +726,30 @@ pub async fn start_replication_thread(
                     }
 
                     // Even if not in op log we need to return a valid id so the message can be ack
-                    Request::SetPrimary { name: _ } => op_log_id_in, //Election events won't be registed in OpLog
+                    Request::SetPrimary { name: _ } => Ok(op_log_id_in), //Election events won't be registed in OpLog
                     _ => {
                         log::debug!(
                             "Ignoring command {} in replication oplog register! not unimplemented!",
                             message
                         );
                         // Even if not in op log we need to return a valid id so the message can be ack
-                        op_log_id_in
+                        Ok(op_log_id_in)
                     }
                 };
 
                 match dbs.get_role() {
                     ClusterRole::Primary => {
                         log::debug!("is_primary replicating message to secoundary");
+                        let op_log_id = match op_log_id {
+                            Ok(id) => id,
+                            Err(e) => {
+                                log::error!(
+                                    "Error replicating message: {} could not get a valid op_log_id",
+                                    e
+                                );
+                                panic!("Error trying to replicating message: {}, will crash", e);
+                            }
+                        };
                         replicate_message_to_secoundary(op_log_id, request_str.to_string(), &dbs);
                     }
                     ClusterRole::Secoundary => {
@@ -717,6 +759,13 @@ pub async fn start_replication_thread(
                         // When running elections Nodes stay in StartingUp state, therefore we need
                         // to replicate to all nodes
                         log::debug!("is_starting replicating message to all");
+                        let op_log_id = match op_log_id {
+                            Ok(id) => id,
+                            Err(e) => {
+                                log::error!("Error replicating message: {}", e);
+                                panic!("Error trying to replicating message: {}, will crash", e);
+                            }
+                        };
                         replicate_message_to_all(op_log_id, request_str.to_string(), &dbs);
                     }
                 }
@@ -1372,7 +1421,7 @@ mod tests {
         let _f = Oplog::get_log_file_append_mode(); //Get here to ensure the file exists
     }
 
-    fn prep_env() -> (Arc<Databases>, Sender<String>, Receiver<String>) {
+    fn prep_env(create_adicional_dbs: bool) -> (Arc<Databases>, Sender<String>, Receiver<String>) {
         Oplog::clean_op_log_metadata_files();
         thread::sleep(time::Duration::from_millis(50)); //give it time to the opperation to happen
         let (sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
@@ -1397,12 +1446,28 @@ mod tests {
         let token = String::from(SAMPLE_NAME);
         let (client, _) = Client::new_empty_and_receiver();
         create_db(&name, &token, &dbs, &client, ConsensuStrategy::Newer);
+        if create_adicional_dbs {
+            create_db(
+                &String::from("some"),
+                &token,
+                &dbs,
+                &client,
+                ConsensuStrategy::Newer,
+            );
+            create_db(
+                &String::from("some_db_name"),
+                &token,
+                &dbs,
+                &client,
+                ConsensuStrategy::Newer,
+            );
+        }
         (dbs, sender, replication_receiver)
     }
 
     #[test]
     fn should_return_0_if_no_pending_ops() {
-        let (dbs, mut sender, replication_receiver) = prep_env();
+        let (dbs, mut sender, replication_receiver) = prep_env(true);
         let dbs_to_thread = dbs.clone();
 
         let replication_thread = thread::spawn(|| async {
@@ -1433,7 +1498,7 @@ mod tests {
     #[test]
     fn should_return_all_the_opps_if_since_is_0() {
         Oplog::clean_op_log_metadata_files();
-        let (dbs, mut sender, replication_receiver) = prep_env();
+        let (dbs, mut sender, replication_receiver) = prep_env(false);
         let dbs_to_thread = dbs.clone();
         let replication_thread = thread::spawn(|| async {
             start_replication_thread(replication_receiver, dbs_to_thread).await;
@@ -1457,7 +1522,7 @@ mod tests {
         sender.try_send("exit".to_string()).unwrap();
         aw!(replication_thread.join().expect("thread died"));
         let commands = get_pendding_opps_since(0, &dbs);
-        log::debug!("{:?}", commands);
+        print!("{:?}", commands);
         assert!(commands.len() == 3, "Only 3 command expected");
         assert!(
             commands[0] == "create-db sample sample",
@@ -1479,7 +1544,7 @@ mod tests {
 
     #[test]
     fn should_return_the_pending_ops() {
-        let (dbs, _sender, _replication_receiver) = prep_env();
+        let (dbs, _sender, _replication_receiver) = prep_env(true);
         let test_start = Databases::next_op_log_id();
         let (mut sender, replication_receiver): (Sender<String>, Receiver<String>) = channel(100);
         let dbs_to_thread = dbs.clone();
@@ -1530,7 +1595,7 @@ mod tests {
     #[test]
     fn should_not_fail_with_a_prime_number_of_records() {
         let test_start = Databases::next_op_log_id();
-        let (dbs, mut sender, replication_receiver) = prep_env();
+        let (dbs, mut sender, replication_receiver) = prep_env(true);
         let dbs_to_thread = dbs.clone();
 
         let replication_thread = thread::spawn(|| async {
@@ -1568,13 +1633,14 @@ mod tests {
 
     #[test]
     fn should_not_replicate_error_messages() {
-        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
+        let (dbs, sender, _) = prep_env(true);
         let resp_error = Response::Error {
             msg: "Any error".to_string(),
         };
 
-        let db_name = Some("some".to_string());
+        let db_name = Some(SAMPLE_NAME.to_string());
         let result = match replicate_request(
+            &dbs,
             Request::Set {
                 key: "any".to_string(),
                 value: "any".to_string(),
@@ -1592,31 +1658,31 @@ mod tests {
 
     #[test]
     fn should_replicate_if_the_command_is_a_replicate_set_and_node_is_primary() {
-        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (dbs, sender, mut receiver) = prep_env(true);
         let resp_set = Response::Set {
             key: "any_key".to_string(),
             value: "any_value".to_string(),
         };
 
-        let db_name = Some("some".to_string());
+        let db_name = Some(SAMPLE_NAME.to_string());
         let req_set = Request::ReplicateSet {
             key: "any_key".to_string(),
             value: "any_value".to_string(),
             db: db_name.clone().unwrap().to_string(),
             version: -1,
         };
-        let result = match replicate_request(req_set, &db_name, resp_set, &sender) {
+        let result = match replicate_request(&dbs, req_set, &db_name, resp_set, &sender) {
             Response::Ok {} => true,
             _ => false,
         };
         assert!(result, "should have returned an ok response!");
         let replicate_command = receiver.try_next().unwrap().unwrap();
-        assert!(replicate_command.ends_with("replicate some any_key -1 any_value"));
+        assert!(replicate_command.ends_with("replicate sample any_key -1 any_value"));
     }
 
     #[test]
     fn should_replicate_if_the_command_is_a_set_and_node_is_primary() {
-        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (dbs, sender, mut receiver) = prep_env(true);
         let resp_set = Response::Set {
             key: "any_key".to_string(),
             value: "any_value".to_string(),
@@ -1627,19 +1693,19 @@ mod tests {
             value: "any_value".to_string(),
             version: -1,
         };
-        let db_name = Some("some".to_string());
-        let result = match replicate_request(req_set, &db_name, resp_set, &sender) {
+        let db_name = Some(String::from(SAMPLE_NAME));
+        let result = match replicate_request(&dbs, req_set, &db_name, resp_set, &sender) {
             Response::Ok {} => true,
             _ => false,
         };
         assert!(result, "should have returned an ok response!");
         let replicate_command = receiver.try_next().unwrap().unwrap();
-        assert!(replicate_command.ends_with("replicate some any_key -1 any_value"));
+        assert!(replicate_command.ends_with("replicate sample any_key -1 any_value"));
     }
 
     #[test]
     fn should_not_replicate_if_the_command_is_a_set_and_node_is_not_the_primary() {
-        let (sender, _): (Sender<String>, Receiver<String>) = channel(100);
+        let (dbs, sender, _) = prep_env(true);
         let resp_set = Response::Set {
             key: "any_key".to_string(),
             value: "any_value".to_string(),
@@ -1651,7 +1717,7 @@ mod tests {
             version: -1,
         };
         let db_name = Some("some".to_string());
-        let _ = match replicate_request(req_set, &db_name, resp_set, &sender) {
+        let _ = match replicate_request(&dbs, req_set, &db_name, resp_set, &sender) {
             Response::Set {
                 key: _key,
                 value: _value,
@@ -1662,7 +1728,7 @@ mod tests {
 
     #[test]
     fn should_not_replicate_if_the_command_is_a_get() {
-        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (dbs, sender, mut receiver) = prep_env(true);
         let resp_get = Response::Value {
             key: "any_key".to_string(),
             value: "any_value".to_string(),
@@ -1671,6 +1737,7 @@ mod tests {
 
         let db_name = Some("some".to_string());
         let result = match replicate_request(
+            &dbs,
             Request::Get {
                 key: "any_key".to_string(),
             },
@@ -1692,8 +1759,8 @@ mod tests {
 
     #[test]
     fn should_replicate_if_the_command_is_a_replicate_election_and_node_is_primary() {
+        let (dbs, sender, mut receiver) = prep_env(true);
         let db_name = Some("some_db_name".to_string());
-        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         let request = Request::Election {
             id: 1,
             node_name: "some_node".to_string(),
@@ -1701,7 +1768,7 @@ mod tests {
 
         let resp_get = Response::Ok {};
 
-        let result = match replicate_request(request, &db_name, resp_get, &sender) {
+        let result = match replicate_request(&dbs, request, &db_name, resp_get, &sender) {
             Response::Ok {} => true,
             _ => false,
         };
@@ -1712,8 +1779,8 @@ mod tests {
 
     #[test]
     fn should_replicate_if_the_command_is_a_replicate_snapshot_and_node_is_primary() {
+        let (dbs, sender, mut receiver) = prep_env(true);
         let db_name = Some("some_db_name".to_string());
-        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
         let request = Request::ReplicateSnapshot {
             reclaim_space: false,
             db_names: vec![db_name.clone().unwrap().clone()],
@@ -1721,7 +1788,7 @@ mod tests {
 
         let resp_get = Response::Ok {};
 
-        let result = match replicate_request(request, &db_name, resp_get, &sender) {
+        let result = match replicate_request(&dbs, request, &db_name, resp_get, &sender) {
             Response::Ok {} => true,
             _ => false,
         };
@@ -1732,7 +1799,7 @@ mod tests {
 
     #[test]
     fn should_replicate_if_the_command_is_a_snapshot_and_node_is_primary() {
-        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (dbs, sender, mut receiver) = prep_env(true);
         let request = Request::Snapshot {
             reclaim_space: false,
             db_names: vec![],
@@ -1741,7 +1808,7 @@ mod tests {
         let resp_get = Response::Ok {};
 
         let db_name = Some("some_db_name".to_string());
-        let result = match replicate_request(request, &db_name, resp_get, &sender) {
+        let result = match replicate_request(&dbs, request, &db_name, resp_get, &sender) {
             Response::Ok {} => true,
             _ => false,
         };
@@ -1752,7 +1819,7 @@ mod tests {
 
     #[test]
     fn should_replicate_if_the_command_is_a_create_db_and_node_is_primary() {
-        let (sender, mut receiver): (Sender<String>, Receiver<String>) = channel(100);
+        let (dbs, sender, mut receiver) = prep_env(true);
         let request = Request::CreateDb {
             name: "mateus_db".to_string(),
             token: "jose".to_string(),
@@ -1762,7 +1829,7 @@ mod tests {
         let resp_get = Response::Ok {};
 
         let db_name = Some("some".to_string());
-        let result = match replicate_request(request, &db_name, resp_get, &sender) {
+        let result = match replicate_request(&dbs, request, &db_name, resp_get, &sender) {
             Response::Ok {} => true,
             _ => false,
         };

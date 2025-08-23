@@ -664,7 +664,7 @@ fn parse_create_db_command(command: &mut std::str::SplitN<&str>) -> Result<Reque
         Some(rest) => {
             log::debug!("CreateDb rest command {}", rest);
             rest.splitn(2, " ")
-        },
+        }
         None => {
             log::debug!("create-db needs token and strategy");
             return Err(String::from("create-db must be followed by a token"));

@@ -35,19 +35,15 @@ pub fn apply_if_safe_access(
     } else {
         let db_name = client.selected_db_name();
         match db_name {
-            Some(db_name) => {
-                apply_to_database_name_if_has_permission(
-                    &dbs,
-                    &client,
-                    &db_name,
-                    opp,
-                    Some(key),
-                    &permission_required,
-                )
-            }
-            None => {
-                reject_request_for_no_selected_db(client)
-            }
+            Some(db_name) => apply_to_database_name_if_has_permission(
+                &dbs,
+                &client,
+                &db_name,
+                opp,
+                Some(key),
+                &permission_required,
+            ),
+            None => reject_request_for_no_selected_db(client),
         }
     }
 }
@@ -132,9 +128,7 @@ pub fn apply_to_database_name_if_has_permission(
                 Response::Error { msg }
             }
         }
-        None => {
-            reject_request_for_no_selected_db(client)
-        }
+        None => reject_request_for_no_selected_db(client),
     };
     return result;
 }
@@ -146,7 +140,9 @@ pub fn apply_to_database(
 ) -> Response {
     let db_name = client.selected_db_name();
     match db_name {
-        Some(db_name) => apply_to_database_name(&dbs, &client, &db_name, opp, &PermissionKind::Read),
+        Some(db_name) => {
+            apply_to_database_name(&dbs, &client, &db_name, opp, &PermissionKind::Read)
+        }
         None => {
             let msg = String::from(NO_DB_SELECTED_MESSAGE);
             client.send_message(&msg);

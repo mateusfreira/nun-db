@@ -47,6 +47,11 @@ impl Databases {
         name: &String,
         reclame_space: bool,
     ) -> Result<(), String> {
+        {
+            if !self.map.read().unwrap().contains_key(name) {
+                return Err(format!("Database {} not found", name));
+            }
+        }
         match self.to_snapshot.write() {
             Ok(mut dbs) => {
                 dbs.push((name.to_string(), reclame_space));
@@ -128,23 +133,26 @@ impl Oplog {
     }
     pub fn try_write_op_log(
         op_log_stream: &mut BufWriter<File>,
-        db_id: u64,
+        db_id: Option<u64>,
         key_id: u64,
         opp: &ReplicateOpp,
         op_log_id_in: u64,
-    ) -> u64 {
+    ) -> Result<u64, String> {
+        let db_id = match db_id {
+            Some(id) => id,
+            None => return Err(String::from("Missing DB Id")), // Default value for db_id
+        };
         match Oplog::write_op_log(op_log_stream, db_id, key_id, &opp, op_log_id_in) {
-            Ok(id) => id,
+            Ok(id) => Ok(id),
             Err(_) => {
                 *op_log_stream = Oplog::get_log_file_append_mode();
-                Oplog::write_op_log(
-                    op_log_stream,
-                    db_id,
-                    key_id,
-                    &ReplicateOpp::Snapshot,
-                    op_log_id_in,
-                )
-                .unwrap()
+                match Oplog::write_op_log(op_log_stream, db_id, key_id, &opp, op_log_id_in) {
+                    Ok(id) => Ok(id),
+                    Err(e) => {
+                        log::error!("Could not write to the op log file, {}", e);
+                        return Err(String::from("Could not write to the op log file"));
+                    }
+                }
             }
         }
     }
@@ -296,7 +304,8 @@ fn remove_old_db_files() {
 }
 // calls storage_data_disk each $SNAPSHOT_TIME seconds
 pub fn declutter_scheduler(timer: timer::Timer, dbs: Arc<Databases>) {
-    log::info!("Will start_snap_shot_timer every {} seconds",
+    log::info!(
+        "Will start_snap_shot_timer every {} seconds",
         *NUN_DECLUTTER_INTERVAL
     );
     let (_tx, rx): (
@@ -1119,9 +1128,9 @@ mod tests {
         let mut oplog_file = Oplog::get_log_file_append_mode();
         let mut i = 0;
         while i < 1000 {
-            Oplog::try_write_op_log(
+            let _ = Oplog::try_write_op_log(
                 &mut oplog_file,
-                1,
+                Some(1),
                 1,
                 &ReplicateOpp::Update,
                 Databases::next_op_log_id(),
@@ -1149,9 +1158,9 @@ mod tests {
         let start = Instant::now();
         //while i < 100_000 {
         while i < 10_000 {
-            Oplog::try_write_op_log(
+            let _ = Oplog::try_write_op_log(
                 &mut oplog_file,
-                1,
+                Some(1),
                 1,
                 &ReplicateOpp::Update,
                 Databases::next_op_log_id(),
