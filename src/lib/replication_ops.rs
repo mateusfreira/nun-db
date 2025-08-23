@@ -281,10 +281,13 @@ pub fn replicate_request(
             state: _,
         } => response,
         _ => {
-            // @todo is this worth it? there is a lock here
-            if let Some(value) = does_db_exists(db_name, dbs) { 
-                return value;
+            if let Some(name) = db_name.as_deref() {
+                if !dbs.has_db(name) {
+                    log::warn!("replicate_request::db_name {name} not found in databases");
+                    return Response::Error { msg: format!("Database {name} not found") };
+                }
             }
+
             match input {
                 Request::CreateDb {
                     name,
@@ -495,24 +498,6 @@ pub fn replicate_request(
             }
         }
     }
-}
-
-fn does_db_exists(db_name: &Option<String>, dbs: &Arc<Databases>) -> Option<Response> {
-    match db_name {
-        Some(db_name) => match get_db_id(db_name.to_string(), &dbs) {
-            Some(_db_id) => {
-                ()
-            },
-            None => {
-                log::warn!("replicate_request no db found for name {}", db_name);
-                return Some(Response::Error {
-                    msg: format!("replicate_request no db found for name {}", db_name),
-                });
-            }
-        },
-        None => log::debug!("replicate_request no db_name"),
-    }
-    None
 }
 
 /**

@@ -1053,6 +1053,10 @@ impl Databases {
             .map(|db| format!("{} : {}", db.name, db.metadata.consensus_strategy))
             .collect()
     }
+
+    pub fn has_db(&self, name: &str) -> bool {
+        self.acquire_dbs_read_lock().contains_key(name)
+    }
 }
 
 pub struct Watchers {
