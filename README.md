@@ -600,3 +600,8 @@ $connections
     - **Default Value:** `http://127.0.0.1:9000`
     - **Description:** API URL for accessing S3-compatible services.
     - **Environment Variable:** `NUN_S3_API_URL`
+   
+
+
+### Configuring it with S3
+Todo
