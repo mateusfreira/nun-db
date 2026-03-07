@@ -1,16 +1,27 @@
 services:
   minio:
-    image: docker.io/bitnami/minio:2022
+    image: minio/minio:latest
     container_name: minio
     volumes:
       - 'minio_data:/data'
     environment:
       MINIO_ROOT_USER: nun-db
       MINIO_ROOT_PASSWORD: nun-db-something-more
-      MINIO_DEFAULT_BUCKETS: nun-db
+    command: server /data --console-address ":9001"
     ports:
       - '9000:9000'
       - '9001:9001'
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      sh -c "
+      sleep 3 &&
+      mc alias set myminio http://minio:9000 nun-db nun-db-something-more &&
+      mc mb --ignore-existing myminio/nun-db
+      "
 
   toxiproxy:
     image: "shopify/toxiproxy"

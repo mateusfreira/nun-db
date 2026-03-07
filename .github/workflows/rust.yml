@@ -23,7 +23,7 @@ jobs:
       run: cargo build --verbose
     - name: Start Minio
       if: ${{ !env.ACT }}
-      run: docker compose up -d minio && sleep 5
+      run: docker compose up -d minio && sleep 5 && docker compose up minio-init
     - name: Run Unt tests
       env:
         TIME_TO_START: 1
