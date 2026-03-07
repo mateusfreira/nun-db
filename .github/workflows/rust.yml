@@ -30,6 +30,7 @@ jobs:
         NUN_S3_KEY_ID: nun-db
         NUN_S3_SECRET_KEY: nun-db-something-more
         NUN_LOG_LEVEL: info
+        NUN_TEST_PERF_THRESHOLD_MS: 200
       run: cargo test --lib
     - name: Run integration tests
       env:
