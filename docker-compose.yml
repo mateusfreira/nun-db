@@ -1,20 +1,27 @@
 services:
   minio:
-    image: docker.io/bitnami/minio:2022
+    image: minio/minio:latest
     container_name: minio
-    networks:
-      - minionetwork
     volumes:
       - 'minio_data:/data'
     environment:
-      MINIO_ACCESS_KEY: minio
-      MINIO_SECRET_KEY: minio
       MINIO_ROOT_USER: nun-db
       MINIO_ROOT_PASSWORD: nun-db-something-more
-      MINIO_DEFAULT_BUCKETS: nun-db
+    command: server /data --console-address ":9001"
     ports:
       - '9000:9000'
       - '9001:9001'
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      sh -c "
+      sleep 3 &&
+      mc alias set myminio http://minio:9000 nun-db nun-db-something-more &&
+      mc mb --ignore-existing myminio/nun-db
+      "
 
   toxiproxy:
     image: "shopify/toxiproxy"
@@ -25,14 +32,14 @@ services:
   # We created proxy configuration from another ephermal container
   toxiproxy-config:
     image: "shopify/toxiproxy"
-    entrypoint: > 
+    entrypoint: >
       sh -c "
               sleep 1
              /go/bin/toxiproxy-cli -h toxiproxy:8474 create primary --listen 0.0.0.0:3017 --upstream nun-db-primary:3017
              /go/bin/toxiproxy-cli -h toxiproxy:8474 create secondary-1 --listen 0.0.0.0:3018 --upstream nun-db-secondary-1:3018
              /go/bin/toxiproxy-cli -h toxiproxy:8474 create secondary-2 --listen 0.0.0.0:3019 --upstream nun-db-secondary-2:3019
 
-             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=2000 primary 
+             /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=2000 primary
              /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add --upstream --type=latency --toxicName=latency_upstream --a latency=2000 --toxicity=1 primary
 
              /go/bin/toxiproxy-cli -h toxiproxy:8474  toxic add -t latency -a latency=500 secondary-1
@@ -85,10 +92,9 @@ services:
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
   nun-db-primary:
-    image: mateusfreira/nun-db
-      #build:
-      #  context: .
-      #  dockerfile: ./Dockerfile
+    build:
+      context: .
+      dockerfile: ./Dockerfile
     environment:
       - NUN_DBS_DIR=/nun_data
       - NUN_WS_ADDR=0.0.0.0:3058
@@ -100,10 +106,14 @@ services:
       - NUN_REPLICASET=toxiproxy:3017,toxiproxy:3018,toxiproxy:3019
       - NUN_PWD=mateus
       - NUN_ELECTION_TIMEOUT=6000
+      - NUN_S3_API_URL=http://minio:9000
+      - NUN_S3_KEY_ID=nun-db
+      - NUN_S3_SECRET_KEY=nun-db-something-more
+      - NUN_S3_BUCKET=nun-db
     command:
       - "sh"
       - "-c"
-      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --external-address $$NUN_TCP_JOIN_ADDR" 
+      - "sleep 3&&nun-db -u $$NUN_USER -p $$NUN_PWD start --http-address $$NUN_HTTP_ADDR --tcp-address $$NUN_TCP_ADDR --ws-address $$NUN_WS_ADDR --replicate-address $$NUN_REPLICASET --external-address $$NUN_TCP_JOIN_ADDR"
     ports:
       - "3058:3058" # ws
       - "9092:9092" # http
@@ -119,13 +129,13 @@ services:
       - "traefik.tcp.routers.nun-db-primary.rule=HostSNI(`nun-db-primary.localhost`)"
       - "traefik.tcp.services.nun-db-primary.loadbalancer.server.port=3017"
     depends_on:
+      - minio
       - toxiproxy
       - toxiproxy-config
   nun-db-secondary-1:
-    image: mateusfreira/nun-db
-    # build:
-    #   context: .
-    #   dockerfile: ./Dockerfile
+    build:
+      context: .
+      dockerfile: ./Dockerfile
     depends_on:
       - nun-db-primary
     environment:
@@ -139,6 +149,10 @@ services:
       - NUN_PWD=mateus
       - NUN_REPLICASET=toxiproxy:3017,toxiproxy:3018,toxiproxy:3019
       - NUN_ELECTION_TIMEOUT=6000
+      - NUN_S3_API_URL=http://minio:9000
+      - NUN_S3_KEY_ID=nun-db
+      - NUN_S3_SECRET_KEY=nun-db-something-more
+      - NUN_S3_BUCKET=nun-db
     command:
       - "sh"
       - "-c"
@@ -158,11 +172,9 @@ services:
       - "traefik.tcp.services.nun-db-2.loadbalancer.server.port=3018"
 
   nun-db-secondary-2:
-    image: mateusfreira/nun-db
-    #image: docker.io/library/nun-db-nun-db-secondary-1
-    #build:
-    #  context: .
-    #  dockerfile: ./Dockerfile
+    build:
+      context: .
+      dockerfile: ./Dockerfile
     depends_on:
       - nun-db-primary
       - nun-db-secondary-1
@@ -176,6 +188,10 @@ services:
       - NUN_PWD=mateus
       - NUN_REPLICASET=toxiproxy:3017,toxiproxy:3018,toxiproxy:3019
       - NUN_ELECTION_TIMEOUT=6000
+      - NUN_S3_API_URL=http://minio:9000
+      - NUN_S3_KEY_ID=nun-db
+      - NUN_S3_SECRET_KEY=nun-db-something-more
+      - NUN_S3_BUCKET=nun-db
     command:
       - "sh"
       - "-c"
@@ -196,7 +212,4 @@ services:
 volumes:
   minio_data:
     driver: local
-networks:
-  minionetwork:
-    driver: bridge
 

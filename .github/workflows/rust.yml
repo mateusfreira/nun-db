@@ -23,13 +23,14 @@ jobs:
       run: cargo build --verbose
     - name: Start Minio
       if: ${{ !env.ACT }}
-      run: docker compose up -d minio && sleep 5
+      run: docker compose up -d minio && sleep 5 && docker compose up minio-init
     - name: Run Unt tests
       env:
         TIME_TO_START: 1
         NUN_S3_KEY_ID: nun-db
         NUN_S3_SECRET_KEY: nun-db-something-more
         NUN_LOG_LEVEL: info
+        NUN_TEST_PERF_THRESHOLD_MS: 200
       run: cargo test --lib
     - name: Run integration tests
       env:

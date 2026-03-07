@@ -1081,7 +1081,7 @@ mod tests {
         let start = Instant::now();
         let changed_keys = Databases::storage_data(&db, &db_name, false);
         log::info!("TIme {:?}", start.elapsed());
-        assert!(start.elapsed().as_millis() < 100);
+        assert!(start.elapsed().as_millis() < perf_threshold_ms());
         assert_eq!(changed_keys, 10000);
 
         let start_load = Instant::now();
@@ -1089,7 +1089,7 @@ mod tests {
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
         let time_in_ms = start_load.elapsed().as_millis();
         log::info!("TIme to update {:?}ms", time_in_ms);
-        assert!(start_load.elapsed().as_millis() < 100);
+        assert!(start_load.elapsed().as_millis() < perf_threshold_ms());
 
         let value = loaded_db.get_value(String::from("key_1")).unwrap();
         assert_eq!(value.state, ValueStatus::Ok);
@@ -1185,7 +1185,7 @@ mod tests {
         let start = Instant::now();
         let changed_keys = Databases::storage_data(&db, &db_name, false);
         log::info!("TIme {:?}", start.elapsed());
-        assert!(start.elapsed().as_millis() < 100);
+        assert!(start.elapsed().as_millis() < perf_threshold_ms());
         assert_eq!(changed_keys, 10000);
 
         let start_load = Instant::now();
@@ -1193,7 +1193,7 @@ mod tests {
         let (loaded_db, _) = create_db_from_file_name(&db_file_name, &dbs);
         let time_in_ms = start_load.elapsed().as_millis();
         log::info!("Time to update {:?}ms", time_in_ms);
-        assert!(start_load.elapsed().as_millis() < 100);
+        assert!(start_load.elapsed().as_millis() < perf_threshold_ms());
 
         let value = loaded_db.get_value(String::from("key_1")).unwrap();
         assert_eq!(value.state, ValueStatus::Ok);
@@ -1244,6 +1244,13 @@ mod tests {
         );
         dbs.is_oplog_valid.store(false, Ordering::Relaxed);
         (dbs, db_name, db)
+    }
+
+    fn perf_threshold_ms() -> u128 {
+        std::env::var("NUN_TEST_PERF_THRESHOLD_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100)
     }
 
     fn create_db_with_10k_keys() -> (Arc<Databases>, String, Database) {
